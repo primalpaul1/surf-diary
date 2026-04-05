@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dominical Surf Diary</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <!-- Header -->
+  <header>
+    <div class="header-inner">
+      <a class="logo" href="/">
+        <span class="logo-text">Dominical</span>
+      </a>
+      <nav>
+        <button class="nav-btn active" data-view="log">Log</button>
+        <button class="nav-btn" data-view="history">Feed</button>
+        <button class="nav-btn" data-view="surfers">Surfers</button>
+        <button class="nav-btn" data-view="analysis">Analysis</button>
+        <a class="nav-btn nav-ext" href="https://www.surfline.com/surf-report/dominical/5842041f4e65fad6a7708b9c" target="_blank">Surfline ↗</a>
+      </nav>
+      <div class="auth-section">
+        <div id="auth-buttons">
+          <button id="login-btn" class="btn-glass"><img src="/primal-logo.png" alt="" class="btn-icon">Log in with Primal</button>
+          <button id="create-account-btn" class="btn-outline">Create Account</button>
+        </div>
+        <div id="user-info" class="hidden">
+          <div class="user-pill">
+            <img id="user-avatar" src="" alt="" class="user-avatar-sm" onerror="this.style.display='none'">
+            <span id="user-name"></span>
+          </div>
+          <button id="logout-btn" class="btn-outline btn-sm">Logout</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Hero -->
+  <div class="hero">
+    <img src="/dominical-hero.jpg" alt="Dominical surf" class="hero-img">
+    <div class="hero-gradient"></div>
+    <div class="hero-content">
+      <h2 class="hero-title">Dominical</h2>
+      <p class="hero-sub">Track the swell. Rate your sessions. Predict when it fires.</p>
+    </div>
+  </div>
+
+  <!-- Modals -->
+  <div id="login-modal" class="modal hidden">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content modal-sm">
+      <button class="modal-close">&times;</button>
+      <img src="/primal-logo.png" alt="Primal" class="modal-logo">
+      <h2>Log in with Primal</h2>
+      <p class="modal-sub">Scan with your Primal app, or tap below on mobile.</p>
+      <div id="login-loading" class="modal-loading"><div class="spinner"></div><span>Generating...</span></div>
+      <div id="login-qr" class="hidden"><img id="qr-image" class="qr-code" alt="QR"><div class="pulse-row"><div class="pulse-dot"></div><span>Waiting for Primal...</span></div></div>
+      <button id="mobile-login-btn" class="btn-solid btn-block hidden"><img src="/primal-logo.png" alt="" class="btn-icon">Open Primal App</button>
+      <div id="login-connected" class="hidden"><div class="check-circle">✓</div><p class="modal-success">Connected!</p></div>
+      <div class="modal-divider"></div>
+      <p class="modal-footer-text">No account? <a href="https://primal.net/new" target="_blank">Get Primal free →</a></p>
+    </div>
+  </div>
+
+  <div id="create-modal" class="modal hidden">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content modal-sm">
+      <button class="modal-close">&times;</button>
+      <h2>Create Account</h2>
+      <p class="modal-sub">Pick a name and photo. A Nostr keypair is generated locally.</p>
+      <form id="create-form">
+        <div class="avatar-upload" id="avatar-upload">
+          <div class="avatar-placeholder" id="avatar-preview">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            <span>Add Photo</span>
+          </div>
+          <input type="file" id="avatar-file" accept="image/*" class="hidden">
+        </div>
+        <div class="form-group"><label>Surfer Name</label><input type="text" id="create-name" placeholder="e.g. KookSlayer420" required maxlength="30"></div>
+        <button type="submit" class="btn-solid btn-block">Create My Account</button>
+      </form>
+      <div class="modal-divider"></div>
+      <p class="modal-footer-text">Already on Nostr? <button id="switch-to-primal" class="link-btn">Log in with Primal →</button></p>
+    </div>
+  </div>
+
+  <div id="session-modal" class="modal hidden">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content modal-lg">
+      <button class="modal-close">&times;</button>
+      <div id="session-detail"></div>
+      <div id="comments-section"><h3>Comments</h3><div id="comments-list"></div>
+        <form id="comment-form" class="hidden comment-row"><textarea id="comment-body" placeholder="Add a comment..." rows="2"></textarea><button type="submit" class="btn-solid btn-sm">Post</button></form>
+      </div>
+    </div>
+  </div>
+
+  <main>
+    <!-- LOG -->
+    <section id="view-log" class="view active">
+      <div class="card card-form">
+        <div class="card-header"><h2>Log a Session</h2><p class="muted">Conditions auto-fill from Surfline.</p></div>
+        <form id="session-form">
+          <div class="row-2">
+            <div class="field"><label>Date</label><input type="date" id="session_date" required></div>
+            <div class="field"><label>When?</label>
+              <select id="time_of_day"><option value="5am">5 AM</option><option value="6am">6 AM</option><option value="7am" selected>7 AM</option><option value="8am">8 AM</option><option value="9am">9 AM</option><option value="10am">10 AM</option><option value="11am">11 AM</option><option value="12pm">12 PM</option><option value="1pm">1 PM</option><option value="2pm">2 PM</option><option value="3pm">3 PM</option><option value="4pm">4 PM</option><option value="5pm">5 PM</option><option value="6pm">6 PM</option></select>
+            </div>
+          </div>
+          <div id="conditions-preview" class="conditions-panel"><div class="cond-loading">Fetching conditions...</div></div>
+          <div class="section-label">Session Type</div>
+          <div class="shape-tabs">
+            <button type="button" class="shape-tab" data-group="session_type" data-val="surfed">Surfed</button>
+            <button type="button" class="shape-tab" data-group="session_type" data-val="observed">Observed</button>
+          </div>
+          <input type="hidden" id="session_type" name="session_type" value="surfed">
+
+          <div class="section-label">Wave Shape</div>
+          <div class="shape-tabs">
+            <button type="button" class="shape-tab" data-shape="peaky">Peaky</button>
+            <button type="button" class="shape-tab" data-shape="barreling">Barreling</button>
+            <button type="button" class="shape-tab" data-shape="rippable">Rippable</button>
+          </div>
+          <input type="hidden" id="wave_shape" name="wave_shape">
+
+          <div class="section-label">How was it?</div>
+          <div class="rating-row"><input type="range" id="rating" min="1" max="10" value="5" class="rating-slider"><div class="rating-num" id="rating-display">5</div></div>
+          <div class="rating-labels"><span>1 · Terrible</span><span>5 · Average</span><span>10 · Epic</span></div>
+
+          <div class="section-label">Media</div>
+          <div class="media-row">
+            <button type="button" id="record-btn" class="media-btn"><span class="rec-dot"></span><span id="record-label">Voice Note</span></button>
+            <label class="media-btn" id="video-label"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg><span>Video Clip</span><input type="file" id="video-file" accept="video/*" class="hidden"></label>
+          </div>
+          <div id="recording-status" class="rec-status hidden"><div class="pulse-dot"></div><span id="record-timer">0:00</span></div>
+          <div id="voice-playback" class="playback hidden"><audio id="voice-audio" controls></audio><button type="button" id="delete-voice" class="btn-outline btn-xs">Remove</button></div>
+          <div id="transcript-section" class="hidden"><div id="transcript-text" class="transcript"></div></div>
+          <div id="video-preview" class="hidden"><video id="video-player" controls class="video-thumb"></video><button type="button" id="delete-video" class="btn-outline btn-xs">Remove</button></div>
+
+          <div class="field"><label>Notes <span class="muted">(optional)</span></label><textarea id="notes" rows="2" placeholder="Anything to add..."></textarea></div>
+          <button type="submit" class="btn-solid btn-block" id="submit-btn" disabled>Log in to Log Session</button>
+        </form>
+      </div>
+    </section>
+
+    <!-- FEED -->
+    <section id="view-history" class="view">
+      <div class="card">
+        <div class="feed-header"><h2>Feed</h2>
+          <div class="filters"><select id="filter-direction"><option value="">All Swells</option><option>S</option><option>SSW</option><option>SW</option><option>WSW</option><option>W</option><option>WNW</option><option>NW</option><option>NNW</option><option>N</option></select><input type="month" id="filter-month"></div>
+        </div>
+        <div id="session-list" class="feed-list"></div>
+      </div>
+    </section>
+
+    <!-- SURFERS -->
+    <section id="view-surfers" class="view">
+      <div class="card">
+        <h2>Surfers</h2><p class="muted" style="margin-bottom:1rem">Follow surfers to see their reports in your feed & analysis.</p>
+        <div id="surfers-list" class="surfers-grid"></div>
+      </div>
+    </section>
+
+    <!-- ANALYSIS -->
+    <section id="view-analysis" class="view">
+      <!-- Search Panel -->
+      <div class="card search-card">
+        <h2>Search Sessions</h2>
+        <p class="muted">Find sessions by swell direction, size, period, or rating.</p>
+        <div class="search-grid">
+          <div class="field">
+            <label>Swell Direction (°)</label>
+            <div class="range-row">
+              <input type="number" id="search-dir-min" placeholder="e.g. 200" min="0" max="360" class="input-sm">
+              <span class="range-sep">to</span>
+              <input type="number" id="search-dir-max" placeholder="e.g. 220" min="0" max="360" class="input-sm">
+            </div>
+          </div>
+          <div class="field">
+            <label>Swell Height (ft)</label>
+            <div class="range-row">
+              <input type="number" id="search-height-min" placeholder="Min" step="0.5" min="0" class="input-sm">
+              <span class="range-sep">to</span>
+              <input type="number" id="search-height-max" placeholder="Max" step="0.5" min="0" class="input-sm">
+            </div>
+          </div>
+          <div class="field">
+            <label>Period (s)</label>
+            <div class="range-row">
+              <input type="number" id="search-period-min" placeholder="Min" min="0" class="input-sm">
+              <span class="range-sep">+</span>
+              <input type="number" id="search-period-max" placeholder="Max" min="0" class="input-sm">
+            </div>
+          </div>
+          <div class="field">
+            <label>Rating (1-10)</label>
+            <div class="range-row">
+              <input type="number" id="search-rating-min" placeholder="Min" min="1" max="10" class="input-sm">
+              <span class="range-sep">to</span>
+              <input type="number" id="search-rating-max" placeholder="Max" min="1" max="10" class="input-sm">
+            </div>
+          </div>
+        </div>
+        <div class="search-actions">
+          <button id="search-btn" class="btn-solid">Search</button>
+          <button id="search-clear" class="btn-outline btn-sm" style="border-color:#d1d8e0;color:var(--text-muted)">Clear</button>
+        </div>
+        <div id="search-results" class="search-results"></div>
+      </div>
+
+      <div class="analysis-grid">
+        <div class="card"><h2>By Swell Direction</h2><p class="muted">Which swells produce the best surf?</p><div id="direction-analysis"></div></div>
+        <div class="card"><h2>Best Combos</h2><p class="muted">Top conditions (2+ sessions)</p><div id="best-conditions"></div></div>
+        <div class="card full-span"><h2>Timeline</h2><p class="muted">Session ratings over time</p><div id="timeline-chart"></div></div>
+      </div>
+    </section>
+  </main>
+
+  <footer><p>Dominical Surf Diary · Powered by <a href="https://primal.net" target="_blank">Primal</a> & <a href="https://nostr.com" target="_blank">Nostr</a></p></footer>
+  <script src="/app.js" type="module"></script>
+</body>
+</html>
