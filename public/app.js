@@ -280,7 +280,9 @@ async function loadSurfers(){
   const params=currentSpot?`?spot_id=${currentSpot.id}`:'';
   try{const users=await(await fetch('/api/users'+params)).json();const list=$('#surfers-list');if(!users.length){list.innerHTML='<div class="empty-state"><p>No surfers in this spot yet.</p></div>';return;}
   list.innerHTML=users.map(u=>{const me=currentUser?.pubkey===u.pubkey;const fol=followingSet.has(u.pubkey);let btn;if(me)btn='<button class="btn-follow is-you" disabled>You</button>';else if(!currentUser)btn='';else if(fol)btn=`<button class="btn-follow following" onclick="toggleFollow('${u.pubkey}')">Following</button>`;else btn=`<button class="btn-follow" onclick="toggleFollow('${u.pubkey}')">Follow</button>`;
-  return`<div class="surfer-card">${u.avatar_path?`<img src="${u.avatar_path}" class="surfer-av">`:`<div class="surfer-av-placeholder">${(u.display_name||'?')[0].toUpperCase()}</div>`}<div class="surfer-info"><div class="surfer-name">${escapeHtml(u.display_name||'Anon')}</div><div class="surfer-meta">${u.session_count} session${u.session_count!==1?'s':''}${u.role==='admin'?' · admin':''}</div></div>${btn}</div>`;}).join('');}catch{}}
+  const isAdmin=currentSpot?.members?.some(m=>m.pubkey===currentUser?.pubkey&&m.role==='admin');
+  const adminBtn=(!me&&isAdmin&&u.role!=='admin'&&currentSpot)?`<button class="btn-outline btn-xs" style="margin-left:0.3rem" onclick="event.stopPropagation();makeAdmin('${currentSpot.id}','${u.pubkey}')">Make Admin</button>`:'';
+  return`<div class="surfer-card">${u.avatar_path?`<img src="${u.avatar_path}" class="surfer-av">`:`<div class="surfer-av-placeholder">${(u.display_name||'?')[0].toUpperCase()}</div>`}<div class="surfer-info"><div class="surfer-name">${escapeHtml(u.display_name||'Anon')}</div><div class="surfer-meta">${u.session_count} session${u.session_count!==1?'s':''}${u.role==='admin'?' · admin':''}</div></div><div style="display:flex;align-items:center">${btn}${adminBtn}</div></div>`;}).join('');}catch{}}
 
 // ===== CONDITIONS =====
 $('#session_date').value=new Date().toISOString().split('T')[0];
@@ -297,6 +299,24 @@ document.querySelector('.shape-tab[data-val="surfed"]')?.classList.add('active')
 
 // ===== RATING =====
 const rs=$('#rating'),rd=$('#rating-display');
+// Audio tick for rating
+let audioCtx=null;
+function playTick(rating){
+  try{
+    if(!audioCtx)audioCtx=new(window.AudioContext||window.webkitAudioContext)();
+    const osc=audioCtx.createOscillator();const gain=audioCtx.createGain();
+    osc.connect(gain);gain.connect(audioCtx.destination);
+    // Higher pitch + longer for higher ratings
+    osc.frequency.value=200+rating*80;
+    osc.type=rating>=8?'sine':'triangle';
+    gain.gain.setValueAtTime(0.08+rating*0.02,audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001,audioCtx.currentTime+(rating>=8?0.15:0.06));
+    osc.start();osc.stop(audioCtx.currentTime+(rating>=8?0.15:0.06));
+    // Extra sparkle for 8+
+    if(rating>=8){const o2=audioCtx.createOscillator();const g2=audioCtx.createGain();o2.connect(g2);g2.connect(audioCtx.destination);o2.frequency.value=600+rating*60;o2.type='sine';g2.gain.setValueAtTime(0.05,audioCtx.currentTime+0.03);g2.gain.exponentialRampToValueAtTime(0.001,audioCtx.currentTime+0.2);o2.start(audioCtx.currentTime+0.03);o2.stop(audioCtx.currentTime+0.2);}
+  }catch{}
+}
+
 let lastRatingVal=5;
 function updateRating(){
   const v=+rs.value;
@@ -310,7 +330,7 @@ function updateRating(){
   // Pulse + haptic on change
   if(v!==lastRatingVal){
     rd.classList.remove('pulse');void rd.offsetWidth;rd.classList.add('pulse');
-    if(v>lastRatingVal&&navigator.vibrate)navigator.vibrate(v>=8?[30,20,30]:v>=5?[15]:[8]);
+    if(v>lastRatingVal){if(navigator.vibrate)navigator.vibrate(v>=8?[30,20,30]:v>=5?[15]:[8]);playTick(v);}
     lastRatingVal=v;
   }
   rd.textContent=v;
@@ -455,11 +475,32 @@ $('#filter-direction').addEventListener('change',()=>{if(currentUser)loadFeed();
 
 // ===== DETAIL =====
 async function openSession(id){try{const{session:s,comments}=await(await fetch(`/api/sessions/${id}`)).json();const d=new Date(s.session_date+'T12:00:00');const ds=d.toLocaleDateString('en',{weekday:'long',year:'numeric',month:'long',day:'numeric'});const sw=JSON.parse(s.swells_json||'[]');const swH=sw.map((x,i)=>`<div class="detail-block"><h4>${i?'Secondary':'Primary'} Swell</h4><p>${x.height_ft}ft ${x.period_s}s ${x.direction_compass} ${x.direction_deg}° <small style="opacity:.5">(${x.impact}%)</small></p></div>`).join('');
-$('#session-detail').innerHTML=`<h2>${ds}</h2><p class="muted">${escapeHtml(s.display_name||'Anon')} · ${formatTOD(s.time_of_day)}</p><div style="margin:.75rem 0"><div class="rbadge ${getRatingClass(s.rating)}" style="width:52px;height:52px;font-size:1.3rem;display:inline-flex">${s.rating||'—'}/10</div></div><div class="detail-grid"><div class="detail-block"><h4>Surf</h4><p>${s.surf_height_min_ft||'?'}–${s.surf_height_max_ft||'?'} ft</p></div>${swH}<div class="detail-block"><h4>Wind</h4><p>${s.wind_speed_mph||'?'} mph ${s.wind_type?'('+s.wind_type+')':''}</p></div><div class="detail-block"><h4>Tide</h4><p>${s.tide_height_ft||'?'} ft</p></div>${s.wave_shape?`<div class="detail-block"><h4>Shape</h4><p style="text-transform:capitalize">${s.wave_shape}</p></div>`:''}</div>${s.video_path?`<div class="detail-video"><video controls src="${s.video_path}" preload="metadata"></video></div>`:''}${s.voice_memo_path?`<div class="detail-voice"><audio controls src="${s.voice_memo_path}" style="width:100%;height:36px"></audio>${s.voice_transcript?`<div class="detail-transcript">"${escapeHtml(s.voice_transcript)}"</div>`:''}</div>`:''}${s.notes?`<div class="detail-notes">${escapeHtml(s.notes)}</div>`:''}`;
+// Check if user can delete (own session or spot admin)
+const canDelete=currentUser&&(s.pubkey===currentUser.pubkey||(currentSpot?.members?.some(m=>m.pubkey===currentUser.pubkey&&m.role==='admin')));
+$('#session-detail').innerHTML=`<h2>${ds}</h2><p class="muted">${escapeHtml(s.display_name||'Anon')} · ${formatTOD(s.time_of_day)}</p><div style="margin:.75rem 0"><div class="rbadge ${getRatingClass(s.rating)}" style="width:52px;height:52px;font-size:1.3rem;display:inline-flex">${s.rating||'—'}/10</div></div><div class="detail-grid"><div class="detail-block"><h4>Surf</h4><p>${s.surf_height_min_ft||'?'}–${s.surf_height_max_ft||'?'} ft</p></div>${swH}<div class="detail-block"><h4>Wind</h4><p>${s.wind_speed_mph||'?'} mph ${s.wind_type?'('+s.wind_type+')':''}</p></div><div class="detail-block"><h4>Tide</h4><p>${s.tide_height_ft||'?'} ft</p></div>${s.wave_shape?`<div class="detail-block"><h4>Shape</h4><p style="text-transform:capitalize">${s.wave_shape}</p></div>`:''}</div>${s.video_path?`<div class="detail-video"><video controls src="${s.video_path}" preload="metadata"></video></div>`:''}${s.voice_memo_path?`<div class="detail-voice"><audio controls src="${s.voice_memo_path}" style="width:100%;height:36px"></audio>${s.voice_transcript?`<div class="detail-transcript">"${escapeHtml(s.voice_transcript)}"</div>`:''}</div>`:''}${s.notes?`<div class="detail-notes">${escapeHtml(s.notes)}</div>`:''}${canDelete?`<button class="btn-delete-session" onclick="deleteSession(${s.id})">Delete Log</button>`:''}`;
 $('#comments-list').innerHTML=comments.length?comments.map(c=>`<div class="comment"><div class="comment-meta">${escapeHtml(c.display_name||'Anon')} · ${new Date(c.created_at*1000).toLocaleDateString()}</div><div class="comment-body">${escapeHtml(c.body)}</div></div>`).join(''):'<p class="muted" style="font-size:.82rem">No comments yet</p>';
 $('#comment-form').onsubmit=async e=>{e.preventDefault();if(!currentUser)return;const b=$('#comment-body').value.trim();if(!b)return;await fetch(`/api/sessions/${id}/comments`,{method:'POST',headers:{'Content-Type':'application/json','X-Nostr-Pubkey':currentUser.pubkey},body:JSON.stringify({body:b})});$('#comment-body').value='';openSession(id);};
 $('#session-modal').classList.remove('hidden');}catch{toast('Error','error');}}
 window.openSession=openSession;
+
+async function deleteSession(id){
+  if(!confirm('Delete this log? This cannot be undone.'))return;
+  try{
+    const res=await fetch(`/api/sessions/${id}`,{method:'DELETE',headers:{'X-Nostr-Pubkey':currentUser.pubkey}});
+    if(res.ok){toast('Log deleted');$('#session-modal').classList.add('hidden');loadSessions();}
+    else{const err=await res.json();toast(err.error||'Failed','error');}
+  }catch{toast('Failed to delete','error');}
+}
+window.deleteSession=deleteSession;
+
+async function makeAdmin(spotId,pubkey){
+  if(!confirm('Make this surfer an admin? They will be able to delete posts and invite others.'))return;
+  try{
+    await fetch(`/api/spots/${spotId}/members/${pubkey}`,{method:'PUT',headers:{'Content-Type':'application/json','X-Nostr-Pubkey':currentUser.pubkey},body:JSON.stringify({role:'admin'})});
+    toast('Admin added');loadSurfers();
+  }catch{toast('Failed','error');}
+}
+window.makeAdmin=makeAdmin;
 $('#session-modal .modal-backdrop').addEventListener('click',()=>$('#session-modal').classList.add('hidden'));
 $('#session-modal .modal-close').addEventListener('click',()=>$('#session-modal').classList.add('hidden'));
 

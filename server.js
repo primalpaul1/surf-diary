@@ -274,6 +274,15 @@ app.get('/api/follows',requireAuth,async(req,res)=>{
 app.post('/api/follows/:pubkey',requireAuth,async(req,res)=>{if(req.params.pubkey===req.pubkey)return res.status(400).json({error:'Cannot follow yourself'});await db.run('INSERT INTO follows(follower_pubkey,followed_pubkey)VALUES($1,$2)ON CONFLICT DO NOTHING',[req.pubkey,req.params.pubkey]);res.json({ok:true});});
 app.delete('/api/follows/:pubkey',requireAuth,async(req,res)=>{await db.run('DELETE FROM follows WHERE follower_pubkey=$1 AND followed_pubkey=$2',[req.pubkey,req.params.pubkey]);res.json({ok:true});});
 
+// Admin: change member role
+app.put('/api/spots/:id/members/:pubkey',requireAuth,async(req,res)=>{
+  const mem=await db.get('SELECT role FROM spot_members WHERE spot_id=$1 AND pubkey=$2',[req.params.id,req.pubkey]);
+  if(!mem||mem.role!=='admin')return res.status(403).json({error:'Admin only'});
+  const{role}=req.body;if(!['admin','member'].includes(role))return res.status(400).json({error:'Invalid role'});
+  await db.exec(`UPDATE spot_members SET role='${role}' WHERE spot_id='${req.params.id}' AND pubkey='${req.params.pubkey}'`);
+  res.json({ok:true});
+});
+
 async function getFeedPubkeys(pk){const rows=await db.query('SELECT followed_pubkey FROM follows WHERE follower_pubkey=$1',[pk]);return[pk,...rows.map(r=>r.followed_pubkey)];}
 
 // ===== SESSIONS (spot-aware) =====
@@ -311,8 +320,12 @@ app.post('/api/sessions',requireAuth,async(req,res)=>{
 });
 
 app.delete('/api/sessions/:id',requireAuth,async(req,res)=>{
-  const s=await db.get('SELECT pubkey,voice_memo_path,video_path FROM sessions WHERE id=$1',[req.params.id]);
-  if(!s)return res.status(404).json({error:'Not found'});if(s.pubkey!==req.pubkey)return res.status(403).json({error:'Forbidden'});
+  const s=await db.get('SELECT pubkey,spot_id,voice_memo_path,video_path FROM sessions WHERE id=$1',[req.params.id]);
+  if(!s)return res.status(404).json({error:'Not found'});
+  // Allow delete if: own session OR admin of the spot
+  let allowed=s.pubkey===req.pubkey;
+  if(!allowed&&s.spot_id){const mem=await db.get('SELECT role FROM spot_members WHERE spot_id=$1 AND pubkey=$2',[s.spot_id,req.pubkey]);if(mem?.role==='admin')allowed=true;}
+  if(!allowed)return res.status(403).json({error:'Forbidden'});
   [s.voice_memo_path,s.video_path].forEach(p=>{if(p&&p.startsWith('/'))try{fs.unlinkSync(path.join(__dirname,p));}catch{}});
   await db.run('DELETE FROM sessions WHERE id=$1',[req.params.id]);res.json({ok:true});
 });
