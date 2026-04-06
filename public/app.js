@@ -205,10 +205,34 @@ async function waitForNIP46(){
           const r=JSON.parse(decrypted);
           console.log('[NIP46] Response result:', r.result);
           if(r.result===nip46Data.secret||r.result==='ack'||r.result===true){
-            console.log('[NIP46] ACK received! Logging in with pubkey:', ev.pubkey.slice(0,12)+'...');
-            relay.close();
-            await completeLogin(ev.pubkey);
-          }else{console.log('[NIP46] Non-matching result:', r.result, 'expected:', nip46Data.secret.slice(0,20)+'...');}
+            const bunkerPubkey=ev.pubkey;
+            console.log('[NIP46] ACK received! Bunker:', bunkerPubkey.slice(0,12)+'... Fetching real pubkey via RPC...');
+            try{
+              const{encrypt:nip44Enc}=await import('https://esm.sh/nostr-tools@2.10.0/nip44');
+              const{finalizeEvent}=await import('https://esm.sh/nostr-tools@2.10.0/pure');
+              const rpcId=crypto.randomUUID();
+              const rpcPayload=JSON.stringify({id:rpcId,method:'get_public_key',params:[]});
+              const encPayload=nip44Enc(rpcPayload,getConversationKey(skb,bunkerPubkey));
+              const rpcEvent=finalizeEvent({kind:24133,created_at:Math.floor(Date.now()/1000),tags:[['p',bunkerPubkey]],content:encPayload},skb);
+              await relay.publish(rpcEvent);
+              console.log('[NIP46] get_public_key RPC sent, waiting for response...');
+              // Response will come as another event — set a timeout fallback
+              const timeout=setTimeout(()=>{console.log('[NIP46] get_public_key timeout, using bunker pubkey');relay.close();completeLogin(bunkerPubkey);},8000);
+              // Override the event handler won't work since we're inside it,
+              // but the subscription is still active so the next event will hit this handler
+              // Store state so next event can be handled
+              nip46Data._waitingForPubkey=true;nip46Data._rpcId=rpcId;nip46Data._bunkerPubkey=bunkerPubkey;nip46Data._timeout=timeout;
+            }catch(e){console.log('[NIP46] RPC send failed:', e);relay.close();await completeLogin(bunkerPubkey);}
+          }else if(nip46Data._waitingForPubkey){
+            // This should be the get_public_key response
+            console.log('[NIP46] Got response while waiting for pubkey:', r);
+            if(r.id===nip46Data._rpcId&&r.result){
+              clearTimeout(nip46Data._timeout);
+              console.log('[NIP46] Real user pubkey:', r.result.slice(0,12)+'...');
+              relay.close();
+              await completeLogin(r.result);
+            }
+          }else{console.log('[NIP46] Non-matching result:', r.result);}
         }catch(e){console.log('[NIP46] Decrypt/parse error:', e);}
       },
       oneose:()=>{console.log('[NIP46] EOSE received, waiting for real-time events...');}
