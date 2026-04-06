@@ -217,22 +217,20 @@ async function waitForNIP46(){
               await relay.publish(rpcEvent);
               console.log('[NIP46] get_public_key RPC sent, waiting for response...');
               // Response will come as another event — set a timeout fallback
-              const timeout=setTimeout(()=>{console.log('[NIP46] get_public_key timeout, using bunker pubkey');relay.close();completeLogin(bunkerPubkey);},8000);
+              const timeout=setTimeout(()=>{if(nip46Data._waitingForPubkey){console.log('[NIP46] get_public_key timeout, using bunker pubkey');nip46Data._waitingForPubkey=false;relay.close();completeLogin(bunkerPubkey);}},8000);
               // Override the event handler won't work since we're inside it,
               // but the subscription is still active so the next event will hit this handler
               // Store state so next event can be handled
               nip46Data._waitingForPubkey=true;nip46Data._rpcId=rpcId;nip46Data._bunkerPubkey=bunkerPubkey;nip46Data._timeout=timeout;
             }catch(e){console.log('[NIP46] RPC send failed:', e);relay.close();await completeLogin(bunkerPubkey);}
-          }else if(nip46Data._waitingForPubkey){
-            // This should be the get_public_key response
-            console.log('[NIP46] Got response while waiting for pubkey:', r);
-            if(r.id===nip46Data._rpcId&&r.result){
-              clearTimeout(nip46Data._timeout);
-              console.log('[NIP46] Real user pubkey:', r.result.slice(0,12)+'...');
-              relay.close();
-              await completeLogin(r.result);
-            }
-          }else{console.log('[NIP46] Non-matching result:', r.result);}
+          }else if(nip46Data._waitingForPubkey&&r.result&&r.result.length===64){
+            // This is the get_public_key response
+            clearTimeout(nip46Data._timeout);
+            nip46Data._waitingForPubkey=false;
+            console.log('[NIP46] Real user pubkey:', r.result.slice(0,12)+'...');
+            relay.close();
+            await completeLogin(r.result);
+          }else{console.log('[NIP46] Ignoring event, result:', r.result?.slice?.(0,20));}
         }catch(e){console.log('[NIP46] Decrypt/parse error:', e);}
       },
       oneose:()=>{console.log('[NIP46] EOSE received, waiting for real-time events...');}

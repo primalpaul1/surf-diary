@@ -185,14 +185,23 @@ app.get('/api/nip46/init',async(req,res)=>{try{const{generateSecretKey,getPublic
 
 // ===== AUTH =====
 app.post('/api/auth/login',async(req,res)=>{
-  const{pubkey,display_name,avatar_base64,avatar_url}=req.body;
-  if(!pubkey||!/^[0-9a-f]{64}$/.test(pubkey))return res.status(400).json({error:'Invalid pubkey'});
-  let avatarPath=avatar_url||null;
-  if(!avatarPath&&avatar_base64)avatarPath=saveFile(avatar_base64,'avatars','jpg');
-  if(avatarPath)await db.run('INSERT INTO users(pubkey,display_name,avatar_path)VALUES($1,$2,$3)ON CONFLICT(pubkey)DO UPDATE SET display_name=$2,avatar_path=$3',[pubkey,display_name||'Anon',avatarPath]);
-  else await db.run('INSERT INTO users(pubkey,display_name)VALUES($1,$2)ON CONFLICT(pubkey)DO UPDATE SET display_name=$2',[pubkey,display_name||'Anon']);
-  const user=await db.get('SELECT*FROM users WHERE pubkey=$1',[pubkey]);
-  res.json({ok:true,...user});
+  try{
+    const{pubkey,display_name,avatar_base64,avatar_url}=req.body;
+    if(!pubkey||!/^[0-9a-f]{64}$/.test(pubkey))return res.status(400).json({error:'Invalid pubkey'});
+    let avatarPath=avatar_url||null;
+    if(!avatarPath&&avatar_base64)avatarPath=saveFile(avatar_base64,'avatars','jpg');
+    // Use separate INSERT and UPDATE to avoid Postgres parameter conflicts
+    const existing=await db.get('SELECT pubkey FROM users WHERE pubkey=$1',[pubkey]);
+    if(existing){
+      if(avatarPath)await db.exec(`UPDATE users SET display_name='${(display_name||'Anon').replace(/'/g,"''")}',avatar_path='${avatarPath.replace(/'/g,"''")}' WHERE pubkey='${pubkey}'`);
+      else await db.exec(`UPDATE users SET display_name='${(display_name||'Anon').replace(/'/g,"''")}' WHERE pubkey='${pubkey}'`);
+    }else{
+      if(avatarPath)await db.run('INSERT INTO users(pubkey,display_name,avatar_path)VALUES($1,$2,$3)',[pubkey,display_name||'Anon',avatarPath]);
+      else await db.run('INSERT INTO users(pubkey,display_name)VALUES($1,$2)',[pubkey,display_name||'Anon']);
+    }
+    const user=await db.get('SELECT*FROM users WHERE pubkey=$1',[pubkey]);
+    res.json({ok:true,...user});
+  }catch(err){console.error('Login error:',err);res.status(500).json({error:'Login failed'});}
 });
 
 app.get('/api/users',async(req,res)=>{
