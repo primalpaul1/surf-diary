@@ -49,14 +49,16 @@ function metersToFeet(m){return Math.round(m*3.28084*10)/10;}
 function timeOfDayToHours(t){const h={'5am':[5,6],'6am':[6,7],'7am':[7,8],'8am':[8,9],'9am':[9,10],'10am':[10,11],'11am':[11,12],'12pm':[12,13],'1pm':[13,14],'2pm':[14,15],'3pm':[15,16],'4pm':[16,17],'5pm':[17,18],'6pm':[18,19]};const l={dawn:[5,7],morning:[7,10],midday:[10,13],afternoon:[13,16],evening:[16,18]};return h[t]||l[t]||[7,10];}
 
 async function fetchSurflineData(spotId){
-  const[w,wi,t]=await Promise.all([
-    fetch(`https://services.surfline.com/kbyg/spots/forecasts/wave?spotId=${spotId}&days=3&intervalHours=3&units%5BswellHeight%5D=FT&units%5BwaveHeight%5D=FT`,{headers:HEADERS}),
-    fetch(`https://services.surfline.com/kbyg/spots/forecasts/wind?spotId=${spotId}&days=3&intervalHours=3&units%5BwindSpeed%5D=MPH`,{headers:HEADERS}),
-    fetch(`https://services.surfline.com/kbyg/spots/forecasts/tides?spotId=${spotId}&days=3`,{headers:HEADERS}),
-  ]);
-  const[wave,wind,tides]=await Promise.all([w.json(),wi.json(),t.json()]);
-  const data=JSON.stringify({wave:wave.data,wind:wind.data,tides:tides.data,utcOffset:wave.associated?.utcOffset||-6});
-  await db.run('INSERT INTO forecast_cache(spot_id,data_json)VALUES($1,$2)',[spotId,data]);
+  const urls=[
+    `https://services.surfline.com/kbyg/spots/forecasts/wave?spotId=${spotId}&days=3&intervalHours=3&units%5BswellHeight%5D=FT&units%5BwaveHeight%5D=FT`,
+    `https://services.surfline.com/kbyg/spots/forecasts/wind?spotId=${spotId}&days=3&intervalHours=3&units%5BwindSpeed%5D=MPH`,
+    `https://services.surfline.com/kbyg/spots/forecasts/tides?spotId=${spotId}&days=3`,
+  ];
+  const responses=await Promise.all(urls.map(u=>fetch(u,{headers:HEADERS})));
+  for(const r of responses){if(!r.ok)console.error('Surfline API error:',r.status,r.statusText,await r.text().catch(()=>''));}
+  const[wave,wind,tides]=await Promise.all(responses.map(r=>r.ok?r.json():{}));
+  const data=JSON.stringify({wave:wave.data||{wave:[]},wind:wind.data||{wind:[]},tides:tides.data||{tides:[]},utcOffset:wave.associated?.utcOffset||-6});
+  try{await db.run('INSERT INTO forecast_cache(spot_id,data_json)VALUES($1,$2)',[spotId,data]);}catch(e){console.error('Cache insert error:',e.message);}
   return JSON.parse(data);
 }
 
