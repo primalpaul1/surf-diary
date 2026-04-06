@@ -1,0 +1,8 @@
+node_modules
+surf-diary.db
+surf-diary.db-shm
+surf-diary.db-wal
+audio
+videos
+avatars
+.DS_Store
