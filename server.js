@@ -300,5 +300,7 @@ app.get('/api/analysis/timeline',async(req,res)=>{
   res.json(ss);
 });
 
+app.get('/login-callback',(req,res)=>res.sendFile(path.join(__dirname,'public','login-callback.html')));
+app.get('/join/:code',(req,res)=>res.sendFile(path.join(__dirname,'public','index.html')));
 app.get('*',(req,res)=>res.sendFile(path.join(__dirname,'public','index.html')));
 initDB().then(()=>app.listen(PORT,()=>console.log(`🏄 Surf Diary running at http://localhost:${PORT}`))).catch(err=>{console.error('DB init failed:',err);process.exit(1);});

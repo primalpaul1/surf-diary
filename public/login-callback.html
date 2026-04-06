@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Connecting... - Dominical Surf Diary</title>
+  <title>Connecting... - Surf Diary</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -11,15 +11,9 @@
       height: 100vh; font-family: system-ui, sans-serif;
       background: #0a1628; color: #fafafa; gap: 1rem; padding: 2rem; text-align: center;
     }
-    .spinner {
-      width: 3rem; height: 3rem; border: 3px solid #1a3a5c;
-      border-top-color: #00c9a7; border-radius: 50%; animation: spin 1s linear infinite;
-    }
+    .spinner { width: 3rem; height: 3rem; border: 3px solid #1a3a5c; border-top-color: #00c9a7; border-radius: 50%; animation: spin 1s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
-    .icon {
-      width: 4rem; height: 4rem; border-radius: 50%;
-      display: flex; align-items: center; justify-content: center;
-    }
+    .icon { width: 4rem; height: 4rem; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
     .icon-success { background: linear-gradient(135deg, #00c9a7, #00a88a); }
     .icon-error { background: linear-gradient(135deg, #ff6b6b, #e55a5a); }
     .icon svg { width: 2rem; height: 2rem; }
@@ -27,61 +21,68 @@
     .success { color: #00c9a7; font-weight: 600; font-size: 1.5rem; }
     .error { color: #ff6b6b; font-weight: 600; }
     .muted { color: #6b7280; font-size: 0.875rem; }
+    .debug { color: #4a5568; font-size: 0.7rem; margin-top: 1rem; max-width: 300px; word-break: break-all; }
   </style>
 </head>
 <body>
   <div id="status">
     <div class="spinner"></div>
-    <p>Connecting to your Primal wallet...</p>
+    <p>Connecting...</p>
   </div>
+  <div id="debug" class="debug"></div>
 
   <script type="module">
     import { Relay } from 'https://esm.sh/nostr-tools@2.10.0/relay';
-    import { getConversationKey, decrypt as nip44Decrypt } from 'https://esm.sh/nostr-tools@2.10.0/nip44';
+    import { getConversationKey, decrypt as nip44Decrypt, encrypt as nip44Encrypt } from 'https://esm.sh/nostr-tools@2.10.0/nip44';
     import { hexToBytes } from 'https://esm.sh/@noble/hashes@1.8.0/utils';
+    import { finalizeEvent } from 'https://esm.sh/nostr-tools@2.10.0/pure';
 
     const statusEl = document.getElementById('status');
+    const debugEl = document.getElementById('debug');
+    function log(msg) { console.log('[Callback]', msg); debugEl.textContent += msg + '\n'; }
 
-    function showSuccess() {
-      statusEl.innerHTML = `
-        <div class="icon icon-success">
-          <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>
-        </div>
-        <p class="success">Connected!</p>
-        <p class="muted">Redirecting...</p>
-      `;
-    }
-
-    function showError(msg) {
-      statusEl.innerHTML = `
-        <div class="icon icon-error">
-          <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
-        </div>
-        <p class="error">${msg}</p>
-        <p class="muted">Redirecting...</p>
-      `;
-    }
+    function showSuccess() { statusEl.innerHTML = '<div class="icon icon-success"><svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></div><p class="success">Connected!</p><p class="muted">Redirecting...</p>'; }
+    function showError(msg) { statusEl.innerHTML = `<div class="icon icon-error"><svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg></div><p class="error">${msg}</p><p class="muted">Redirecting...</p>`; }
 
     try {
       const pending = localStorage.getItem('nip46_pending');
       if (!pending) { showError('No pending connection'); setTimeout(() => location.href = '/', 2000); throw 'stop'; }
 
       const data = JSON.parse(pending);
-      const age = Date.now() - (data.timestamp || 0);
-      if (age > 5 * 60 * 1000) {
+      log('Found pending connection');
+
+      if (Date.now() - (data.timestamp || 0) > 5 * 60 * 1000) {
         localStorage.removeItem('nip46_pending');
         showError('Connection expired');
         setTimeout(() => location.href = '/', 2000);
         throw 'stop';
       }
 
-      const localSecretKeyBytes = hexToBytes(data.localSecretKey);
+      const skb = hexToBytes(data.localSecretKey);
+      log('Connecting to relay...');
       const relay = await Relay.connect('wss://relay.primal.net');
+      log('Connected. Subscribing...');
       const since = Math.floor(Date.now() / 1000) - 300;
 
       let resolved = false;
+      let bunkerPubkey = null;
+      let waitingForPubkey = false;
+
       const timeout = setTimeout(() => {
-        if (!resolved) { relay.close(); showError('Connection timed out'); setTimeout(() => location.href = '/', 3000); }
+        if (!resolved) {
+          relay.close();
+          if (bunkerPubkey) {
+            // We got the ACK but not the pubkey response — use bunker pubkey
+            log('Pubkey timeout, using bunker pubkey');
+            localStorage.setItem('nip46_connected', JSON.stringify({ bunkerPubkey, timestamp: Date.now() }));
+            localStorage.removeItem('nip46_pending');
+            showSuccess();
+            setTimeout(() => location.href = '/', 1000);
+          } else {
+            showError('Connection timed out');
+            setTimeout(() => location.href = '/', 3000);
+          }
+        }
       }, 20000);
 
       relay.subscribe([{ kinds: [24133], '#p': [data.localPublicKey], since }], {
@@ -89,29 +90,59 @@
           if (resolved) return;
           const pTags = event.tags.filter(t => t[0] === 'p').map(t => t[1]);
           if (!pTags.includes(data.localPublicKey)) return;
+
           try {
-            const convKey = getConversationKey(localSecretKeyBytes, event.pubkey);
+            const convKey = getConversationKey(skb, event.pubkey);
             const decrypted = nip44Decrypt(event.content, convKey);
             const response = JSON.parse(decrypted);
-            if (response.result === data.secret || response.result === 'ack' || response.result === true) {
+            log('Event result: ' + (typeof response.result === 'string' ? response.result.slice(0, 30) : response.result));
+
+            if (!bunkerPubkey && (response.result === data.secret || response.result === 'ack' || response.result === true)) {
+              // ACK received — now get real pubkey
+              bunkerPubkey = event.pubkey;
+              log('ACK! Bunker: ' + bunkerPubkey.slice(0, 12) + '...');
+
+              // Send get_public_key RPC
+              try {
+                const rpcId = crypto.randomUUID();
+                const rpcPayload = JSON.stringify({ id: rpcId, method: 'get_public_key', params: [] });
+                const encrypted = nip44Encrypt(rpcPayload, getConversationKey(skb, bunkerPubkey));
+                const rpcEvent = finalizeEvent({
+                  kind: 24133,
+                  created_at: Math.floor(Date.now() / 1000),
+                  tags: [['p', bunkerPubkey]],
+                  content: encrypted
+                }, skb);
+                await relay.publish(rpcEvent);
+                waitingForPubkey = true;
+                log('get_public_key RPC sent');
+              } catch (e) {
+                log('RPC failed: ' + e.message);
+                // Fall back to bunker pubkey
+                resolved = true;
+                clearTimeout(timeout);
+                localStorage.setItem('nip46_connected', JSON.stringify({ bunkerPubkey, timestamp: Date.now() }));
+                localStorage.removeItem('nip46_pending');
+                showSuccess();
+                setTimeout(() => location.href = '/', 1000);
+                relay.close();
+              }
+            } else if (waitingForPubkey && response.result && response.result.length === 64) {
+              // Got real user pubkey
               resolved = true;
               clearTimeout(timeout);
-              // Save connection for main page
-              localStorage.setItem('nip46_connected', JSON.stringify({
-                localSecretKey: data.localSecretKey,
-                bunkerPubkey: event.pubkey,
-                timestamp: Date.now()
-              }));
+              log('Real pubkey: ' + response.result.slice(0, 12) + '...');
+              localStorage.setItem('nip46_connected', JSON.stringify({ bunkerPubkey: response.result, timestamp: Date.now() }));
               localStorage.removeItem('nip46_pending');
               showSuccess();
               setTimeout(() => location.href = '/', 1000);
               relay.close();
             }
-          } catch(e) { /* different session's event */ }
+          } catch (e) { log('Error: ' + e.message); }
         },
-        oneose: () => {}
+        oneose: () => { log('EOSE'); }
       });
-    } catch(e) {
+    } catch (e) {
       if (e !== 'stop') { console.error(e); showError('Connection failed'); setTimeout(() => location.href = '/', 3000); }
     }
   </script>
