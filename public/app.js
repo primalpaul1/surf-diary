@@ -274,7 +274,6 @@ $('#login-modal .modal-close').addEventListener('click',()=>$('#login-modal').cl
 $('#settings-btn').addEventListener('click',async()=>{
   if(!currentUser)return;
   $('#settings-name').textContent=currentUser.display_name;
-  $('#settings-pubkey').textContent=currentUser.pubkey;
   if(currentUser.avatar_path){$('#settings-avatar').src=currentUser.avatar_path;$('#settings-avatar').style.display='';}
   else $('#settings-avatar').style.display='none';
   // Show key section for local accounts, NIP-46 section for Primal logins
