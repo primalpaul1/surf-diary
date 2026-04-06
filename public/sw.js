@@ -1,4 +1,4 @@
-const CACHE_NAME = 'surf-diary-v4';
+const CACHE_NAME = 'surf-diary-v5';
 const STATIC_ASSETS = ['/', '/styles.css', '/app.js', '/primal-logo.png', '/dominical-hero.jpg', '/manifest.json'];
 
 self.addEventListener('install', e => {

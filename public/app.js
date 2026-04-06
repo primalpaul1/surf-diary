@@ -20,10 +20,11 @@ function userLinkHTML(pubkey,name,avatarPath,cls='feed'){
 
 // ===== SPOT STATE =====
 function selectSpot(spot){
+  if(!spot||spot.error){console.error('Invalid spot:',spot);return;}
   currentSpot=spot;
   localStorage.setItem('surf_diary_spot',JSON.stringify(spot));
-  $('#spot-picker').classList.add('hidden');
-  $('#main-content').classList.remove('hidden');
+  $('#spot-picker')?.classList.add('hidden');
+  $('#main-content')?.classList.remove('hidden');
   $('#header-spot-name').textContent=spot.name;
   $('#hero-title').textContent=spot.name;
   $('#hero-sub').textContent=spot.location_text||'Track the swell. Rate your sessions.';
@@ -638,8 +639,9 @@ function renderMySpotsList(){
 }
 
 // ===== INIT =====
-const saved=localStorage.getItem('surf_diary_user');if(saved)currentUser=JSON.parse(saved);
-const savedSpot=localStorage.getItem('surf_diary_spot');if(savedSpot){try{currentSpot=JSON.parse(savedSpot);selectSpot(currentSpot);}catch{}}
+const saved=localStorage.getItem('surf_diary_user');if(saved){try{currentUser=JSON.parse(saved);}catch{localStorage.removeItem('surf_diary_user');}}
+const savedSpot=localStorage.getItem('surf_diary_spot');if(savedSpot){try{currentSpot=JSON.parse(savedSpot);selectSpot(currentSpot);}catch{localStorage.removeItem('surf_diary_spot');}}
+console.log('[Init] user:',currentUser?.display_name||'none','spot:',currentSpot?.name||'none');
 updateAuthUI();checkCallback();checkInviteURL();
 if(!currentSpot)fetchConditions();
 // Register service worker for PWA
