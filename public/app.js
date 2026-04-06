@@ -298,8 +298,8 @@ $('#settings-btn').addEventListener('click',async()=>{
 });
 
 $('#reveal-key-btn').addEventListener('click',()=>{
-  if(!confirm('Your private key controls your account. Only reveal it in a safe place. Continue?'))return;
-  $('#key-hidden').classList.add('hidden');$('#key-shown').classList.remove('hidden');
+  const nsec=$('#nsec-display').textContent;
+  navigator.clipboard?.writeText(nsec);toast('Private key copied!');
 });
 
 $('#copy-key-btn').addEventListener('click',()=>{
@@ -623,4 +623,6 @@ function renderMySpotsList(){
 const saved=localStorage.getItem('surf_diary_user');if(saved)currentUser=JSON.parse(saved);
 const savedSpot=localStorage.getItem('surf_diary_spot');if(savedSpot){try{currentSpot=JSON.parse(savedSpot);selectSpot(currentSpot);}catch{}}
 updateAuthUI();checkCallback();checkInviteURL();
-if(!currentSpot)fetchConditions(); // Show default conditions even without a spot
+if(!currentSpot)fetchConditions();
+// Register service worker for PWA
+if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});

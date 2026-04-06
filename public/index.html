@@ -7,6 +7,11 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/styles.css">
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#0a1628">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="apple-touch-icon" href="/primal-logo.png">
 </head>
 <body>
   <header>
@@ -185,14 +190,6 @@
       </div>
 
       <div id="settings-key-section" class="settings-section hidden">
-        <div class="settings-primal-card">
-          <img src="/primal-logo.png" alt="" class="settings-primal-icon">
-          <div>
-            <div class="settings-primal-title">Use this account on Primal</div>
-            <div class="settings-primal-desc">Your surf diary account works across the entire Nostr network. Import it into Primal to message friends, share posts, and more.</div>
-          </div>
-        </div>
-
         <div class="settings-steps">
           <div class="settings-step">
             <div class="step-num">1</div>
@@ -202,12 +199,12 @@
 
           <div class="settings-step">
             <div class="step-num">2</div>
-            <div>Copy your private key below</div>
+            <div>Copy your private key</div>
           </div>
           <div class="key-reveal">
             <div id="key-hidden" class="key-box">
               <span class="key-dots">••••••••••••••••••••</span>
-              <button id="reveal-key-btn" class="btn-solid btn-sm">Reveal</button>
+              <button id="reveal-key-btn" class="btn-solid btn-sm">Copy</button>
             </div>
             <div id="key-shown" class="key-box hidden">
               <code id="nsec-display" class="nsec-text"></code>
@@ -218,7 +215,7 @@
 
           <div class="settings-step">
             <div class="step-num">3</div>
-            <div>Open Primal → Settings → Account → Login with key</div>
+            <div>Paste private key to sign in to Primal</div>
           </div>
         </div>
       </div>

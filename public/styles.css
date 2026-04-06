@@ -386,11 +386,14 @@ textarea { resize: vertical; }
 .invite-input { flex: 1; font-size: 0.8rem; padding: 0.5rem; border-radius: 8px; border: 1.5px solid #dde3eb; background: #f8fafc; }
 
 /* ---- SETTINGS ---- */
+#settings-modal .modal-content { background: linear-gradient(180deg, #0a1628 0%, #0f2440 100%); color: white; }
+#settings-modal .modal-close { color: rgba(255,255,255,0.5); }
+#settings-modal h2 { color: white; }
 .settings-section { margin-top: 1.25rem; }
 .settings-profile { display: flex; align-items: center; gap: 0.75rem; }
-.settings-avatar { width: 48px; height: 48px; border-radius: 50%; object-fit: cover; border: 2px solid #e8ecf1; }
+.settings-avatar { width: 48px; height: 48px; border-radius: 50%; object-fit: cover; border: 2px solid #e8ecf1; aspect-ratio: 1; }
 .settings-name { font-weight: 700; font-size: 1rem; }
-.settings-pubkey { font-size: 0.7rem; color: var(--text-muted); font-family: monospace; word-break: break-all; }
+.settings-pubkey { font-size: 0.7rem; color: rgba(255,255,255,0.4); font-family: monospace; word-break: break-all; }
 
 .settings-primal-card {
   display: flex; gap: 0.75rem; align-items: flex-start;
@@ -412,11 +415,11 @@ textarea { resize: vertical; }
 .key-reveal { margin: 0.5rem 0; }
 .key-box {
   display: flex; align-items: center; gap: 0.5rem;
-  padding: 0.6rem 0.75rem; background: #f8fafc; border: 1.5px solid #e2e8f0;
+  padding: 0.6rem 0.75rem; background: rgba(255,255,255,0.06); border: 1.5px solid rgba(255,255,255,0.12);
   border-radius: 10px;
 }
-.key-dots { flex: 1; color: var(--text-muted); letter-spacing: 2px; }
-.nsec-text { flex: 1; font-size: 0.65rem; word-break: break-all; color: var(--text); line-height: 1.4; }
+.key-dots { flex: 1; color: rgba(255,255,255,0.3); letter-spacing: 2px; }
+.nsec-text { flex: 1; font-size: 0.65rem; word-break: break-all; color: rgba(255,255,255,0.8); line-height: 1.4; }
 .key-warning { font-size: 0.7rem; color: var(--coral); margin-top: 0.4rem; text-align: center; }
 
 /* ---- USER LINKS ---- */
