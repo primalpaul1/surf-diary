@@ -59,6 +59,47 @@ async function uploadToBlossom(file) {
   }
 }
 
+// ===== PROFILE (kind 0) =====
+async function fetchProfile(pubkey) {
+  try {
+    const { Relay } = await import('https://esm.sh/nostr-tools@2.10.0/relay');
+    const relay = await Relay.connect(RELAYS[0]);
+    return new Promise((resolve) => {
+      let event = null;
+      relay.subscribe([{ kinds: [0], authors: [pubkey], limit: 1 }], {
+        onevent: (ev) => { if (!event || ev.created_at > event.created_at) event = ev; },
+        oneose: () => { relay.close(); try { resolve(event ? JSON.parse(event.content) : null); } catch { resolve(null); } }
+      });
+      setTimeout(() => { try { relay.close(); } catch {} resolve(null); }, 5000);
+    });
+  } catch { return null; }
+}
+
+async function publishProfile(name, pictureUrl) {
+  if (!currentUser?.secretKey) return;
+  try {
+    const { finalizeEvent } = await import('https://esm.sh/nostr-tools@2.10.0/pure');
+    const { Relay } = await import('https://esm.sh/nostr-tools@2.10.0/relay');
+    const { hexToBytes } = await import('https://esm.sh/@noble/hashes@1.8.0/utils');
+
+    // Fetch existing profile to preserve other fields
+    const existing = await fetchProfile(currentUser.pubkey) || {};
+    const profile = { ...existing, name: name };
+    if (pictureUrl) profile.picture = pictureUrl;
+
+    const event = finalizeEvent({
+      kind: 0,
+      created_at: Math.floor(Date.now() / 1000),
+      tags: [],
+      content: JSON.stringify(profile)
+    }, hexToBytes(currentUser.secretKey));
+
+    for (const url of RELAYS) {
+      try { const relay = await Relay.connect(url); await relay.publish(event); relay.close(); } catch {}
+    }
+  } catch (err) { console.error('Failed to publish profile:', err); }
+}
+
 // ===== NOSTR KIND 3 FOLLOWS =====
 async function fetchKind3(pubkey) {
   try {
@@ -156,6 +197,10 @@ $('#create-form').addEventListener('submit',async e=>{
     const data=await res.json();
     currentUser.avatar_path=data.avatar_path||avatarUrl||null;
     localStorage.setItem('surf_diary_user',JSON.stringify(currentUser));
+
+    // Publish profile to Nostr relays (kind 0)
+    await publishProfile(name, avatarUrl);
+
     updateAuthUI();$('#create-modal').classList.add('hidden');avatarFile=null;
     toast(`Welcome, ${name}!`);
   }catch{toast('Failed to create account','error');}
@@ -170,7 +215,19 @@ $('#mobile-login-btn').addEventListener('click',()=>{if(!nip46Data)return;localS
 
 async function waitForNIP46(){if(!nip46Data)return;try{const{Relay}=await import('https://esm.sh/nostr-tools@2.10.0/relay');const{getConversationKey,decrypt:dec}=await import('https://esm.sh/nostr-tools@2.10.0/nip44');const{hexToBytes}=await import('https://esm.sh/@noble/hashes@1.8.0/utils');const{BunkerSigner}=await import('https://esm.sh/nostr-tools@2.10.0/nip46');const skb=hexToBytes(nip46Data.secretKey);const relay=await Relay.connect('wss://relay.primal.net');relay.subscribe([{kinds:[24133],'#p':[nip46Data.publicKey],limit:0}],{onevent:async ev=>{if(!ev.tags.some(t=>t[0]==='p'&&t[1]===nip46Data.publicKey))return;try{const r=JSON.parse(dec(ev.content,getConversationKey(skb,ev.pubkey)));if(r.result===nip46Data.secret||r.result==='ack'||r.result===true){const s=BunkerSigner.fromBunker(skb,{pubkey:ev.pubkey,relays:['wss://relay.primal.net']},{});let pk;try{pk=await s.getPublicKey();}catch{pk=ev.pubkey;}relay.close();await completeLogin(pk);}}catch{}},oneose:()=>{}});setTimeout(()=>{try{relay.close();}catch{}},300000);}catch{}}
 
-async function completeLogin(pk,dn){const n=dn||pk.slice(0,8)+'...';await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pubkey:pk,display_name:n})});const u=await(await fetch(`/api/users/${pk}`)).json();currentUser={pubkey:pk,display_name:u.display_name||n,avatar_path:u.avatar_path};localStorage.setItem('surf_diary_user',JSON.stringify(currentUser));updateAuthUI();$('#login-loading')?.classList.add('hidden');$('#login-qr')?.classList.add('hidden');$('#mobile-login-btn')?.classList.add('hidden');$('#login-connected')?.classList.remove('hidden');setTimeout(()=>{$('#login-modal').classList.add('hidden');toast('Logged in!');},1000);}
+async function completeLogin(pk,dn){
+  // Try to fetch profile from Nostr relays (kind 0)
+  const profile=await fetchProfile(pk);
+  const name=profile?.name||profile?.display_name||dn||pk.slice(0,8)+'...';
+  const picture=profile?.picture||null;
+
+  await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pubkey:pk,display_name:name,avatar_url:picture})});
+  currentUser={pubkey:pk,display_name:name,avatar_path:picture};
+  localStorage.setItem('surf_diary_user',JSON.stringify(currentUser));
+  updateAuthUI();
+  $('#login-loading')?.classList.add('hidden');$('#login-qr')?.classList.add('hidden');$('#mobile-login-btn')?.classList.add('hidden');$('#login-connected')?.classList.remove('hidden');
+  setTimeout(()=>{$('#login-modal').classList.add('hidden');toast(`Welcome, ${name}!`);},1000);
+}
 
 async function checkCallback(){const c=localStorage.getItem('nip46_connected');if(!c)return;try{const d=JSON.parse(c);if(Date.now()-d.timestamp>300000){localStorage.removeItem('nip46_connected');return;}const{BunkerSigner}=await import('https://esm.sh/nostr-tools@2.10.0/nip46');const{hexToBytes}=await import('https://esm.sh/@noble/hashes@1.8.0/utils');const s=BunkerSigner.fromBunker(hexToBytes(d.localSecretKey),{pubkey:d.bunkerPubkey,relays:['wss://relay.primal.net']},{});let pk;try{pk=await s.getPublicKey();}catch{pk=d.bunkerPubkey;}localStorage.removeItem('nip46_connected');await completeLogin(pk);}catch{localStorage.removeItem('nip46_connected');}}
 
