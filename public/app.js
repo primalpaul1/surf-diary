@@ -270,6 +270,46 @@ async function checkCallback(){const c=localStorage.getItem('nip46_connected');i
 
 $('#login-modal .modal-backdrop').addEventListener('click',()=>$('#login-modal').classList.add('hidden'));
 $('#login-modal .modal-close').addEventListener('click',()=>$('#login-modal').classList.add('hidden'));
+// ===== SETTINGS =====
+$('#settings-btn').addEventListener('click',async()=>{
+  if(!currentUser)return;
+  $('#settings-name').textContent=currentUser.display_name;
+  $('#settings-pubkey').textContent=currentUser.pubkey;
+  if(currentUser.avatar_path){$('#settings-avatar').src=currentUser.avatar_path;$('#settings-avatar').style.display='';}
+  else $('#settings-avatar').style.display='none';
+  // Show key section for local accounts, NIP-46 section for Primal logins
+  if(currentUser.secretKey){
+    $('#settings-key-section').classList.remove('hidden');
+    $('#settings-nip46-section').classList.add('hidden');
+    // Convert hex secret key to nsec
+    try{
+      const{nip19}=await import('https://esm.sh/nostr-tools@2.10.0');
+      const{hexToBytes}=await import('https://esm.sh/@noble/hashes@1.8.0/utils');
+      const nsec=nip19.nsecEncode(hexToBytes(currentUser.secretKey));
+      $('#nsec-display').textContent=nsec;
+    }catch{$('#nsec-display').textContent=currentUser.secretKey;}
+    // Reset reveal state
+    $('#key-hidden').classList.remove('hidden');$('#key-shown').classList.add('hidden');
+  }else{
+    $('#settings-key-section').classList.add('hidden');
+    $('#settings-nip46-section').classList.remove('hidden');
+  }
+  $('#settings-modal').classList.remove('hidden');
+});
+
+$('#reveal-key-btn').addEventListener('click',()=>{
+  if(!confirm('Your private key controls your account. Only reveal it in a safe place. Continue?'))return;
+  $('#key-hidden').classList.add('hidden');$('#key-shown').classList.remove('hidden');
+});
+
+$('#copy-key-btn').addEventListener('click',()=>{
+  const nsec=$('#nsec-display').textContent;
+  navigator.clipboard?.writeText(nsec);toast('Private key copied!');
+});
+
+$('#settings-modal .modal-backdrop').addEventListener('click',()=>$('#settings-modal').classList.add('hidden'));
+$('#settings-modal .modal-close').addEventListener('click',()=>$('#settings-modal').classList.add('hidden'));
+
 $('#logout-btn').addEventListener('click',()=>{currentUser=null;currentSpot=null;mySpots=[];followingSet.clear();localStorage.removeItem('surf_diary_user');localStorage.removeItem('surf_diary_spot');updateAuthUI();location.reload();});
 
 function updateAuthUI(){

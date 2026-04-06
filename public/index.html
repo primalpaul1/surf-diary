@@ -28,6 +28,7 @@
         </div>
         <div id="user-info" class="hidden">
           <div class="user-pill"><img id="user-avatar" src="" alt="" class="user-avatar-sm" onerror="this.style.display='none'"><span id="user-name"></span></div>
+          <button id="settings-btn" class="btn-outline btn-sm" title="Settings">⚙</button>
           <button id="logout-btn" class="btn-outline btn-sm">Logout</button>
         </div>
       </div>
@@ -161,6 +162,68 @@
       <div id="session-detail"></div>
       <div id="comments-section"><h3>Comments</h3><div id="comments-list"></div>
         <form id="comment-form" class="hidden comment-row"><textarea id="comment-body" placeholder="Add a comment..." rows="2"></textarea><button type="submit" class="btn-solid btn-sm">Post</button></form>
+      </div>
+    </div>
+  </div>
+
+  <!-- SETTINGS MODAL -->
+  <div id="settings-modal" class="modal hidden">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content modal-sm">
+      <button class="modal-close">&times;</button>
+      <h2>Account</h2>
+
+      <div class="settings-section">
+        <div class="settings-profile">
+          <img id="settings-avatar" src="" class="settings-avatar" onerror="this.style.display='none'">
+          <div>
+            <div id="settings-name" class="settings-name"></div>
+            <div id="settings-pubkey" class="settings-pubkey"></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="settings-key-section" class="settings-section hidden">
+        <div class="settings-primal-card">
+          <img src="/primal-logo.png" alt="" class="settings-primal-icon">
+          <div>
+            <div class="settings-primal-title">Use this account on Primal</div>
+            <div class="settings-primal-desc">Your surf diary account works across the entire Nostr network. Import it into Primal to message friends, share posts, and more.</div>
+          </div>
+        </div>
+
+        <div class="settings-steps">
+          <div class="settings-step">
+            <div class="step-num">1</div>
+            <div>Download Primal if you haven't</div>
+          </div>
+          <a href="https://primal.net/downloads" target="_blank" class="btn-solid btn-block" style="margin:0.5rem 0">Get Primal</a>
+
+          <div class="settings-step">
+            <div class="step-num">2</div>
+            <div>Copy your private key below</div>
+          </div>
+          <div class="key-reveal">
+            <div id="key-hidden" class="key-box">
+              <span class="key-dots">••••••••••••••••••••</span>
+              <button id="reveal-key-btn" class="btn-solid btn-sm">Reveal</button>
+            </div>
+            <div id="key-shown" class="key-box hidden">
+              <code id="nsec-display" class="nsec-text"></code>
+              <button id="copy-key-btn" class="btn-solid btn-sm">Copy</button>
+            </div>
+          </div>
+          <p class="key-warning">Never share this with anyone. It controls your account.</p>
+
+          <div class="settings-step">
+            <div class="step-num">3</div>
+            <div>Open Primal → Settings → Account → Login with key</div>
+          </div>
+        </div>
+      </div>
+
+      <div id="settings-nip46-section" class="settings-section hidden">
+        <p class="muted">You're logged in with Primal. Your account is already connected.</p>
       </div>
     </div>
   </div>
