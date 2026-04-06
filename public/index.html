@@ -20,6 +20,7 @@
         <button class="nav-btn" data-view="history">Feed</button>
         <button class="nav-btn" data-view="surfers">Surfers</button>
         <button class="nav-btn" data-view="analysis">Analysis</button>
+        <button class="nav-btn" data-view="findspot">+ Spot</button>
       </nav>
       <div class="auth-section">
         <div id="auth-buttons">
@@ -331,6 +332,22 @@
         <div class="card"><h2>By Swell Direction</h2><p class="muted">Which swells produce the best surf?</p><div id="direction-analysis"></div></div>
         <div class="card"><h2>Best Combos</h2><p class="muted">Top conditions (2+ sessions)</p><div id="best-conditions"></div></div>
         <div class="card full-span"><h2>Timeline</h2><p class="muted">Session ratings over time</p><div id="timeline-chart"></div></div>
+      </div>
+    </section>
+
+    <!-- FIND SPOT -->
+    <section id="view-findspot" class="view">
+      <div class="card card-form">
+        <h2>Find a Spot</h2>
+        <p class="muted">Search any surf break worldwide and add it to your spots.</p>
+        <div class="field" style="margin:1rem 0">
+          <input type="text" id="findspot-search" placeholder="Search surf spots..." autocomplete="off">
+        </div>
+        <div id="findspot-results" class="spot-results"></div>
+        <div id="findspot-my-spots" style="margin-top:1.5rem">
+          <div class="section-label">Your Spots</div>
+          <div id="findspot-my-list" class="spot-results"></div>
+        </div>
       </div>
     </section>
   </main>

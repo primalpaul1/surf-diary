@@ -4,7 +4,7 @@ const BLOSSOM='https://blossom.primal.net';
 const RELAYS=['wss://relay.primal.net','wss://relay.damus.io','wss://nos.lol'];
 
 // Nav
-$$('.nav-btn[data-view]').forEach(b=>{b.addEventListener('click',()=>{$$('.nav-btn').forEach(x=>x.classList.remove('active'));b.classList.add('active');$$('.view').forEach(v=>v.classList.remove('active'));$(`#view-${b.dataset.view}`).classList.add('active');if(b.dataset.view==='history')loadFeed();if(b.dataset.view==='surfers')loadSurfers();if(b.dataset.view==='analysis')loadAnalysis();});});
+$$('.nav-btn[data-view]').forEach(b=>{b.addEventListener('click',()=>{$$('.nav-btn').forEach(x=>x.classList.remove('active'));b.classList.add('active');$$('.view').forEach(v=>v.classList.remove('active'));$(`#view-${b.dataset.view}`).classList.add('active');if(b.dataset.view==='history')loadFeed();if(b.dataset.view==='surfers')loadSurfers();if(b.dataset.view==='analysis')loadAnalysis();if(b.dataset.view==='findspot')renderMySpotsList();});});
 
 function toast(m,t='success'){const e=document.createElement('div');e.className=`toast toast-${t}`;e.textContent=m;document.body.appendChild(e);setTimeout(()=>e.remove(),3000);}
 function escapeHtml(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML;}
@@ -580,6 +580,43 @@ async function checkInviteURL(){
       history.replaceState(null,'','/');
     }
   }catch{toast('Invalid invite','error');}
+}
+
+// ===== FIND SPOT TAB =====
+let findspotTimeout;
+$('#findspot-search')?.addEventListener('input',e=>{
+  clearTimeout(findspotTimeout);
+  const q=e.target.value.trim();
+  if(q.length<2){$('#findspot-results').innerHTML='';return;}
+  findspotTimeout=setTimeout(async()=>{
+    try{
+      const results=await(await fetch(`/api/spots/search?q=${encodeURIComponent(q)}`)).json();
+      $('#findspot-results').innerHTML=results.map(r=>`
+        <div class="spot-result" data-surfline="${r.surfline_id}" data-name="${escapeHtml(r.name)}" data-loc="${escapeHtml(r.location)}" data-lat="${r.lat}" data-lng="${r.lng}">
+          <div class="spot-result-icon">🌊</div>
+          <div><div class="spot-result-name">${escapeHtml(r.name)}</div><div class="spot-result-loc">${escapeHtml(r.location)}</div></div>
+        </div>
+      `).join('')||'<p class="muted" style="padding:1rem;text-align:center">No spots found</p>';
+      $('#findspot-results').querySelectorAll('.spot-result').forEach(el=>el.addEventListener('click',()=>{
+        if(!currentUser)return toast('Create an account first','error');
+        pendingSpotData={surfline_spot_id:el.dataset.surfline,name:el.dataset.name,location_text:el.dataset.loc,lat:parseFloat(el.dataset.lat),lng:parseFloat(el.dataset.lng)};
+        $('#create-spot-name').textContent=`${el.dataset.name} · ${el.dataset.loc}`;
+        $('#create-spot-modal').classList.remove('hidden');
+      }));
+    }catch{}
+  },300);
+});
+
+function renderMySpotsList(){
+  const list=$('#findspot-my-list');
+  if(!list)return;
+  if(!mySpots.length){list.innerHTML='<p class="muted">No spots yet. Search above to add one.</p>';return;}
+  list.innerHTML=mySpots.map(s=>`
+    <div class="spot-result" onclick="joinExistingSpot('${s.id}')">
+      <div class="spot-result-icon">${s.cover_image_url?`<img src="${s.cover_image_url}" style="width:36px;height:36px;border-radius:8px;object-fit:cover">`:'🌊'}</div>
+      <div><div class="spot-result-name">${escapeHtml(s.name)}</div><div class="spot-result-loc">${s.member_count||'?'} members</div></div>
+    </div>
+  `).join('');
 }
 
 // ===== INIT =====
