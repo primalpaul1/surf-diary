@@ -205,11 +205,9 @@ async function waitForNIP46(){
           const r=JSON.parse(decrypted);
           console.log('[NIP46] Response result:', r.result);
           if(r.result===nip46Data.secret||r.result==='ack'||r.result===true){
-            console.log('[NIP46] ACK received! Creating signer...');
-            const s=BunkerSigner.fromBunker(skb,{pubkey:ev.pubkey,relays:['wss://relay.primal.net']},{});
-            let pk;try{pk=await s.getPublicKey();console.log('[NIP46] Got user pubkey:', pk.slice(0,12)+'...');}catch(e){console.log('[NIP46] getPublicKey failed, using bunker pubkey:', e);pk=ev.pubkey;}
+            console.log('[NIP46] ACK received! Logging in with pubkey:', ev.pubkey.slice(0,12)+'...');
             relay.close();
-            await completeLogin(pk);
+            await completeLogin(ev.pubkey);
           }else{console.log('[NIP46] Non-matching result:', r.result, 'expected:', nip46Data.secret.slice(0,20)+'...');}
         }catch(e){console.log('[NIP46] Decrypt/parse error:', e);}
       },
@@ -227,7 +225,7 @@ async function completeLogin(pk){
   setTimeout(()=>{$('#login-modal').classList.add('hidden');toast(`Welcome, ${name}!`);},1000);
 }
 
-async function checkCallback(){const c=localStorage.getItem('nip46_connected');if(!c)return;try{const d=JSON.parse(c);if(Date.now()-d.timestamp>300000){localStorage.removeItem('nip46_connected');return;}const{BunkerSigner}=await import('https://esm.sh/nostr-tools@2.10.0/nip46');const{hexToBytes}=await import('https://esm.sh/@noble/hashes@1.8.0/utils');const s=BunkerSigner.fromBunker(hexToBytes(d.localSecretKey),{pubkey:d.bunkerPubkey,relays:['wss://relay.primal.net']},{});let pk;try{pk=await s.getPublicKey();}catch{pk=d.bunkerPubkey;}localStorage.removeItem('nip46_connected');await completeLogin(pk);}catch{localStorage.removeItem('nip46_connected');}}
+async function checkCallback(){const c=localStorage.getItem('nip46_connected');if(!c)return;try{const d=JSON.parse(c);if(Date.now()-d.timestamp>300000){localStorage.removeItem('nip46_connected');return;}localStorage.removeItem('nip46_connected');await completeLogin(d.bunkerPubkey);}catch{localStorage.removeItem('nip46_connected');}}
 
 $('#login-modal .modal-backdrop').addEventListener('click',()=>$('#login-modal').classList.add('hidden'));
 $('#login-modal .modal-close').addEventListener('click',()=>$('#login-modal').classList.add('hidden'));
