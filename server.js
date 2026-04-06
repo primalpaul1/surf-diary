@@ -23,20 +23,19 @@ db={query:async(sql,p=[])=>sq.prepare(sql.replace(/\$(\d+)/g,'?')).all(...p),get
 async function initDB(){
   const ts=USE_PG?'(EXTRACT(EPOCH FROM NOW())::int)':'(unixepoch())';
   const serial=USE_PG?'SERIAL PRIMARY KEY':'INTEGER PRIMARY KEY AUTOINCREMENT';
-  const bool=USE_PG?'BOOLEAN':'INTEGER';
-  await db.exec(`
-    CREATE TABLE IF NOT EXISTS users(pubkey TEXT PRIMARY KEY,display_name TEXT,avatar_path TEXT,created_at INTEGER DEFAULT ${ts});
-    CREATE TABLE IF NOT EXISTS spots(id TEXT PRIMARY KEY,surfline_spot_id TEXT NOT NULL,name TEXT NOT NULL,location_text TEXT,lat REAL,lng REAL,cover_image_url TEXT,is_private ${bool} DEFAULT ${USE_PG?'false':'0'},created_by TEXT,created_at INTEGER DEFAULT ${ts});
-    CREATE TABLE IF NOT EXISTS spot_members(spot_id TEXT NOT NULL,pubkey TEXT NOT NULL,role TEXT DEFAULT 'member',invited_by TEXT,created_at INTEGER DEFAULT ${ts},PRIMARY KEY(spot_id,pubkey));
-    CREATE TABLE IF NOT EXISTS spot_invites(id TEXT PRIMARY KEY,spot_id TEXT NOT NULL,created_by TEXT NOT NULL,max_uses INTEGER,use_count INTEGER DEFAULT 0,expires_at INTEGER,created_at INTEGER DEFAULT ${ts});
-    CREATE TABLE IF NOT EXISTS sessions(id ${serial},pubkey TEXT NOT NULL,spot_id TEXT,session_date TEXT NOT NULL,time_of_day TEXT NOT NULL,swells_json TEXT,surf_height_min_ft REAL,surf_height_max_ft REAL,wind_speed_mph REAL,wind_direction_deg REAL,wind_type TEXT,wind_gust_mph REAL,tide_height_ft REAL,rating INTEGER,wave_shape TEXT,session_type TEXT DEFAULT 'surfed',notes TEXT,voice_memo_path TEXT,voice_transcript TEXT,video_path TEXT,created_at INTEGER DEFAULT ${ts});
-    CREATE TABLE IF NOT EXISTS comments(id ${serial},session_id INTEGER NOT NULL,pubkey TEXT NOT NULL,body TEXT NOT NULL,created_at INTEGER DEFAULT ${ts});
-    CREATE TABLE IF NOT EXISTS follows(follower_pubkey TEXT NOT NULL,followed_pubkey TEXT NOT NULL,created_at INTEGER DEFAULT ${ts},PRIMARY KEY(follower_pubkey,followed_pubkey));
-    CREATE TABLE IF NOT EXISTS forecast_cache(id ${serial},spot_id TEXT,fetched_at INTEGER DEFAULT ${ts},data_json TEXT NOT NULL);
-  `);
-  // Migrations for existing DBs
-  const migs=['ALTER TABLE sessions ADD COLUMN spot_id TEXT','ALTER TABLE forecast_cache ADD COLUMN spot_id TEXT'];
-  for(const m of migs)try{await db.exec(m);}catch{}
+
+  // Execute each CREATE TABLE separately so one failure doesn't roll back others
+  const tables=[
+    `CREATE TABLE IF NOT EXISTS users(pubkey TEXT PRIMARY KEY,display_name TEXT,avatar_path TEXT,created_at INTEGER DEFAULT ${ts})`,
+    `CREATE TABLE IF NOT EXISTS spots(id TEXT PRIMARY KEY,surfline_spot_id TEXT NOT NULL,name TEXT NOT NULL,location_text TEXT,lat REAL,lng REAL,cover_image_url TEXT,is_private INTEGER DEFAULT 0,created_by TEXT,created_at INTEGER DEFAULT ${ts})`,
+    `CREATE TABLE IF NOT EXISTS spot_members(spot_id TEXT NOT NULL,pubkey TEXT NOT NULL,role TEXT DEFAULT 'member',invited_by TEXT,created_at INTEGER DEFAULT ${ts},PRIMARY KEY(spot_id,pubkey))`,
+    `CREATE TABLE IF NOT EXISTS spot_invites(id TEXT PRIMARY KEY,spot_id TEXT NOT NULL,created_by TEXT NOT NULL,max_uses INTEGER,use_count INTEGER DEFAULT 0,expires_at INTEGER,created_at INTEGER DEFAULT ${ts})`,
+    `CREATE TABLE IF NOT EXISTS sessions(id ${serial},pubkey TEXT NOT NULL,spot_id TEXT,session_date TEXT NOT NULL,time_of_day TEXT NOT NULL,swells_json TEXT,surf_height_min_ft REAL,surf_height_max_ft REAL,wind_speed_mph REAL,wind_direction_deg REAL,wind_type TEXT,wind_gust_mph REAL,tide_height_ft REAL,rating INTEGER,wave_shape TEXT,session_type TEXT DEFAULT 'surfed',notes TEXT,voice_memo_path TEXT,voice_transcript TEXT,video_path TEXT,created_at INTEGER DEFAULT ${ts})`,
+    `CREATE TABLE IF NOT EXISTS comments(id ${serial},session_id INTEGER NOT NULL,pubkey TEXT NOT NULL,body TEXT NOT NULL,created_at INTEGER DEFAULT ${ts})`,
+    `CREATE TABLE IF NOT EXISTS follows(follower_pubkey TEXT NOT NULL,followed_pubkey TEXT NOT NULL,created_at INTEGER DEFAULT ${ts},PRIMARY KEY(follower_pubkey,followed_pubkey))`,
+    `CREATE TABLE IF NOT EXISTS forecast_cache(id ${serial},spot_id TEXT,fetched_at INTEGER DEFAULT ${ts},data_json TEXT NOT NULL)`,
+  ];
+  for(const sql of tables){try{await db.exec(sql);}catch(err){console.log('Table create (ok if exists):',err.message?.slice(0,80));}}
   console.log(`📦 Database: ${USE_PG?'PostgreSQL':'SQLite'}`);
 }
 
