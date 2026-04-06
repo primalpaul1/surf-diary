@@ -148,17 +148,17 @@ textarea { resize: vertical; }
 .cond-loading { text-align: center; padding: 1rem; color: rgba(255,255,255,0.4); font-size: 0.85rem; }
 .cond-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 1rem; }
 .cond-block h4 { font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.08em; color: rgba(255,255,255,0.4); margin-bottom: 0.2rem; }
-.cond-val { font-size: 0.95rem; font-weight: 700; }
+.cond-val { font-size: 1.3rem; font-weight: 700; }
 .cond-sub { font-size: 0.75rem; color: rgba(255,255,255,0.5); margin-top: 0.1rem; }
 .swells-list { display: flex; flex-direction: column; gap: 0.3rem; }
-.swell-item { display: flex; align-items: center; gap: 0.35rem; font-size: 0.78rem; }
+.swell-item { display: flex; align-items: center; gap: 0.3rem; font-size: 0.7rem; }
 .swell-compass {
-  width: 20px; height: 20px; border-radius: 50%; background: rgba(255,255,255,0.12);
+  width: 18px; height: 18px; border-radius: 50%; background: rgba(255,255,255,0.12);
   display: inline-flex; align-items: center; justify-content: center;
-  font-size: 0.45rem; font-weight: 800; flex-shrink: 0;
+  font-size: 0.4rem; font-weight: 800; flex-shrink: 0;
 }
-.swell-detail { font-weight: 600; font-size: 0.8rem; }
-.swell-meta { font-size: 0.65rem; color: rgba(255,255,255,0.3); background: rgba(255,255,255,0.06); padding: 0.1rem 0.35rem; border-radius: 3px; }
+.swell-detail { font-weight: 600; font-size: 0.7rem; }
+.swell-meta { font-size: 0.55rem; color: rgba(255,255,255,0.3); background: rgba(255,255,255,0.06); padding: 0.1rem 0.3rem; border-radius: 3px; }
 
 /* ---- WAVE SHAPE TABS ---- */
 .shape-tabs { display: flex; gap: 0.4rem; }
