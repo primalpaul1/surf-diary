@@ -2,12 +2,17 @@
 
 Surf session logging app for Dominical, Costa Rica. Users log when they surfed, rate the session 1-10, and optionally leave voice memos and video clips. Surf conditions (swell, wind, tide) are auto-fetched from Surfline's API. The goal is to build a permanent record that cross-references swell data with human ratings to predict when the surf will be good.
 
-## Run
+## Production
+
+**https://surf-diary-production.up.railway.app**
+
+Hosted on Railway, auto-deploys from `primalpaul1/surf-diary` on GitHub push.
+
+## Run Locally
 
 ```bash
 cd ~/surf-diary && npm start
 # Server at http://localhost:3000
-# For mobile testing on same WiFi: http://192.168.1.5:3000
 ```
 
 ## Tech Stack
