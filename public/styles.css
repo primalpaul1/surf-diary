@@ -385,6 +385,15 @@ textarea { resize: vertical; }
 .invite-link-box { display: flex; gap: 0.5rem; margin-top: 0.5rem; }
 .invite-input { flex: 1; font-size: 0.8rem; padding: 0.5rem; border-radius: 8px; border: 1.5px solid #dde3eb; background: #f8fafc; }
 
+/* ---- USER LINKS ---- */
+.user-link { display: flex; align-items: center; gap: 0.4rem; text-decoration: none; color: inherit; }
+.user-link:hover .feed-name, .user-link:hover .surfer-name { color: var(--teal); }
+.user-link-inline { color: inherit; text-decoration: none; font-weight: 600; }
+.user-link-inline:hover { color: var(--teal); }
+.surfer-profile-link { text-decoration: none; flex-shrink: 0; }
+.surfer-name-link { text-decoration: none; color: inherit; font-weight: 600; font-size: 0.95rem; display: block; }
+.surfer-name-link:hover { color: var(--teal); }
+
 /* ---- DELETE ---- */
 .btn-delete-session {
   display: block; width: 100%; margin-top: 1rem; padding: 0.5rem;
