@@ -244,6 +244,9 @@ async function completeLogin(pk){
   await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pubkey:pk,display_name:name,avatar_url:picture})});
   currentUser={pubkey:pk,display_name:name,avatar_path:picture};localStorage.setItem('surf_diary_user',JSON.stringify(currentUser));
   updateAuthUI();$('#login-loading')?.classList.add('hidden');$('#login-qr')?.classList.add('hidden');$('#mobile-login-btn')?.classList.add('hidden');$('#login-connected')?.classList.remove('hidden');
+  // Auto-load and select first spot after login
+  await loadMySpots();
+  if(mySpots.length>0&&!currentSpot){const spot=await(await fetch(`/api/spots/${mySpots[0].id}`)).json();if(spot&&!spot.error)selectSpot(spot);}
   setTimeout(()=>{$('#login-modal').classList.add('hidden');toast(`Welcome, ${name}!`);},1000);
 }
 

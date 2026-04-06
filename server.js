@@ -95,7 +95,7 @@ app.get('/api/spots/search',async(req,res)=>{
       href:h._source.href
     }));
     res.json(spots);
-  }catch{res.status(500).json({error:'Search failed'});}
+  }catch(err){console.error('Spot search error:',err.message||err);res.status(500).json({error:'Search failed'});}
 });
 
 app.get('/api/spots',requireAuth,async(req,res)=>{
@@ -177,7 +177,7 @@ app.get('/api/conditions',async(req,res)=>{
     else if(req.query.surfline_spot_id)surflineSpotId=req.query.surfline_spot_id;
     const forecast=await getForecast(surflineSpotId);
     res.json(getConditions(forecast,req.query.date||new Date().toISOString().split('T')[0],req.query.time_of_day||'morning'));
-  }catch{res.status(500).json({error:'Failed'});}
+  }catch(err){console.error('Conditions error:',err.message||err);res.status(500).json({error:'Failed to fetch conditions'});}
 });
 
 // ===== NIP-46 =====
