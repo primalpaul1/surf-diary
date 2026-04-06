@@ -105,6 +105,20 @@ app.get('/api/spots',requireAuth,async(req,res)=>{
   res.json(spots);
 });
 
+app.get('/api/spots/browse',async(req,res)=>{
+  const q=req.query.q;const pk=req.headers['x-nostr-pubkey']||null;
+  let spots;
+  if(q){spots=await db.query('SELECT s.*,(SELECT COUNT(*)FROM spot_members WHERE spot_id=s.id) as member_count FROM spots s WHERE s.is_private=0 AND LOWER(s.name) LIKE LOWER($1) ORDER BY s.name',[`%${q}%`]);}
+  else{spots=await db.query('SELECT s.*,(SELECT COUNT(*)FROM spot_members WHERE spot_id=s.id) as member_count FROM spots s WHERE s.is_private=0 ORDER BY s.name');}
+  if(pk){const followed=await db.query('SELECT spot_id FROM spot_follows WHERE pubkey=$1',[pk]);const fset=new Set(followed.map(r=>r.spot_id));const membered=await db.query('SELECT spot_id FROM spot_members WHERE pubkey=$1',[pk]);const mset=new Set(membered.map(r=>r.spot_id));spots=spots.map(s=>({...s,is_following:fset.has(s.id)?1:0,is_member:mset.has(s.id)?1:0}));}
+  res.json(spots);
+});
+
+app.get('/api/spots/following',requireAuth,async(req,res)=>{
+  const spots=await db.query('SELECT s.*,(SELECT COUNT(*)FROM spot_members WHERE spot_id=s.id) as member_count FROM spots s WHERE s.id IN(SELECT spot_id FROM spot_follows WHERE pubkey=$1) ORDER BY s.name',[req.pubkey]);
+  res.json(spots);
+});
+
 app.get('/api/spots/:id',async(req,res)=>{
   const spot=await db.get('SELECT s.*,(SELECT COUNT(*)FROM spot_members WHERE spot_id=s.id) as member_count FROM spots s WHERE s.id=$1',[req.params.id]);
   if(!spot)return res.status(404).json({error:'Not found'});
@@ -170,21 +184,7 @@ app.post('/api/invite/:code/claim',requireAuth,async(req,res)=>{
   res.json({ok:true,spot_id:inv.spot_id});
 });
 
-// ===== SPOT BROWSE & FOLLOW =====
-app.get('/api/spots/browse',async(req,res)=>{
-  const q=req.query.q;const pk=req.headers['x-nostr-pubkey']||null;
-  let spots;
-  if(q){spots=await db.query('SELECT s.*,(SELECT COUNT(*)FROM spot_members WHERE spot_id=s.id) as member_count FROM spots s WHERE s.is_private=0 AND LOWER(s.name) LIKE LOWER($1) ORDER BY s.name',[`%${q}%`]);}
-  else{spots=await db.query('SELECT s.*,(SELECT COUNT(*)FROM spot_members WHERE spot_id=s.id) as member_count FROM spots s WHERE s.is_private=0 ORDER BY s.name');}
-  if(pk){const followed=await db.query('SELECT spot_id FROM spot_follows WHERE pubkey=$1',[pk]);const fset=new Set(followed.map(r=>r.spot_id));const membered=await db.query('SELECT spot_id FROM spot_members WHERE pubkey=$1',[pk]);const mset=new Set(membered.map(r=>r.spot_id));spots=spots.map(s=>({...s,is_following:fset.has(s.id)?1:0,is_member:mset.has(s.id)?1:0}));}
-  res.json(spots);
-});
-
-app.get('/api/spots/following',requireAuth,async(req,res)=>{
-  const spots=await db.query('SELECT s.*,(SELECT COUNT(*)FROM spot_members WHERE spot_id=s.id) as member_count FROM spots s WHERE s.id IN(SELECT spot_id FROM spot_follows WHERE pubkey=$1) ORDER BY s.name',[req.pubkey]);
-  res.json(spots);
-});
-
+// ===== SPOT FOLLOW =====
 app.post('/api/spots/:id/follow',requireAuth,async(req,res)=>{
   const spot=await db.get('SELECT*FROM spots WHERE id=$1',[req.params.id]);
   if(!spot)return res.status(404).json({error:'Not found'});
