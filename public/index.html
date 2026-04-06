@@ -98,6 +98,20 @@
     </div>
   </div>
 
+  <!-- Share Modal -->
+  <div id="share-modal" class="modal hidden">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content modal-sm">
+      <button class="modal-close">&times;</button>
+      <h2>Share Your Session</h2>
+      <p class="modal-sub">Post to your feed so your friends can see it.</p>
+      <div id="share-preview" class="share-preview"></div>
+      <textarea id="share-text" class="share-text" rows="3" placeholder="Add a caption..."></textarea>
+      <button id="share-post-btn" class="btn-solid btn-block">Share</button>
+      <button id="share-skip-btn" class="link-btn" style="display:block;text-align:center;margin-top:0.75rem;color:var(--text-muted)">Skip</button>
+    </div>
+  </div>
+
   <main>
     <!-- LOG -->
     <section id="view-log" class="view active">

@@ -324,14 +324,115 @@ $('#session-form').addEventListener('submit',async e=>{
     $('#submit-btn').textContent='Logging...';
     const res=await fetch('/api/sessions',{method:'POST',headers:{'Content-Type':'application/json','X-Nostr-Pubkey':currentUser.pubkey},body:JSON.stringify(data)});
     if(res.ok){
-      toast('Session logged!');$('#notes').value='';rs.value=5;updateRating();
+      const result=await res.json();
+      toast('Session logged!');
+
+      // Build share data before clearing form
+      const shareData={
+        rating:data.rating,
+        session_type:data.session_type,
+        wave_shape:data.wave_shape,
+        notes:data.notes,
+        video_url:data.video_url||null,
+        conditions:result.conditions||{}
+      };
+
+      // Reset form
+      $('#notes').value='';rs.value=5;updateRating();
       $$('.shape-tab[data-shape]').forEach(b=>b.classList.remove('active'));$('#wave_shape').value='';
       $$('.shape-tab[data-group="session_type"]').forEach(b=>b.classList.remove('active'));document.querySelector('.shape-tab[data-val="surfed"]')?.classList.add('active');$('#session_type').value='surfed';
       voiceBlob=null;voiceTranscript='';$('#voice-audio').src='';$('#voice-playback').classList.add('hidden');$('#transcript-section').classList.add('hidden');
       videoFile=null;$('#video-player').src='';$('#video-preview').classList.add('hidden');$('#video-file').value='';
+
+      // Show share modal
+      showShareModal(shareData);
     }else{const err=await res.json();toast(err.error||'Failed','error');}
   }catch(err){console.error(err);toast('Upload error','error');}
   finally{$('#submit-btn').disabled=!currentUser;$('#submit-btn').textContent=currentUser?'Log Session':'Log in to Log Session';}
+});
+
+// ===== SHARE =====
+let pendingShareData=null;
+
+function showShareModal(shareData){
+  pendingShareData=shareData;
+  const c=shareData.conditions;
+  const swells=(c.swells||[]).map(s=>`${s.height_ft}ft ${s.period_s}s ${s.direction_compass}`).join(', ');
+  const surfHeight=c.surf_height_min_ft&&c.surf_height_max_ft?`${c.surf_height_min_ft}-${c.surf_height_max_ft}ft`:'';
+  const ratingEmoji=shareData.rating>=8?'🔥':shareData.rating>=6?'🤙':shareData.rating>=4?'👌':'😐';
+
+  // Build preview
+  let previewHTML=`<strong>Dominical ${shareData.session_type==='observed'?'check':'session'}</strong>`;
+  if(surfHeight)previewHTML+=` · ${surfHeight}`;
+  previewHTML+=` · ${shareData.rating}/10 ${ratingEmoji}`;
+  if(swells)previewHTML+=`<div class="share-stats">Swell: ${swells}</div>`;
+  if(shareData.wave_shape)previewHTML+=`<div class="share-stats">Shape: ${shareData.wave_shape}</div>`;
+  if(shareData.video_url)previewHTML+=`<video src="${shareData.video_url}" controls muted preload="metadata"></video>`;
+  $('#share-preview').innerHTML=previewHTML;
+
+  // Default caption
+  const caption=shareData.notes||`Dominical was ${shareData.rating>=8?'firing':shareData.rating>=6?'fun':shareData.rating>=4?'decent':'flat'} today! ${surfHeight} ${ratingEmoji}`;
+  $('#share-text').value=caption;
+
+  $('#share-modal').classList.remove('hidden');
+}
+
+$('#share-skip-btn').addEventListener('click',()=>$('#share-modal').classList.add('hidden'));
+$('#share-modal .modal-backdrop').addEventListener('click',()=>$('#share-modal').classList.add('hidden'));
+$('#share-modal .modal-close').addEventListener('click',()=>$('#share-modal').classList.add('hidden'));
+
+$('#share-post-btn').addEventListener('click',async()=>{
+  if(!currentUser?.secretKey||!pendingShareData)return toast('Cannot share without a local account','error');
+  try{
+    $('#share-post-btn').disabled=true;$('#share-post-btn').textContent='Posting...';
+
+    const { finalizeEvent } = await import('https://esm.sh/nostr-tools@2.10.0/pure');
+    const { Relay } = await import('https://esm.sh/nostr-tools@2.10.0/relay');
+    const { hexToBytes } = await import('https://esm.sh/@noble/hashes@1.8.0/utils');
+
+    const caption=$('#share-text').value.trim();
+    const c=pendingShareData.conditions;
+    const swells=(c.swells||[]).map(s=>`${s.height_ft}ft ${s.period_s}s ${s.direction_compass} ${s.direction_deg}°`).join(', ');
+    const surfHeight=c.surf_height_min_ft&&c.surf_height_max_ft?`${c.surf_height_min_ft}-${c.surf_height_max_ft}ft`:'';
+
+    // Build note content
+    let content=caption;
+    if(!content.includes('Dominical'))content=`🌊 Dominical · ${surfHeight} · ${pendingShareData.rating}/10\n\n${content}`;
+    if(swells&&!content.includes(swells))content+=`\n\nSwell: ${swells}`;
+    if(pendingShareData.wave_shape)content+=`\nShape: ${pendingShareData.wave_shape}`;
+    if(c.wind_type)content+=`\nWind: ${c.wind_speed_mph}mph ${c.wind_type}`;
+
+    // Add video URL at the end (Primal will render it inline)
+    if(pendingShareData.video_url)content+=`\n\n${pendingShareData.video_url}`;
+
+    // Build tags
+    const tags=[['t','surf'],['t','dominical'],['t','surfing']];
+    // Add imeta tag for video if present
+    if(pendingShareData.video_url){
+      tags.push(['imeta',`url ${pendingShareData.video_url}`,`m video/mp4`]);
+    }
+
+    const event=finalizeEvent({
+      kind:1,
+      created_at:Math.floor(Date.now()/1000),
+      tags,
+      content
+    },hexToBytes(currentUser.secretKey));
+
+    // Publish to relays
+    let published=false;
+    for(const url of RELAYS){
+      try{const relay=await Relay.connect(url);await relay.publish(event);relay.close();published=true;}catch{}
+    }
+
+    if(published){
+      toast('Shared! Check your feed on Primal.');
+      $('#share-modal').classList.add('hidden');
+    }else{
+      toast('Failed to share','error');
+    }
+  }catch(err){console.error(err);toast('Share failed','error');}
+  finally{$('#share-post-btn').disabled=false;$('#share-post-btn').textContent='Share';}
 });
 
 // ===== FEED =====

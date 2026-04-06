@@ -342,6 +342,18 @@ textarea { resize: vertical; }
 .comment-meta { font-size: 0.7rem; color: var(--text-muted); margin-bottom: 0.15rem; }
 .comment-body { font-size: 0.85rem; line-height: 1.4; }
 
+/* ---- SHARE ---- */
+.share-preview {
+  background: var(--ocean-dark); border-radius: 12px; padding: 1rem; color: white;
+  margin-bottom: 0.75rem; font-size: 0.9rem; line-height: 1.5;
+}
+.share-preview video { width: 100%; border-radius: 8px; margin-top: 0.5rem; max-height: 200px; }
+.share-preview .share-stats { opacity: 0.6; font-size: 0.8rem; margin-top: 0.4rem; }
+.share-text {
+  width: 100%; padding: 0.6rem 0.75rem; border: 1.5px solid #dde3eb; border-radius: 10px;
+  font: 400 0.92rem var(--font-body); resize: vertical; margin-bottom: 0.5rem;
+}
+
 /* ---- SEARCH ---- */
 .search-card { margin-bottom: 1rem; }
 .search-grid {
