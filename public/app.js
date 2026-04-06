@@ -182,7 +182,42 @@ const isMobile=/Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 $('#login-btn').addEventListener('click',openLoginModal);
 async function openLoginModal(){$('#login-modal').classList.remove('hidden');$('#login-loading').classList.remove('hidden');$('#login-qr').classList.add('hidden');$('#mobile-login-btn').classList.add('hidden');$('#login-connected').classList.add('hidden');try{const r=await fetch(`/api/nip46/init?origin=${encodeURIComponent(location.origin)}`);nip46Data=await r.json();if(isMobile)$('#mobile-login-btn').classList.remove('hidden');else{$('#qr-image').src=nip46Data.qrDataUrl;$('#login-qr').classList.remove('hidden');}$('#login-loading').classList.add('hidden');waitForNIP46();}catch{toast('Login failed','error');$('#login-modal').classList.add('hidden');}}
 $('#mobile-login-btn').addEventListener('click',()=>{if(!nip46Data)return;localStorage.setItem('nip46_pending',JSON.stringify({localSecretKey:nip46Data.secretKey,localPublicKey:nip46Data.publicKey,secret:nip46Data.secret,timestamp:Date.now()}));location.href=nip46Data.mobileURI;});
-async function waitForNIP46(){if(!nip46Data)return;try{const{Relay}=await import('https://esm.sh/nostr-tools@2.10.0/relay');const{getConversationKey,decrypt:dec}=await import('https://esm.sh/nostr-tools@2.10.0/nip44');const{hexToBytes}=await import('https://esm.sh/@noble/hashes@1.8.0/utils');const{BunkerSigner}=await import('https://esm.sh/nostr-tools@2.10.0/nip46');const skb=hexToBytes(nip46Data.secretKey);const relay=await Relay.connect('wss://relay.primal.net');relay.subscribe([{kinds:[24133],'#p':[nip46Data.publicKey],limit:0}],{onevent:async ev=>{if(!ev.tags.some(t=>t[0]==='p'&&t[1]===nip46Data.publicKey))return;try{const r=JSON.parse(dec(ev.content,getConversationKey(skb,ev.pubkey)));if(r.result===nip46Data.secret||r.result==='ack'||r.result===true){const s=BunkerSigner.fromBunker(skb,{pubkey:ev.pubkey,relays:['wss://relay.primal.net']},{});let pk;try{pk=await s.getPublicKey();}catch{pk=ev.pubkey;}relay.close();await completeLogin(pk);}}catch{}},oneose:()=>{}});setTimeout(()=>{try{relay.close();}catch{}},300000);}catch{}}
+async function waitForNIP46(){
+  if(!nip46Data)return;
+  try{
+    console.log('[NIP46] Starting waitForNIP46, importing modules...');
+    const{Relay}=await import('https://esm.sh/nostr-tools@2.10.0/relay');
+    const{getConversationKey,decrypt:dec}=await import('https://esm.sh/nostr-tools@2.10.0/nip44');
+    const{hexToBytes}=await import('https://esm.sh/@noble/hashes@1.8.0/utils');
+    const{BunkerSigner}=await import('https://esm.sh/nostr-tools@2.10.0/nip46');
+    console.log('[NIP46] Modules loaded, connecting to relay...');
+    const skb=hexToBytes(nip46Data.secretKey);
+    const relay=await Relay.connect('wss://relay.primal.net');
+    console.log('[NIP46] Connected to relay, subscribing for pubkey:', nip46Data.publicKey.slice(0,12)+'...');
+    relay.subscribe([{kinds:[24133],'#p':[nip46Data.publicKey],limit:0}],{
+      onevent:async ev=>{
+        console.log('[NIP46] Event received from:', ev.pubkey.slice(0,12)+'...');
+        if(!ev.tags.some(t=>t[0]==='p'&&t[1]===nip46Data.publicKey)){console.log('[NIP46] Event not for us, skipping');return;}
+        try{
+          const convKey=getConversationKey(skb,ev.pubkey);
+          const decrypted=dec(ev.content,convKey);
+          console.log('[NIP46] Decrypted:', decrypted.slice(0,100));
+          const r=JSON.parse(decrypted);
+          console.log('[NIP46] Response result:', r.result);
+          if(r.result===nip46Data.secret||r.result==='ack'||r.result===true){
+            console.log('[NIP46] ACK received! Creating signer...');
+            const s=BunkerSigner.fromBunker(skb,{pubkey:ev.pubkey,relays:['wss://relay.primal.net']},{});
+            let pk;try{pk=await s.getPublicKey();console.log('[NIP46] Got user pubkey:', pk.slice(0,12)+'...');}catch(e){console.log('[NIP46] getPublicKey failed, using bunker pubkey:', e);pk=ev.pubkey;}
+            relay.close();
+            await completeLogin(pk);
+          }else{console.log('[NIP46] Non-matching result:', r.result, 'expected:', nip46Data.secret.slice(0,20)+'...');}
+        }catch(e){console.log('[NIP46] Decrypt/parse error:', e);}
+      },
+      oneose:()=>{console.log('[NIP46] EOSE received, waiting for real-time events...');}
+    });
+    setTimeout(()=>{try{relay.close();}catch{}},300000);
+  }catch(err){console.error('[NIP46] Fatal error:', err);toast('Login connection failed','error');}
+}
 
 async function completeLogin(pk){
   const profile=await fetchProfile(pk);const name=profile?.name||profile?.display_name||pk.slice(0,8)+'...';const picture=profile?.picture||null;
