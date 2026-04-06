@@ -22,7 +22,7 @@ function selectSpot(spot){
   $('#hero-title').textContent=spot.name;
   $('#hero-sub').textContent=spot.location_text||'Track the swell. Rate your sessions.';
   if(spot.cover_image_url){$('#hero-img').src=spot.cover_image_url;$('#hero-img').style.display='';}
-  else{$('#hero-img').style.display='none';}
+  else{$('#hero-img').src='/dominical-hero.jpg';$('#hero-img').style.display='';}
   document.title=`${spot.name} · Surf Diary`;
   // Show spot settings if admin
   if(currentUser){
