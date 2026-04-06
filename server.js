@@ -17,7 +17,7 @@ const USE_PG=!!process.env.DATABASE_URL;
 let db;
 if(USE_PG){const{Pool}=require('pg');const pool=new Pool({connectionString:process.env.DATABASE_URL,ssl:process.env.DATABASE_URL.includes('localhost')?false:{rejectUnauthorized:false}});
 db={query:async(sql,p=[])=>(await pool.query(sql,p)).rows,get:async(sql,p=[])=>(await pool.query(sql,p)).rows[0]||null,run:async(sql,p=[])=>{const r=await pool.query(sql+' RETURNING *',p);return{lastID:r.rows[0]?.id,rows:r.rows};},exec:async sql=>pool.query(sql)};}
-else{const Database=require('better-sqlite3');const sq=new Database(path.join(__dirname,'surf-diary.db'));sq.pragma('journal_mode=WAL');sq.pragma('foreign_keys=ON');
+else{let Database;try{Database=require('better-sqlite3');}catch{console.error('better-sqlite3 not available and no DATABASE_URL set');process.exit(1);}const sq=new Database(path.join(__dirname,'surf-diary.db'));sq.pragma('journal_mode=WAL');sq.pragma('foreign_keys=ON');
 db={query:async(sql,p=[])=>sq.prepare(sql.replace(/\$(\d+)/g,'?')).all(...p),get:async(sql,p=[])=>sq.prepare(sql.replace(/\$(\d+)/g,'?')).get(...p)||null,run:async(sql,p=[])=>{const r=sq.prepare(sql.replace(/\$(\d+)/g,'?').replace(/ RETURNING \*/,'')).run(...p);return{lastID:r.lastInsertRowid};},exec:async sql=>sq.exec(sql)};}
 
 async function initDB(){
