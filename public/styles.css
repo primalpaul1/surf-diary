@@ -148,16 +148,16 @@ textarea { resize: vertical; }
 .cond-loading { text-align: center; padding: 1rem; color: rgba(255,255,255,0.4); font-size: 0.85rem; }
 .cond-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 1rem; }
 .cond-block h4 { font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.08em; color: rgba(255,255,255,0.4); margin-bottom: 0.2rem; }
-.cond-val { font-size: 1.15rem; font-weight: 700; }
+.cond-val { font-size: 0.95rem; font-weight: 700; }
 .cond-sub { font-size: 0.75rem; color: rgba(255,255,255,0.5); margin-top: 0.1rem; }
 .swells-list { display: flex; flex-direction: column; gap: 0.3rem; }
-.swell-item { display: flex; align-items: center; gap: 0.4rem; font-size: 0.9rem; }
+.swell-item { display: flex; align-items: center; gap: 0.35rem; font-size: 0.78rem; }
 .swell-compass {
-  width: 22px; height: 22px; border-radius: 50%; background: rgba(255,255,255,0.12);
+  width: 20px; height: 20px; border-radius: 50%; background: rgba(255,255,255,0.12);
   display: inline-flex; align-items: center; justify-content: center;
-  font-size: 0.5rem; font-weight: 800; flex-shrink: 0;
+  font-size: 0.45rem; font-weight: 800; flex-shrink: 0;
 }
-.swell-detail { font-weight: 700; }
+.swell-detail { font-weight: 600; font-size: 0.8rem; }
 .swell-meta { font-size: 0.65rem; color: rgba(255,255,255,0.3); background: rgba(255,255,255,0.06); padding: 0.1rem 0.35rem; border-radius: 3px; }
 
 /* ---- WAVE SHAPE TABS ---- */
@@ -254,10 +254,10 @@ textarea { resize: vertical; }
   display: inline-flex; align-items: center; justify-content: center;
   font: 800 1rem var(--font-body);
 }
-.r-low { background: #fee2e2; color: #dc2626; }
-.r-mid { background: #fef3c7; color: #d97706; }
-.r-high { background: #d1fae5; color: #059669; }
-.r-epic { background: #a7f3d0; color: #047857; }
+.r-low { background: linear-gradient(135deg, #fecaca, #fde68a); color: #b91c1c; }
+.r-mid { background: linear-gradient(135deg, #fde68a, #bef264); color: #a16207; }
+.r-high { background: linear-gradient(135deg, #6ee7b7, #38bdf8); color: #0e7490; }
+.r-epic { background: linear-gradient(135deg, #818cf8, #f472b6); color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,0.2); }
 
 .empty-state { text-align: center; padding: 3rem; color: var(--text-muted); }
 

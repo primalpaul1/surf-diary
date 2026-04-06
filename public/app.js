@@ -297,7 +297,7 @@ document.querySelector('.shape-tab[data-val="surfed"]')?.classList.add('active')
 
 // ===== RATING =====
 const rs=$('#rating'),rd=$('#rating-display');
-function updateRating(){const v=+rs.value;rd.textContent=v;const[bg,fg]=v<=3?['#fee2e2','#dc2626']:v<=5?['#fef3c7','#d97706']:v<=7?['#d1fae5','#059669']:['#a7f3d0','#047857'];rd.style.background=bg;rd.style.color=fg;}
+function updateRating(){const v=+rs.value;rd.textContent=v;const[bg,fg]=v<=3?['linear-gradient(135deg,#fecaca,#fde68a)','#b91c1c']:v<=5?['linear-gradient(135deg,#fde68a,#bef264)','#a16207']:v<=7?['linear-gradient(135deg,#6ee7b7,#38bdf8)','#0e7490']:['linear-gradient(135deg,#818cf8,#f472b6)','#fff'];rd.style.background=bg;rd.style.color=fg;}
 rs.addEventListener('input',updateRating);updateRating();
 
 // ===== VOICE =====
