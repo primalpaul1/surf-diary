@@ -3,24 +3,23 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Dominical Surf Diary</title>
+  <title>Surf Diary</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
-  <!-- Header -->
   <header>
     <div class="header-inner">
-      <a class="logo" href="/">
-        <span class="logo-text">Dominical</span>
-      </a>
+      <a class="logo" href="/"><span class="logo-text" id="header-spot-name">Surf Diary</span></a>
+      <div id="spot-switcher" class="spot-switcher hidden">
+        <select id="spot-select" class="spot-select"></select>
+      </div>
       <nav>
         <button class="nav-btn active" data-view="log">Log</button>
         <button class="nav-btn" data-view="history">Feed</button>
         <button class="nav-btn" data-view="surfers">Surfers</button>
         <button class="nav-btn" data-view="analysis">Analysis</button>
-        <a class="nav-btn nav-ext" href="https://www.surfline.com/surf-report/dominical/5842041f4e65fad6a7708b9c" target="_blank">Surfline ↗</a>
       </nav>
       <div class="auth-section">
         <div id="auth-buttons">
@@ -28,27 +27,78 @@
           <button id="create-account-btn" class="btn-outline">Create Account</button>
         </div>
         <div id="user-info" class="hidden">
-          <div class="user-pill">
-            <img id="user-avatar" src="" alt="" class="user-avatar-sm" onerror="this.style.display='none'">
-            <span id="user-name"></span>
-          </div>
+          <div class="user-pill"><img id="user-avatar" src="" alt="" class="user-avatar-sm" onerror="this.style.display='none'"><span id="user-name"></span></div>
           <button id="logout-btn" class="btn-outline btn-sm">Logout</button>
         </div>
       </div>
     </div>
   </header>
 
-  <!-- Hero -->
-  <div class="hero">
-    <img src="/dominical-hero.jpg" alt="Dominical surf" class="hero-img">
+  <!-- Hero (dynamic per spot) -->
+  <div class="hero" id="hero">
+    <img src="/dominical-hero.jpg" alt="" class="hero-img" id="hero-img" onerror="this.style.display='none'">
     <div class="hero-gradient"></div>
     <div class="hero-content">
-      <h2 class="hero-title">Dominical</h2>
-      <p class="hero-sub">Track the swell. Rate your sessions. Predict when it fires.</p>
+      <h2 class="hero-title" id="hero-title">Find Your Spot</h2>
+      <p class="hero-sub" id="hero-sub">Search any surf break worldwide</p>
     </div>
   </div>
 
-  <!-- Modals -->
+  <!-- SPOT PICKER (shown when no spot selected) -->
+  <div id="spot-picker" class="spot-picker">
+    <div class="card card-form">
+      <h2>Find Your Spot</h2>
+      <p class="muted">Search for a surf break to start logging sessions.</p>
+      <div class="field" style="margin:1rem 0">
+        <input type="text" id="spot-search-input" placeholder="Search surf spots..." autocomplete="off">
+      </div>
+      <div id="spot-search-results" class="spot-results"></div>
+      <div id="my-spots-section" class="hidden" style="margin-top:1.5rem">
+        <div class="section-label">Your Spots</div>
+        <div id="my-spots-list" class="spot-results"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CREATE SPOT MODAL -->
+  <div id="create-spot-modal" class="modal hidden">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content modal-sm">
+      <button class="modal-close">&times;</button>
+      <h2>Claim This Spot</h2>
+      <p class="modal-sub" id="create-spot-name"></p>
+      <form id="create-spot-form">
+        <div class="avatar-upload" id="cover-upload">
+          <div class="cover-placeholder" id="cover-preview">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
+            <span>Add Cover Photo</span>
+          </div>
+          <input type="file" id="cover-file" accept="image/*" class="hidden">
+        </div>
+        <div class="toggle-row">
+          <label class="toggle-label">Private (invite only)</label>
+          <input type="checkbox" id="spot-private" class="toggle-check">
+        </div>
+        <button type="submit" class="btn-solid btn-block">Create Spot</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- INVITE MODAL -->
+  <div id="invite-modal" class="modal hidden">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content modal-sm">
+      <button class="modal-close">&times;</button>
+      <h2>Invite Link</h2>
+      <p class="modal-sub">Share this link with your crew.</p>
+      <div class="invite-link-box">
+        <input type="text" id="invite-link-input" readonly class="invite-input">
+        <button id="copy-invite" class="btn-solid btn-sm">Copy</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- LOGIN MODAL -->
   <div id="login-modal" class="modal hidden">
     <div class="modal-backdrop"></div>
     <div class="modal-content modal-sm">
@@ -65,12 +115,13 @@
     </div>
   </div>
 
+  <!-- CREATE ACCOUNT MODAL -->
   <div id="create-modal" class="modal hidden">
     <div class="modal-backdrop"></div>
     <div class="modal-content modal-sm">
       <button class="modal-close">&times;</button>
       <h2>Create Account</h2>
-      <p class="modal-sub">Pick a name and photo. A Nostr keypair is generated locally.</p>
+      <p class="modal-sub">Pick a name and photo.</p>
       <form id="create-form">
         <div class="avatar-upload" id="avatar-upload">
           <div class="avatar-placeholder" id="avatar-preview">
@@ -79,7 +130,7 @@
           </div>
           <input type="file" id="avatar-file" accept="image/*" class="hidden">
         </div>
-        <div class="form-group"><label>Surfer Name</label><input type="text" id="create-name" placeholder="e.g. KookSlayer420" required maxlength="30"></div>
+        <div class="field"><label>Surfer Name</label><input type="text" id="create-name" placeholder="e.g. KookSlayer420" required maxlength="30"></div>
         <button type="submit" class="btn-solid btn-block">Create My Account</button>
       </form>
       <div class="modal-divider"></div>
@@ -87,18 +138,7 @@
     </div>
   </div>
 
-  <div id="session-modal" class="modal hidden">
-    <div class="modal-backdrop"></div>
-    <div class="modal-content modal-lg">
-      <button class="modal-close">&times;</button>
-      <div id="session-detail"></div>
-      <div id="comments-section"><h3>Comments</h3><div id="comments-list"></div>
-        <form id="comment-form" class="hidden comment-row"><textarea id="comment-body" placeholder="Add a comment..." rows="2"></textarea><button type="submit" class="btn-solid btn-sm">Post</button></form>
-      </div>
-    </div>
-  </div>
-
-  <!-- Share Modal -->
+  <!-- SHARE MODAL -->
   <div id="share-modal" class="modal hidden">
     <div class="modal-backdrop"></div>
     <div class="modal-content modal-sm">
@@ -112,11 +152,27 @@
     </div>
   </div>
 
-  <main>
+  <!-- SESSION DETAIL MODAL -->
+  <div id="session-modal" class="modal hidden">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content modal-lg">
+      <button class="modal-close">&times;</button>
+      <div id="session-detail"></div>
+      <div id="comments-section"><h3>Comments</h3><div id="comments-list"></div>
+        <form id="comment-form" class="hidden comment-row"><textarea id="comment-body" placeholder="Add a comment..." rows="2"></textarea><button type="submit" class="btn-solid btn-sm">Post</button></form>
+      </div>
+    </div>
+  </div>
+
+  <main class="hidden" id="main-content">
     <!-- LOG -->
     <section id="view-log" class="view active">
       <div class="card card-form">
-        <div class="card-header"><h2>Log a Session</h2><p class="muted">Conditions auto-fill from Surfline.</p></div>
+        <div class="card-header">
+          <h2>Log a Session</h2>
+          <p class="muted">Conditions auto-fill from Surfline.</p>
+          <button id="spot-settings-btn" class="btn-outline btn-xs hidden" style="margin-top:0.5rem">Spot Settings</button>
+        </div>
         <form id="session-form">
           <div class="row-2">
             <div class="field"><label>Date</label><input type="date" id="session_date" required></div>
@@ -125,6 +181,7 @@
             </div>
           </div>
           <div id="conditions-preview" class="conditions-panel"><div class="cond-loading">Fetching conditions...</div></div>
+
           <div class="section-label">Session Type</div>
           <div class="shape-tabs">
             <button type="button" class="shape-tab" data-group="session_type" data-val="surfed">Surfed</button>
@@ -173,58 +230,29 @@
     <!-- SURFERS -->
     <section id="view-surfers" class="view">
       <div class="card">
-        <h2>Surfers</h2><p class="muted" style="margin-bottom:1rem">Follow surfers to see their reports in your feed & analysis.</p>
+        <div class="feed-header">
+          <h2>Surfers</h2>
+          <button id="invite-btn" class="btn-solid btn-sm hidden">Invite</button>
+        </div>
+        <p class="muted" style="margin-bottom:1rem">Follow surfers to see their reports in your feed & analysis.</p>
         <div id="surfers-list" class="surfers-grid"></div>
       </div>
     </section>
 
     <!-- ANALYSIS -->
     <section id="view-analysis" class="view">
-      <!-- Search Panel -->
       <div class="card search-card">
         <h2>Search Sessions</h2>
         <p class="muted">Find sessions by swell direction, size, period, or rating.</p>
         <div class="search-grid">
-          <div class="field">
-            <label>Swell Direction (°)</label>
-            <div class="range-row">
-              <input type="number" id="search-dir-min" placeholder="e.g. 200" min="0" max="360" class="input-sm">
-              <span class="range-sep">to</span>
-              <input type="number" id="search-dir-max" placeholder="e.g. 220" min="0" max="360" class="input-sm">
-            </div>
-          </div>
-          <div class="field">
-            <label>Swell Height (ft)</label>
-            <div class="range-row">
-              <input type="number" id="search-height-min" placeholder="Min" step="0.5" min="0" class="input-sm">
-              <span class="range-sep">to</span>
-              <input type="number" id="search-height-max" placeholder="Max" step="0.5" min="0" class="input-sm">
-            </div>
-          </div>
-          <div class="field">
-            <label>Period (s)</label>
-            <div class="range-row">
-              <input type="number" id="search-period-min" placeholder="Min" min="0" class="input-sm">
-              <span class="range-sep">+</span>
-              <input type="number" id="search-period-max" placeholder="Max" min="0" class="input-sm">
-            </div>
-          </div>
-          <div class="field">
-            <label>Rating (1-10)</label>
-            <div class="range-row">
-              <input type="number" id="search-rating-min" placeholder="Min" min="1" max="10" class="input-sm">
-              <span class="range-sep">to</span>
-              <input type="number" id="search-rating-max" placeholder="Max" min="1" max="10" class="input-sm">
-            </div>
-          </div>
+          <div class="field"><label>Swell Direction (°)</label><div class="range-row"><input type="number" id="search-dir-min" placeholder="e.g. 200" min="0" max="360" class="input-sm"><span class="range-sep">to</span><input type="number" id="search-dir-max" placeholder="e.g. 220" min="0" max="360" class="input-sm"></div></div>
+          <div class="field"><label>Swell Height (ft)</label><div class="range-row"><input type="number" id="search-height-min" placeholder="Min" step="0.5" min="0" class="input-sm"><span class="range-sep">to</span><input type="number" id="search-height-max" placeholder="Max" step="0.5" min="0" class="input-sm"></div></div>
+          <div class="field"><label>Period (s)</label><div class="range-row"><input type="number" id="search-period-min" placeholder="Min" min="0" class="input-sm"><span class="range-sep">+</span><input type="number" id="search-period-max" placeholder="Max" min="0" class="input-sm"></div></div>
+          <div class="field"><label>Rating (1-10)</label><div class="range-row"><input type="number" id="search-rating-min" placeholder="Min" min="1" max="10" class="input-sm"><span class="range-sep">to</span><input type="number" id="search-rating-max" placeholder="Max" min="1" max="10" class="input-sm"></div></div>
         </div>
-        <div class="search-actions">
-          <button id="search-btn" class="btn-solid">Search</button>
-          <button id="search-clear" class="btn-outline btn-sm" style="border-color:#d1d8e0;color:var(--text-muted)">Clear</button>
-        </div>
+        <div class="search-actions"><button id="search-btn" class="btn-solid">Search</button><button id="search-clear" class="btn-outline btn-sm" style="border-color:#d1d8e0;color:var(--text-muted)">Clear</button></div>
         <div id="search-results" class="search-results"></div>
       </div>
-
       <div class="analysis-grid">
         <div class="card"><h2>By Swell Direction</h2><p class="muted">Which swells produce the best surf?</p><div id="direction-analysis"></div></div>
         <div class="card"><h2>Best Combos</h2><p class="muted">Top conditions (2+ sessions)</p><div id="best-conditions"></div></div>
@@ -233,7 +261,7 @@
     </section>
   </main>
 
-  <footer><p>Dominical Surf Diary · Powered by <a href="https://primal.net" target="_blank">Primal</a> & <a href="https://nostr.com" target="_blank">Nostr</a></p></footer>
+  <footer><p>Surf Diary · Powered by <a href="https://primal.net" target="_blank">Primal</a> & <a href="https://nostr.com" target="_blank">Nostr</a></p></footer>
   <script src="/app.js" type="module"></script>
 </body>
 </html>
