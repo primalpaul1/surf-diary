@@ -312,7 +312,7 @@ $('#settings-modal .modal-close').addEventListener('click',()=>$('#settings-moda
 $('#logout-btn').addEventListener('click',()=>{currentUser=null;currentSpot=null;mySpots=[];followingSet.clear();localStorage.removeItem('surf_diary_user');localStorage.removeItem('surf_diary_spot');updateAuthUI();location.reload();});
 
 function updateAuthUI(){
-  if(currentUser){$('#auth-buttons').classList.add('hidden');$('#user-info').classList.remove('hidden');$('#user-name').textContent=currentUser.display_name;const av=$('#user-avatar');if(currentUser.avatar_path){av.src=currentUser.avatar_path;av.style.display='';}else av.style.display='none';$('#submit-btn').disabled=false;$('#submit-btn').textContent='Log Session';$('#comment-form')?.classList.remove('hidden');loadFollowing();loadMySpots().then(showMySpots);}
+  if(currentUser){$('#auth-buttons').classList.add('hidden');$('#user-info').classList.remove('hidden');$('#spot-picker-auth')?.classList.add('hidden');$('#user-name').textContent=currentUser.display_name;const av=$('#user-avatar');if(currentUser.avatar_path){av.src=currentUser.avatar_path;av.style.display='';}else av.style.display='none';$('#submit-btn').disabled=false;$('#submit-btn').textContent='Log Session';$('#comment-form')?.classList.remove('hidden');loadFollowing();loadMySpots().then(showMySpots);}
   else{$('#auth-buttons').classList.remove('hidden');$('#user-info').classList.add('hidden');$('#submit-btn').disabled=true;$('#submit-btn').textContent='Log in to Log Session';$('#comment-form')?.classList.add('hidden');}
 }
 

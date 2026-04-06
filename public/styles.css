@@ -351,6 +351,8 @@ textarea { resize: vertical; }
 
 /* ---- SPOT PICKER ---- */
 .spot-picker { max-width: 600px; margin: -2rem auto 2rem; padding: 0 1.5rem; position: relative; z-index: 10; }
+.spot-picker-auth { text-align: center; margin-bottom: 0.5rem; }
+.spot-picker-btns { max-width: 300px; margin: 0 auto; }
 .spot-results { display: flex; flex-direction: column; gap: 0.4rem; margin-top: 0.5rem; }
 .spot-result {
   display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem 1rem;

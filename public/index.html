@@ -54,6 +54,15 @@
   <!-- SPOT PICKER (shown when no spot selected) -->
   <div id="spot-picker" class="spot-picker">
     <div class="card card-form">
+      <div id="spot-picker-auth" class="spot-picker-auth">
+        <h2>Get Started</h2>
+        <p class="muted" style="margin-bottom:1rem">Create an account or log in to start tracking your sessions.</p>
+        <div class="spot-picker-btns">
+          <button onclick="document.getElementById('create-modal').classList.remove('hidden')" class="btn-solid btn-block">Create Account</button>
+          <button onclick="openLoginModal()" class="btn-glass btn-block" style="border-color:rgba(255,255,255,0.2);margin-top:0.5rem"><img src='/primal-logo.png' alt='' class='btn-icon'>Log in with Primal</button>
+        </div>
+        <div class="modal-divider"></div>
+      </div>
       <h2>Find Your Spot</h2>
       <p class="muted">Search for a surf break to start logging sessions.</p>
       <div class="field" style="margin:1rem 0">
