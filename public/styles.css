@@ -31,33 +31,39 @@
 
 /* ---- LANDING PAGE ---- */
 .landing-page {
-  min-height: 100vh; display: flex; align-items: center; justify-content: center;
-  position: relative; overflow: hidden;
+  height: 100vh; height: 100dvh; display: flex; align-items: center; justify-content: center;
+  position: fixed; inset: 0; z-index: 100; overflow: hidden;
 }
 .landing-bg {
   position: absolute; inset: 0;
-  background: linear-gradient(135deg, var(--ocean-deep) 0%, var(--ocean-mid) 40%, #1a5a8a 70%, var(--cyan) 100%);
+  background: url('/wave-bg.jpg') center center / cover no-repeat;
 }
 .landing-bg::after {
   content: ''; position: absolute; inset: 0;
-  background: radial-gradient(ellipse at 30% 80%, rgba(56,189,248,0.15) 0%, transparent 60%),
-              radial-gradient(ellipse at 70% 20%, rgba(26,115,232,0.1) 0%, transparent 50%);
+  background: linear-gradient(to bottom,
+    rgba(4,20,40,0.55) 0%,
+    rgba(4,20,40,0.35) 40%,
+    rgba(4,20,40,0.65) 100%);
 }
 .landing-card {
   position: relative; z-index: 1;
-  background: var(--card); border-radius: 20px;
-  padding: 2.5rem 2rem; width: 100%; max-width: 400px;
-  margin: 1rem; box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+  background: rgba(255,255,255,0.95); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+  border-radius: 20px;
+  padding: 2rem 1.75rem; width: 100%; max-width: 380px;
+  margin: 1rem; box-shadow: 0 20px 60px rgba(0,0,0,0.4);
   text-align: center;
 }
-.landing-logo { height: 44px; width: auto; margin-bottom: 0.75rem; }
+.landing-logo { height: 40px; width: auto; margin-bottom: 0.5rem; }
 .landing-sub {
-  color: var(--text-muted); font-size: 0.88rem; line-height: 1.5;
-  margin-bottom: 1.5rem;
+  color: var(--text-muted); font-size: 0.82rem; line-height: 1.45;
+  margin-bottom: 1.25rem;
 }
-.landing-card .avatar-upload { margin: 0 auto 1rem; }
+.landing-card .avatar-upload { margin: 0 auto 0.75rem; }
 .landing-card .field { text-align: left; }
-.landing-card .modal-divider { margin: 1.25rem 0; }
+.landing-card .field label { font-size: 0.75rem; }
+.landing-card .field input { padding: 0.55rem 0.75rem; font-size: 0.88rem; }
+.landing-card .modal-divider { margin: 1rem 0; }
+.landing-card .btn-block { padding: 0.65rem; margin-top: 0.5rem; }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -262,6 +268,8 @@ textarea { resize: vertical; }
 .feed-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.5rem; }
 .filters { display: flex; gap: 0.4rem; }
 .filters select, .filters input { padding: 0.35rem 0.5rem; font-size: 0.82rem; border-radius: 8px; }
+.feed-filters { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
+.feed-filters select { padding: 0.4rem 0.6rem; font-size: 0.82rem; border-radius: 8px; border: 1px solid #e2e8f0; background: #fff; }
 .feed-list { display: flex; flex-direction: column; gap: 0.6rem; }
 
 .feed-card {
@@ -504,6 +512,8 @@ textarea { resize: vertical; }
 .range-sep { color: var(--text-muted); font-size: 0.8rem; flex-shrink: 0; }
 .input-sm { width: 100%; padding: 0.45rem 0.6rem; font-size: 0.85rem; }
 .search-actions { display: flex; gap: 0.5rem; margin-top: 1rem; align-items: center; }
+.search-filters { display: flex; flex-direction: column; gap: 0.5rem; margin-top: 1rem; }
+.search-filters .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
 .search-results { margin-top: 1rem; }
 .search-summary {
   display: flex; gap: 1.5rem; flex-wrap: wrap;

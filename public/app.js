@@ -223,22 +223,37 @@ const isMobile=/Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 $('#login-btn')?.addEventListener('click',openLoginModal);
 async function openLoginModal(){
   try{
-    // Show loading
-    if(!isMobile){$('#login-modal').classList.remove('hidden');$('#login-loading').classList.remove('hidden');$('#login-qr').classList.add('hidden');$('#mobile-login-btn').classList.add('hidden');$('#login-connected').classList.add('hidden');}
-    else toast('Connecting to Primal...');
+    if(!isMobile){
+      $('#login-modal').classList.remove('hidden');$('#login-loading').classList.remove('hidden');
+      $('#login-qr').classList.add('hidden');$('#mobile-login-btn').classList.add('hidden');$('#login-connected').classList.add('hidden');
+    }else{
+      // Show inline status on landing card
+      const st=$('#landing-primal-status');if(st){st.classList.remove('hidden');st.style.display='flex';$('#landing-primal-status-text').textContent='Connecting to Primal...';}
+      $('#landing-primal-btn').disabled=true;$('#landing-primal-btn').style.opacity='0.5';
+    }
     const r=await fetch(`/api/nip46/init?origin=${encodeURIComponent(location.origin)}`);
     if(!r.ok)throw new Error('Server error: '+r.status);
     nip46Data=await r.json();
     if(!nip46Data.mobileURI||!nip46Data.secretKey)throw new Error('Invalid NIP-46 response');
     if(isMobile){
-      // Go straight to Primal — no modal needed
       localStorage.setItem('nip46_pending',JSON.stringify({localSecretKey:nip46Data.secretKey,localPublicKey:nip46Data.publicKey,secret:nip46Data.secret,timestamp:Date.now()}));
-      window.location.href=nip46Data.mobileURI;
+      // Start relay listener BEFORE redirecting — so it's ready when user returns
+      waitForNIP46();
+      // Small delay to let listener start, then redirect to Primal
+      setTimeout(()=>{
+        const st=$('#landing-primal-status');if(st){$('#landing-primal-status-text').textContent='Waiting for Primal...';}
+        window.location.href=nip46Data.mobileURI;
+      },300);
     }else{
       $('#qr-image').src=nip46Data.qrDataUrl;$('#login-qr').classList.remove('hidden');$('#login-loading').classList.add('hidden');
       waitForNIP46();
     }
-  }catch(err){console.error('Login init error:',err);toast('Login failed','error');if(!isMobile)$('#login-modal').classList.add('hidden');}
+  }catch(err){
+    console.error('Login init error:',err);
+    toast('Login failed — please try again','error');
+    if(!isMobile)$('#login-modal').classList.add('hidden');
+    else{$('#landing-primal-btn').disabled=false;$('#landing-primal-btn').style.opacity='';const st=$('#landing-primal-status');if(st){st.classList.add('hidden');st.style.display='';}}
+  }
 }
 $('#mobile-login-btn')?.addEventListener('click',()=>{if(!nip46Data)return;localStorage.setItem('nip46_pending',JSON.stringify({localSecretKey:nip46Data.secretKey,localPublicKey:nip46Data.publicKey,secret:nip46Data.secret,timestamp:Date.now()}));location.href=nip46Data.mobileURI;});
 async function waitForNIP46(){
@@ -295,13 +310,25 @@ async function waitForNIP46(){
       oneose:()=>{console.log('[NIP46] EOSE received, waiting for real-time events...');}
     });
     setTimeout(()=>{try{relay.close();}catch{}},300000);
-  }catch(err){console.error('[NIP46] Fatal error:', err);toast('Login connection failed','error');}
+  }catch(err){
+    console.error('[NIP46] Fatal error:', err);
+    toast('Login connection failed','error');
+    // Reset mobile UI on failure
+    $('#landing-primal-btn').disabled=false;$('#landing-primal-btn').style.opacity='';
+    const st=$('#landing-primal-status');if(st){st.classList.add('hidden');st.style.display='';}
+  }
 }
+
+// On mobile, check for callback result when user returns to the page
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&!currentUser)checkCallback();});
 
 async function completeLogin(pk){
   const profile=await fetchProfile(pk);const name=profile?.name||profile?.display_name||pk.slice(0,8)+'...';const picture=profile?.picture||null;
   await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pubkey:pk,display_name:name,avatar_url:picture})});
   currentUser={pubkey:pk,display_name:name,avatar_path:picture};localStorage.setItem('swellnotes_user',JSON.stringify(currentUser));
+  // Reset mobile login UI
+  $('#landing-primal-btn').disabled=false;$('#landing-primal-btn').style.opacity='';
+  const st=$('#landing-primal-status');if(st){st.classList.add('hidden');st.style.display='';}
   updateAuthUI();$('#login-loading')?.classList.add('hidden');$('#login-qr')?.classList.add('hidden');$('#mobile-login-btn')?.classList.add('hidden');$('#login-connected')?.classList.remove('hidden');
   // Auto-load and select first spot after login
   await loadMySpots();
@@ -357,11 +384,15 @@ $('#logout-btn').addEventListener('click',()=>{currentUser=null;currentSpot=null
 function updateAuthUI(){
   if(currentUser){
     $('#landing-page').classList.add('hidden');
+    document.body.style.overflow='';
     $('#app-header').classList.remove('hidden');
     $('#hero').classList.remove('hidden');
-    $('#auth-buttons').classList.add('hidden');$('#user-info').classList.remove('hidden');$('#spot-picker-auth')?.classList.add('hidden');$('#user-name').textContent=currentUser.display_name;const av=$('#user-avatar');if(currentUser.avatar_path){av.src=currentUser.avatar_path;av.style.display='';}else av.style.display='none';$('#submit-btn').disabled=false;$('#submit-btn').textContent='Log Session';$('#comment-form')?.classList.remove('hidden');loadFollowing();loadMySpots().then(showMySpots);
+    $('#auth-buttons').classList.add('hidden');$('#user-info').classList.remove('hidden');$('#spot-picker-auth')?.classList.add('hidden');$('#user-name').textContent=currentUser.display_name;const av=$('#user-avatar');if(currentUser.avatar_path){av.src=currentUser.avatar_path;av.style.display='';}else av.style.display='none';$('#submit-btn').disabled=false;$('#submit-btn').textContent='Log Session';$('#comment-form')?.classList.remove('hidden');
+    if(!currentSpot){$('#spot-picker')?.classList.remove('hidden');$('#main-content')?.classList.add('hidden');}
+    loadFollowing();loadMySpots().then(showMySpots);
   } else {
     $('#landing-page').classList.remove('hidden');
+    document.body.style.overflow='hidden';
     $('#app-header').classList.add('hidden');
     $('#hero').classList.add('hidden');
     $('#main-content').classList.add('hidden');
