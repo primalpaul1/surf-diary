@@ -303,3 +303,5 @@ app.get('/login-callback',(req,res)=>res.sendFile(path.join(__dirname,'public','
 app.get('/join/:code',(req,res)=>res.sendFile(path.join(__dirname,'public','index.html')));
 app.get('*',(req,res)=>res.sendFile(path.join(__dirname,'public','index.html')));
 initDB().then(()=>app.listen(PORT,()=>console.log(`🏄 Surf Diary running at http://localhost:${PORT}`))).catch(err=>{console.error('DB init failed:',err);process.exit(1);});
+// temp debug
+app.get('/api/debug',async(req,res)=>{try{const tables=await db.query("SELECT tablename FROM pg_tables WHERE schemaname='public'");const counts={};for(const t of tables){try{const c=await db.get(`SELECT COUNT(*) as n FROM ${t.tablename}`);counts[t.tablename]=c?.n||0;}catch{counts[t.tablename]='error';}}res.json({use_pg:USE_PG,tables:counts});}catch(err){res.json({use_pg:USE_PG,error:err.message});}});
