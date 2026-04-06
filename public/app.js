@@ -527,6 +527,7 @@ $('#comments-list').innerHTML=comments.length?comments.map(c=>`<div class="comme
 $('#comment-form').onsubmit=async e=>{e.preventDefault();if(!currentUser)return;const b=$('#comment-body').value.trim();if(!b)return;await fetch(`/api/sessions/${id}/comments`,{method:'POST',headers:{'Content-Type':'application/json','X-Nostr-Pubkey':currentUser.pubkey},body:JSON.stringify({body:b})});$('#comment-body').value='';openSession(id);};
 $('#session-modal').classList.remove('hidden');}catch{toast('Error','error');}}
 window.openSession=openSession;
+window.openLoginModal=openLoginModal;
 
 async function deleteSession(id){
   if(!confirm('Delete this log? This cannot be undone.'))return;
