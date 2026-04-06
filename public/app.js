@@ -195,25 +195,27 @@ $('#create-form').addEventListener('submit',async e=>{
 });
 
 const isMobile=/Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-$('#login-btn').addEventListener('click',openLoginModal);
+$('#login-btn')?.addEventListener('click',openLoginModal);
 async function openLoginModal(){
   try{
     // Show loading
     if(!isMobile){$('#login-modal').classList.remove('hidden');$('#login-loading').classList.remove('hidden');$('#login-qr').classList.add('hidden');$('#mobile-login-btn').classList.add('hidden');$('#login-connected').classList.add('hidden');}
     else toast('Connecting to Primal...');
     const r=await fetch(`/api/nip46/init?origin=${encodeURIComponent(location.origin)}`);
+    if(!r.ok)throw new Error('Server error: '+r.status);
     nip46Data=await r.json();
+    if(!nip46Data.mobileURI||!nip46Data.secretKey)throw new Error('Invalid NIP-46 response');
     if(isMobile){
       // Go straight to Primal — no modal needed
       localStorage.setItem('nip46_pending',JSON.stringify({localSecretKey:nip46Data.secretKey,localPublicKey:nip46Data.publicKey,secret:nip46Data.secret,timestamp:Date.now()}));
-      location.href=nip46Data.mobileURI;
+      window.location.href=nip46Data.mobileURI;
     }else{
       $('#qr-image').src=nip46Data.qrDataUrl;$('#login-qr').classList.remove('hidden');$('#login-loading').classList.add('hidden');
       waitForNIP46();
     }
   }catch(err){console.error('Login init error:',err);toast('Login failed','error');if(!isMobile)$('#login-modal').classList.add('hidden');}
 }
-$('#mobile-login-btn').addEventListener('click',()=>{if(!nip46Data)return;localStorage.setItem('nip46_pending',JSON.stringify({localSecretKey:nip46Data.secretKey,localPublicKey:nip46Data.publicKey,secret:nip46Data.secret,timestamp:Date.now()}));location.href=nip46Data.mobileURI;});
+$('#mobile-login-btn')?.addEventListener('click',()=>{if(!nip46Data)return;localStorage.setItem('nip46_pending',JSON.stringify({localSecretKey:nip46Data.secretKey,localPublicKey:nip46Data.publicKey,secret:nip46Data.secret,timestamp:Date.now()}));location.href=nip46Data.mobileURI;});
 async function waitForNIP46(){
   if(!nip46Data)return;
   try{

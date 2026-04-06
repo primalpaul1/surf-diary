@@ -16,7 +16,7 @@ function genId(len=12){return crypto.randomBytes(len).toString('base64url').slic
 const USE_PG=!!process.env.DATABASE_URL;
 let db;
 if(USE_PG){const{Pool}=require('pg');const pool=new Pool({connectionString:process.env.DATABASE_URL,ssl:process.env.DATABASE_URL.includes('localhost')?false:{rejectUnauthorized:false}});
-db={query:async(sql,p=[])=>(await pool.query(sql,p)).rows,get:async(sql,p=[])=>(await pool.query(sql,p)).rows[0]||null,run:async(sql,p=[])=>{const r=await pool.query(sql+' RETURNING *',p);return{lastID:r.rows[0]?.id,rows:r.rows};},exec:async sql=>pool.query(sql)};}
+db={query:async(sql,p=[])=>(await pool.query(sql,p)).rows,get:async(sql,p=[])=>(await pool.query(sql,p)).rows[0]||null,run:async(sql,p=[])=>{const isInsert=sql.trimStart().toUpperCase().startsWith('INSERT');const q=isInsert?sql+' RETURNING *':sql;const r=await pool.query(q,p);return{lastID:r.rows?.[0]?.id,rows:r.rows||[]};},exec:async sql=>pool.query(sql)};}
 else{let Database;try{Database=require('better-sqlite3');}catch{console.error('better-sqlite3 not available and no DATABASE_URL set');process.exit(1);}const sq=new Database(path.join(__dirname,'surf-diary.db'));sq.pragma('journal_mode=WAL');sq.pragma('foreign_keys=ON');
 db={query:async(sql,p=[])=>sq.prepare(sql.replace(/\$(\d+)/g,'?')).all(...p),get:async(sql,p=[])=>sq.prepare(sql.replace(/\$(\d+)/g,'?')).get(...p)||null,run:async(sql,p=[])=>{const r=sq.prepare(sql.replace(/\$(\d+)/g,'?').replace(/ RETURNING \*/,'')).run(...p);return{lastID:r.lastInsertRowid};},exec:async sql=>sq.exec(sql)};}
 
@@ -248,8 +248,8 @@ app.post('/api/auth/login',async(req,res)=>{
     // Use separate INSERT and UPDATE to avoid Postgres parameter conflicts
     const existing=await db.get('SELECT pubkey FROM users WHERE pubkey=$1',[pubkey]);
     if(existing){
-      if(avatarPath)await db.exec(`UPDATE users SET display_name='${(display_name||'Anon').replace(/'/g,"''")}',avatar_path='${avatarPath.replace(/'/g,"''")}' WHERE pubkey='${pubkey}'`);
-      else await db.exec(`UPDATE users SET display_name='${(display_name||'Anon').replace(/'/g,"''")}' WHERE pubkey='${pubkey}'`);
+      if(avatarPath)await db.run('UPDATE users SET display_name=$1,avatar_path=$2 WHERE pubkey=$3',[display_name||'Anon',avatarPath,pubkey]);
+      else await db.run('UPDATE users SET display_name=$1 WHERE pubkey=$2',[display_name||'Anon',pubkey]);
     }else{
       if(avatarPath)await db.run('INSERT INTO users(pubkey,display_name,avatar_path)VALUES($1,$2,$3)',[pubkey,display_name||'Anon',avatarPath]);
       else await db.run('INSERT INTO users(pubkey,display_name)VALUES($1,$2)',[pubkey,display_name||'Anon']);
@@ -279,7 +279,7 @@ app.put('/api/spots/:id/members/:pubkey',requireAuth,async(req,res)=>{
   const mem=await db.get('SELECT role FROM spot_members WHERE spot_id=$1 AND pubkey=$2',[req.params.id,req.pubkey]);
   if(!mem||mem.role!=='admin')return res.status(403).json({error:'Admin only'});
   const{role}=req.body;if(!['admin','member'].includes(role))return res.status(400).json({error:'Invalid role'});
-  await db.exec(`UPDATE spot_members SET role='${role}' WHERE spot_id='${req.params.id}' AND pubkey='${req.params.pubkey}'`);
+  await db.run('UPDATE spot_members SET role=$1 WHERE spot_id=$2 AND pubkey=$3',[role,req.params.id,req.params.pubkey]);
   res.json({ok:true});
 });
 
@@ -340,8 +340,8 @@ app.post('/api/sessions/:id/comments',requireAuth,async(req,res)=>{
 app.get('/api/search',async(req,res)=>{
   const{pubkey,spot_id,dir_min,dir_max,height_min,height_max,period_min,period_max,rating_min,rating_max}=req.query;
   let sessions;
-  let baseWhere=spot_id?`WHERE s.spot_id='${spot_id}'`:'';
-  if(pubkey){const pks=await getFeedPubkeys(pubkey);const ph=pks.map((_,i)=>`$${i+1}`).join(',');sessions=await db.query(`SELECT s.*,u.display_name,u.avatar_path FROM sessions s LEFT JOIN users u ON s.pubkey=u.pubkey WHERE s.pubkey IN(${ph})${spot_id?` AND s.spot_id='${spot_id}'`:''} ORDER BY s.session_date DESC`,pks);}
+  const safeSpotId=spot_id?.replace(/[^a-zA-Z0-9_-]/g,'')||null;
+  if(pubkey){const pks=await getFeedPubkeys(pubkey);let n=pks.length+1;const ph=pks.map((_,i)=>`$${i+1}`).join(',');const spotClause=safeSpotId?` AND s.spot_id=$${n}`:'';const params=[...pks];if(safeSpotId)params.push(safeSpotId);sessions=await db.query(`SELECT s.*,u.display_name,u.avatar_path FROM sessions s LEFT JOIN users u ON s.pubkey=u.pubkey WHERE s.pubkey IN(${ph})${spotClause} ORDER BY s.session_date DESC`,params);}
   else sessions=await db.query(`SELECT s.*,u.display_name,u.avatar_path FROM sessions s LEFT JOIN users u ON s.pubkey=u.pubkey ${baseWhere} ORDER BY s.session_date DESC`);
   const results=sessions.filter(s=>{const swells=JSON.parse(s.swells_json||'[]');if(!swells.length)return false;if(dir_min||dir_max){const dmin=parseFloat(dir_min)||0,dmax=parseFloat(dir_max)||360;if(!swells.some(sw=>sw.direction_deg>=dmin&&sw.direction_deg<=dmax))return false;}if(height_min&&swells[0].height_ft<parseFloat(height_min))return false;if(height_max&&swells[0].height_ft>parseFloat(height_max))return false;if(period_min&&swells[0].period_s<parseFloat(period_min))return false;if(period_max&&swells[0].period_s>parseFloat(period_max))return false;if(rating_min&&(s.rating||0)<parseInt(rating_min))return false;if(rating_max&&(s.rating||0)>parseInt(rating_max))return false;return true;});
   const ratings=results.filter(s=>s.rating).map(s=>s.rating);
@@ -350,7 +350,7 @@ app.get('/api/search',async(req,res)=>{
 
 // ===== ANALYSIS (spot-aware) =====
 async function getAnalysisSessions(pk,spotId){
-  let extra=spotId?` AND spot_id='${spotId}'`:'';
+  const safeSpot=spotId?.replace(/[^a-zA-Z0-9_-]/g,'')||null;let extra=safeSpot?` AND spot_id='${safeSpot}'`:'';
   if(!pk)return await db.query(`SELECT*FROM sessions WHERE swells_json IS NOT NULL AND rating IS NOT NULL${extra}`);
   const pks=await getFeedPubkeys(pk);const ph=pks.map((_,i)=>`$${i+1}`).join(',');
   return await db.query(`SELECT*FROM sessions WHERE pubkey IN(${ph})AND swells_json IS NOT NULL AND rating IS NOT NULL${extra}`,pks);
@@ -361,7 +361,7 @@ app.get('/api/analysis/by-direction',async(req,res)=>{const ss=await getAnalysis
 app.get('/api/analysis/best-conditions',async(req,res)=>{const ss=await getAnalysisSessions(req.query.pubkey,req.query.spot_id);const c={};for(const s of ss){const sw=JSON.parse(s.swells_json||'[]');if(!sw.length)continue;const w=sw[0];const k=`${w.direction_compass}|${Math.round(w.height_ft)}|${w.period_s<10?'s':w.period_s<15?'m':'l'}|${s.wind_type||'-'}`;if(!c[k])c[k]={r:[],dir:w.direction_compass,swell:Math.round(w.height_ft)+'ft',period:w.period_s<10?'short (<10s)':w.period_s<15?'medium (10-15s)':'long (15s+)',wind:s.wind_type||'-'};c[k].r.push(s.rating);}res.json(Object.values(c).filter(x=>x.r.length>=2).map(x=>({direction:x.dir,swell_bucket:x.swell,period_bucket:x.period,wind_type:x.wind,count:x.r.length,avg_rating:Math.round(x.r.reduce((a,b)=>a+b,0)/x.r.length*10)/10})).sort((a,b)=>b.avg_rating-a.avg_rating).slice(0,20));});
 
 app.get('/api/analysis/timeline',async(req,res)=>{
-  const{pubkey:pk,spot_id}=req.query;let ss;const extra=spot_id?` AND spot_id='${spot_id}'`:'';
+  const{pubkey:pk,spot_id}=req.query;let ss;const safeSpotTl=spot_id?.replace(/[^a-zA-Z0-9_-]/g,'')||null;const extra=safeSpotTl?` AND spot_id='${safeSpotTl}'`:'';
   if(pk){const pks=await getFeedPubkeys(pk);const ph=pks.map((_,i)=>`$${i+1}`).join(',');ss=await db.query(`SELECT session_date,ROUND(AVG(rating),1) as avg_rating,ROUND(AVG(surf_height_min_ft),1) as avg_min,ROUND(AVG(surf_height_max_ft),1) as avg_max,COUNT(*) as entries FROM sessions WHERE pubkey IN(${ph})${extra} GROUP BY session_date ORDER BY session_date DESC LIMIT 90`,pks);}
   else ss=await db.query(`SELECT session_date,ROUND(AVG(rating),1) as avg_rating,ROUND(AVG(surf_height_min_ft),1) as avg_min,ROUND(AVG(surf_height_max_ft),1) as avg_max,COUNT(*) as entries FROM sessions WHERE 1=1${extra} GROUP BY session_date ORDER BY session_date DESC LIMIT 90`);
   for(const r of ss){const s=await db.get('SELECT swells_json FROM sessions WHERE session_date=$1 AND swells_json IS NOT NULL LIMIT 1',[r.session_date]);if(s?.swells_json)r.directions=JSON.parse(s.swells_json).filter(w=>w.height_ft>0).map(w=>w.direction_compass).join(',');}
