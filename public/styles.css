@@ -95,6 +95,15 @@ nav { display: flex; gap: 2px; flex: 1; }
 .btn-solid:disabled { opacity: 0.4; cursor: not-allowed; transform: none; box-shadow: none; }
 .btn-block { width: 100%; padding: 0.75rem; margin-top: 0.75rem; }
 
+.btn-primal-dark {
+  display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;
+  background: #111; color: white; border: none;
+  padding: 0.55rem 1.2rem; border-radius: 10px; font: 700 0.9rem var(--font-body);
+  cursor: pointer; transition: all 0.2s;
+}
+.btn-primal-dark:hover { background: #222; transform: translateY(-1px); }
+.btn-primal-dark .btn-icon { width: 20px; height: 20px; border-radius: 4px; }
+
 .user-pill { display: flex; align-items: center; gap: 0.5rem; }
 .user-avatar-sm { width: 26px; height: 26px; border-radius: 50%; object-fit: cover; border: 2px solid rgba(255,255,255,0.2); }
 #user-name { color: rgba(255,255,255,0.85); font-size: 0.85rem; font-weight: 600; }

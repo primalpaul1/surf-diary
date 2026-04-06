@@ -59,7 +59,7 @@
         <p class="muted" style="margin-bottom:1rem">Create an account or log in to start tracking your sessions.</p>
         <div class="spot-picker-btns">
           <button onclick="document.getElementById('create-modal').classList.remove('hidden')" class="btn-solid btn-block">Create Account</button>
-          <button onclick="openLoginModal()" class="btn-glass btn-block" style="border-color:rgba(255,255,255,0.2);margin-top:0.5rem"><img src='/primal-logo.png' alt='' class='btn-icon'>Log in with Primal</button>
+          <button onclick="openLoginModal()" class="btn-primal-dark btn-block" style="margin-top:0.5rem"><img src='/primal-logo.png' alt='' class='btn-icon'>Log in with Primal</button>
         </div>
         <div class="modal-divider"></div>
       </div>
@@ -291,12 +291,7 @@
     <!-- FEED -->
     <section id="view-history" class="view">
       <div class="card">
-        <div class="feed-header"><h2>Feed</h2>
-          <div class="filters">
-            <button id="browse-spots-btn" class="btn-outline btn-sm">Browse Spots</button>
-            <select id="filter-direction"><option value="">All Swells</option><option>S</option><option>SSW</option><option>SW</option><option>WSW</option><option>W</option><option>WNW</option><option>NW</option><option>NNW</option><option>N</option></select><input type="month" id="filter-month">
-          </div>
-        </div>
+        <div class="feed-header"><h2>Feed</h2></div>
         <div id="session-list" class="feed-list"></div>
       </div>
       <!-- Browse Spots Panel -->
@@ -321,18 +316,6 @@
 
     <!-- ANALYSIS -->
     <section id="view-analysis" class="view">
-      <div class="card search-card">
-        <h2>Search Sessions</h2>
-        <p class="muted">Find sessions by swell direction, size, period, or rating.</p>
-        <div class="search-grid">
-          <div class="field"><label>Swell Direction (°)</label><div class="range-row"><input type="number" id="search-dir-min" placeholder="e.g. 200" min="0" max="360" class="input-sm"><span class="range-sep">to</span><input type="number" id="search-dir-max" placeholder="e.g. 220" min="0" max="360" class="input-sm"></div></div>
-          <div class="field"><label>Swell Height (ft)</label><div class="range-row"><input type="number" id="search-height-min" placeholder="Min" step="0.5" min="0" class="input-sm"><span class="range-sep">to</span><input type="number" id="search-height-max" placeholder="Max" step="0.5" min="0" class="input-sm"></div></div>
-          <div class="field"><label>Period (s)</label><div class="range-row"><input type="number" id="search-period-min" placeholder="Min" min="0" class="input-sm"><span class="range-sep">+</span><input type="number" id="search-period-max" placeholder="Max" min="0" class="input-sm"></div></div>
-          <div class="field"><label>Rating (1-10)</label><div class="range-row"><input type="number" id="search-rating-min" placeholder="Min" min="1" max="10" class="input-sm"><span class="range-sep">to</span><input type="number" id="search-rating-max" placeholder="Max" min="1" max="10" class="input-sm"></div></div>
-        </div>
-        <div class="search-actions"><button id="search-btn" class="btn-solid">Search</button><button id="search-clear" class="btn-outline btn-sm" style="border-color:#d1d8e0;color:var(--text-muted)">Clear</button></div>
-        <div id="search-results" class="search-results"></div>
-      </div>
       <div class="analysis-grid">
         <div class="card"><h2>By Swell Direction</h2><p class="muted">Which swells produce the best surf?</p><div id="direction-analysis"></div></div>
         <div class="card"><h2>Best Combos</h2><p class="muted">Top conditions (2+ sessions)</p><div id="best-conditions"></div></div>
