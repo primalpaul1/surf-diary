@@ -1,5 +1,5 @@
 {
-  "name": "surf-diary",
+  "name": "swellnotes",
   "version": "1.0.0",
   "description": "Surf diary for Dominical - track conditions and predict good surf",
   "main": "server.js",

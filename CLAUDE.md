@@ -1,12 +1,12 @@
-# Dominical Surf Diary
+# Swellnotes
 
-Surf session logging app for Dominical, Costa Rica. Users log when they surfed, rate the session 1-10, and optionally leave voice memos and video clips. Surf conditions (swell, wind, tide) are auto-fetched from Surfline's API. The goal is to build a permanent record that cross-references swell data with human ratings to predict when the surf will be good.
+Surf session logging app. Users log when they surfed, rate the session 1-10, and optionally leave voice memos and video clips. Surf conditions (swell, wind, tide) are auto-fetched from Surfline's API. The goal is to build a permanent record that cross-references swell data with human ratings to predict when the surf will be good.
 
 ## Production
 
-**https://surf-diary-production.up.railway.app**
+**https://swellnotes.com**
 
-Hosted on Railway, auto-deploys from `primalpaul1/surf-diary` on GitHub push.
+Hosted on Hetzner (5.78.133.92), auto-deploys from `primalpaul1/surf-diary` on GitHub push via webhook.
 
 ## Run Locally
 
@@ -19,7 +19,7 @@ cd ~/surf-diary && npm start
 
 - **Backend**: Node.js + Express + better-sqlite3
 - **Frontend**: Vanilla HTML/CSS/JS (no framework), ES modules loaded from esm.sh for nostr-tools
-- **Database**: SQLite at `./surf-diary.db`
+- **Database**: SQLite at `./swellnotes.db`
 - **Auth**: Nostr keypairs — local generation or NIP-46 remote signing via Primal
 - **Fonts**: DM Serif Display (headlines) + Outfit (body) from Google Fonts
 
@@ -90,7 +90,7 @@ Two login methods:
 ### 1. Local Account Creation
 - User picks a surfer name + optional avatar photo
 - Client generates Nostr keypair via `nostr-tools` (loaded from `esm.sh`)
-- Keypair stored in `localStorage` as `surf_diary_user`
+- Keypair stored in `localStorage` as `swellnotes_user`
 - Secret key stays client-side only
 
 ### 2. NIP-46 Primal Login
@@ -115,9 +115,9 @@ All authenticated requests send `X-Nostr-Pubkey: <hex>` header. Server validates
 ## File Structure
 
 ```
-surf-diary/
+swellnotes/
 ├── server.js              # Express server, Surfline API, all routes
-├── surf-diary.db          # SQLite database (gitignored)
+├── swellnotes.db          # SQLite database (gitignored)
 ├── package.json           # express, better-sqlite3, nostr-tools, qrcode
 ├── audio/                 # Voice memo .webm files
 ├── videos/                # Video clip .mp4 files

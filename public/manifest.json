@@ -1,6 +1,6 @@
 {
-  "name": "Surf Diary",
-  "short_name": "Surf Diary",
+  "name": "Swellnotes",
+  "short_name": "Swellnotes",
   "description": "Track the swell. Rate your sessions. Predict when it fires.",
   "start_url": "/",
   "display": "standalone",

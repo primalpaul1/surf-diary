@@ -22,7 +22,7 @@ function userLinkHTML(pubkey,name,avatarPath,cls='feed'){
 function selectSpot(spot){
   if(!spot||spot.error){console.error('Invalid spot:',spot);return;}
   currentSpot=spot;
-  localStorage.setItem('surf_diary_spot',JSON.stringify(spot));
+  localStorage.setItem('swellnotes_spot',JSON.stringify(spot));
   $('#spot-picker')?.classList.add('hidden');
   $('#main-content')?.classList.remove('hidden');
   $('#header-spot-name').textContent=spot.name;
@@ -30,7 +30,7 @@ function selectSpot(spot){
   $('#hero-sub').textContent=spot.location_text||'Track the swell. Rate your sessions.';
   if(spot.cover_image_url){$('#hero-img').src=spot.cover_image_url;$('#hero-img').style.display='';}
   else{$('#hero-img').src='/dominical-hero.jpg';$('#hero-img').style.display='';}
-  document.title=`${spot.name} · Surf Diary`;
+  document.title=`${spot.name} · Swellnotes`;
   // Show spot settings if admin
   if(currentUser){
     const mem=spot.members?.find(m=>m.pubkey===currentUser.pubkey);
@@ -188,7 +188,7 @@ $('#create-form').addEventListener('submit',async e=>{
   else if(avatarFile){const r=new FileReader();body.avatar_base64=await new Promise(res=>{r.onloadend=()=>res(r.result.split(',')[1]);r.readAsDataURL(avatarFile);});}
   const res=await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   const data=await res.json();currentUser.avatar_path=data.avatar_path||avatarUrl;
-  localStorage.setItem('surf_diary_user',JSON.stringify(currentUser));
+  localStorage.setItem('swellnotes_user',JSON.stringify(currentUser));
   await publishProfile(name,avatarUrl);
   updateAuthUI();$('#create-modal').classList.add('hidden');avatarFile=null;toast(`Welcome, ${name}!`);
   }catch{toast('Failed','error');}
@@ -277,7 +277,7 @@ async function waitForNIP46(){
 async function completeLogin(pk){
   const profile=await fetchProfile(pk);const name=profile?.name||profile?.display_name||pk.slice(0,8)+'...';const picture=profile?.picture||null;
   await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pubkey:pk,display_name:name,avatar_url:picture})});
-  currentUser={pubkey:pk,display_name:name,avatar_path:picture};localStorage.setItem('surf_diary_user',JSON.stringify(currentUser));
+  currentUser={pubkey:pk,display_name:name,avatar_path:picture};localStorage.setItem('swellnotes_user',JSON.stringify(currentUser));
   updateAuthUI();$('#login-loading')?.classList.add('hidden');$('#login-qr')?.classList.add('hidden');$('#mobile-login-btn')?.classList.add('hidden');$('#login-connected')?.classList.remove('hidden');
   // Auto-load and select first spot after login
   await loadMySpots();
@@ -328,7 +328,7 @@ $('#copy-key-btn').addEventListener('click',()=>{
 $('#settings-modal .modal-backdrop').addEventListener('click',()=>$('#settings-modal').classList.add('hidden'));
 $('#settings-modal .modal-close').addEventListener('click',()=>$('#settings-modal').classList.add('hidden'));
 
-$('#logout-btn').addEventListener('click',()=>{currentUser=null;currentSpot=null;mySpots=[];followingSet.clear();localStorage.removeItem('surf_diary_user');localStorage.removeItem('surf_diary_spot');updateAuthUI();location.reload();});
+$('#logout-btn').addEventListener('click',()=>{currentUser=null;currentSpot=null;mySpots=[];followingSet.clear();localStorage.removeItem('swellnotes_user');localStorage.removeItem('swellnotes_spot');updateAuthUI();location.reload();});
 
 function updateAuthUI(){
   if(currentUser){$('#auth-buttons').classList.add('hidden');$('#user-info').classList.remove('hidden');$('#spot-picker-auth')?.classList.add('hidden');$('#user-name').textContent=currentUser.display_name;const av=$('#user-avatar');if(currentUser.avatar_path){av.src=currentUser.avatar_path;av.style.display='';}else av.style.display='none';$('#submit-btn').disabled=false;$('#submit-btn').textContent='Log Session';$('#comment-form')?.classList.remove('hidden');loadFollowing();loadMySpots().then(showMySpots);}
@@ -639,8 +639,8 @@ function renderMySpotsList(){
 }
 
 // ===== INIT =====
-const saved=localStorage.getItem('surf_diary_user');if(saved){try{currentUser=JSON.parse(saved);}catch{localStorage.removeItem('surf_diary_user');}}
-const savedSpot=localStorage.getItem('surf_diary_spot');if(savedSpot){try{currentSpot=JSON.parse(savedSpot);selectSpot(currentSpot);}catch{localStorage.removeItem('surf_diary_spot');}}
+const saved=localStorage.getItem('swellnotes_user');if(saved){try{currentUser=JSON.parse(saved);}catch{localStorage.removeItem('swellnotes_user');}}
+const savedSpot=localStorage.getItem('swellnotes_spot');if(savedSpot){try{currentSpot=JSON.parse(savedSpot);selectSpot(currentSpot);}catch{localStorage.removeItem('swellnotes_spot');}}
 console.log('[Init] user:',currentUser?.display_name||'none','spot:',currentSpot?.name||'none');
 updateAuthUI();checkCallback();checkInviteURL();
 if(!currentSpot)fetchConditions();

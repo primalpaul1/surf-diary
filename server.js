@@ -17,7 +17,7 @@ const USE_PG=!!process.env.DATABASE_URL;
 let db;
 if(USE_PG){const{Pool}=require('pg');const pool=new Pool({connectionString:process.env.DATABASE_URL,ssl:process.env.DATABASE_URL.includes('localhost')?false:{rejectUnauthorized:false}});
 db={query:async(sql,p=[])=>(await pool.query(sql,p)).rows,get:async(sql,p=[])=>(await pool.query(sql,p)).rows[0]||null,run:async(sql,p=[])=>{const isInsert=sql.trimStart().toUpperCase().startsWith('INSERT');const q=isInsert?sql+' RETURNING *':sql;const r=await pool.query(q,p);return{lastID:r.rows?.[0]?.id,rows:r.rows||[]};},exec:async sql=>pool.query(sql)};}
-else{let Database;try{Database=require('better-sqlite3');}catch{console.error('better-sqlite3 not available and no DATABASE_URL set');process.exit(1);}const sq=new Database(path.join(__dirname,'surf-diary.db'));sq.pragma('journal_mode=WAL');sq.pragma('foreign_keys=ON');
+else{let Database;try{Database=require('better-sqlite3');}catch{console.error('better-sqlite3 not available and no DATABASE_URL set');process.exit(1);}const sq=new Database(path.join(__dirname,'swellnotes.db'));sq.pragma('journal_mode=WAL');sq.pragma('foreign_keys=ON');
 db={query:async(sql,p=[])=>sq.prepare(sql.replace(/\$(\d+)/g,'?')).all(...p),get:async(sql,p=[])=>sq.prepare(sql.replace(/\$(\d+)/g,'?')).get(...p)||null,run:async(sql,p=[])=>{const r=sq.prepare(sql.replace(/\$(\d+)/g,'?').replace(/ RETURNING \*/,'')).run(...p);return{lastID:r.lastInsertRowid};},exec:async sql=>sq.exec(sql)};}
 
 async function initDB(){
@@ -236,7 +236,7 @@ app.get('/api/conditions',async(req,res)=>{
 });
 
 // ===== NIP-46 =====
-app.get('/api/nip46/init',async(req,res)=>{try{const{generateSecretKey,getPublicKey}=await import('nostr-tools');const sk=generateSecretKey();const secretKey=Buffer.from(sk).toString('hex');const publicKey=getPublicKey(sk);const rh=crypto.randomBytes(16).toString('hex');const secret=`sec-${rh.slice(0,8)}-${rh.slice(8,12)}-${rh.slice(12,16)}-${rh.slice(16,20)}-${rh.slice(20,32)}`;const relay='wss://relay.primal.net';const p=new URLSearchParams();p.append('relay',relay);p.append('secret',secret);p.append('name','Surf Diary');p.append('url',req.query.origin||`http://localhost:${PORT}`);const qrURI=`nostrconnect://${publicKey}?${p.toString()}`;const cp=new URLSearchParams(p);cp.append('callback',`${req.query.origin||`http://localhost:${PORT}`}/login-callback`);res.json({secretKey,publicKey,secret,relay,qrDataUrl:await QRCode.toDataURL(qrURI,{width:280,margin:2}),qrURI,mobileURI:`nostrconnect://${publicKey}?${cp.toString()}`});}catch{res.status(500).json({error:'Failed'});}});
+app.get('/api/nip46/init',async(req,res)=>{try{const{generateSecretKey,getPublicKey}=await import('nostr-tools');const sk=generateSecretKey();const secretKey=Buffer.from(sk).toString('hex');const publicKey=getPublicKey(sk);const rh=crypto.randomBytes(16).toString('hex');const secret=`sec-${rh.slice(0,8)}-${rh.slice(8,12)}-${rh.slice(12,16)}-${rh.slice(16,20)}-${rh.slice(20,32)}`;const relay='wss://relay.primal.net';const p=new URLSearchParams();p.append('relay',relay);p.append('secret',secret);p.append('name','Swellnotes');p.append('url',req.query.origin||`http://localhost:${PORT}`);const qrURI=`nostrconnect://${publicKey}?${p.toString()}`;const cp=new URLSearchParams(p);cp.append('callback',`${req.query.origin||`http://localhost:${PORT}`}/login-callback`);res.json({secretKey,publicKey,secret,relay,qrDataUrl:await QRCode.toDataURL(qrURI,{width:280,margin:2}),qrURI,mobileURI:`nostrconnect://${publicKey}?${cp.toString()}`});}catch{res.status(500).json({error:'Failed'});}});
 
 // ===== AUTH =====
 app.post('/api/auth/login',async(req,res)=>{
@@ -372,4 +372,4 @@ app.get('/api/debug',async(req,res)=>{try{if(USE_PG){const tables=await db.query
 app.get('/login-callback',(req,res)=>res.sendFile(path.join(__dirname,'public','login-callback.html')));
 app.get('/join/:code',(req,res)=>res.sendFile(path.join(__dirname,'public','index.html')));
 app.get('*',(req,res)=>res.sendFile(path.join(__dirname,'public','index.html')));
-initDB().then(()=>app.listen(PORT,()=>console.log(`🏄 Surf Diary running at http://localhost:${PORT}`))).catch(err=>{console.error('DB init failed:',err);process.exit(1);});
+initDB().then(()=>app.listen(PORT,()=>console.log(`🏄 Swellnotes running at http://localhost:${PORT}`))).catch(err=>{console.error('DB init failed:',err);process.exit(1);});
