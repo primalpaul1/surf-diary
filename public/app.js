@@ -297,7 +297,24 @@ document.querySelector('.shape-tab[data-val="surfed"]')?.classList.add('active')
 
 // ===== RATING =====
 const rs=$('#rating'),rd=$('#rating-display');
-function updateRating(){const v=+rs.value;rd.textContent=v;const[bg,fg]=v<=3?['linear-gradient(135deg,#fecaca,#fde68a)','#b91c1c']:v<=5?['linear-gradient(135deg,#fde68a,#bef264)','#a16207']:v<=7?['linear-gradient(135deg,#6ee7b7,#38bdf8)','#0e7490']:['linear-gradient(135deg,#818cf8,#f472b6)','#fff'];rd.style.background=bg;rd.style.color=fg;}
+let lastRatingVal=5;
+function updateRating(){
+  const v=+rs.value;
+  const[bg,fg]=v<=3?['linear-gradient(135deg,#fecaca,#fde68a)','#b91c1c']:v<=5?['linear-gradient(135deg,#fde68a,#bef264)','#a16207']:v<=7?['linear-gradient(135deg,#6ee7b7,#38bdf8)','#0e7490']:['linear-gradient(135deg,#818cf8,#f472b6)','#fff'];
+  rd.style.background=bg;rd.style.color=fg;
+  // Scale badge size based on rating
+  const scale=0.9+v*0.04;rd.style.transform=`scale(${scale})`;
+  if(v>=8)rd.style.boxShadow='0 0 20px rgba(129,140,248,0.4)';
+  else if(v>=6)rd.style.boxShadow='0 0 12px rgba(56,189,248,0.25)';
+  else rd.style.boxShadow='none';
+  // Pulse + haptic on change
+  if(v!==lastRatingVal){
+    rd.classList.remove('pulse');void rd.offsetWidth;rd.classList.add('pulse');
+    if(v>lastRatingVal&&navigator.vibrate)navigator.vibrate(v>=8?[30,20,30]:v>=5?[15]:[8]);
+    lastRatingVal=v;
+  }
+  rd.textContent=v;
+}
 rs.addEventListener('input',updateRating);updateRating();
 
 // ===== VOICE =====
@@ -364,11 +381,11 @@ async function loadFeed(){
 }
 
 function renderSessionCard(s){
-  const d=new Date(s.session_date+'T12:00:00'),tags=[],sw=JSON.parse(s.swells_json||'[]');
-  sw.forEach(x=>tags.push(`<span class="tag tag-swell">${x.height_ft}ft ${x.period_s}s ${x.direction_compass} ${x.direction_deg}°</span>`));
+  const d=new Date(s.session_date+'T12:00:00'),tags=[];
+  // Only show session type, wave shape, and media tags — no swell/wind data
   if(s.surf_height_min_ft!=null)tags.push(`<span class="tag tag-height">${s.surf_height_min_ft}-${s.surf_height_max_ft}ft</span>`);
-  if(s.wind_type)tags.push(`<span class="tag tag-wind">${s.wind_speed_mph||''}mph ${s.wind_type}</span>`);
-  if(s.session_type==='observed')tags.push('<span class="tag tag-observed">observed</span>');
+  if(s.session_type==='surfed')tags.push('<span class="tag tag-shape">surfed</span>');
+  else if(s.session_type==='observed')tags.push('<span class="tag tag-observed">observed</span>');
   if(s.wave_shape)tags.push(`<span class="tag tag-shape">${s.wave_shape}</span>`);
   if(s.video_path)tags.push('<span class="tag tag-video">📹</span>');
   if(s.voice_memo_path)tags.push('<span class="tag tag-voice">🎙</span>');
@@ -423,12 +440,17 @@ window.toggleSpotFollow=async id=>{
 };
 
 // ===== SINGLE-SPOT FEED (fallback for logged-out) =====
-async function loadSessions(){const dir=$('#filter-direction').value,mo=$('#filter-month').value,p=new URLSearchParams();if(currentSpot)p.set('spot_id',currentSpot.id);if(currentUser)p.set('feed_for',currentUser.pubkey);if(dir)p.set('swell_dir',dir);if(mo)p.set('month',mo);
-try{const{sessions}=await(await fetch(`/api/sessions?${p}`)).json();const list=$('#session-list');if(!sessions.length){list.innerHTML='<div class="empty-state"><p>No sessions yet. Be the first to log one!</p></div>';return;}
-list.innerHTML=sessions.map(s=>{const d=new Date(s.session_date+'T12:00:00'),tags=[],sw=JSON.parse(s.swells_json||'[]');sw.forEach(x=>tags.push(`<span class="tag tag-swell">${x.height_ft}ft ${x.period_s}s ${x.direction_compass} ${x.direction_deg}°</span>`));if(s.surf_height_min_ft!=null)tags.push(`<span class="tag tag-height">${s.surf_height_min_ft}-${s.surf_height_max_ft}ft</span>`);if(s.wind_type)tags.push(`<span class="tag tag-wind">${s.wind_speed_mph||''}mph ${s.wind_type}</span>`);if(s.session_type==='observed')tags.push('<span class="tag tag-observed">observed</span>');if(s.wave_shape)tags.push(`<span class="tag tag-shape">${s.wave_shape}</span>`);if(s.video_path)tags.push('<span class="tag tag-video">📹</span>');if(s.voice_memo_path)tags.push('<span class="tag tag-voice">🎙</span>');
-const vt=s.video_path?`<div class="feed-video-thumb"><video src="${s.video_path}" preload="metadata" muted></video></div>`:'';
-return`<div class="feed-card" data-id="${s.id}"><div class="feed-date"><div class="day">${d.getDate()}</div><div class="mo">${d.toLocaleString('en',{month:'short'})}</div></div><div class="feed-body"><div class="feed-user">${avatarHTML(s.avatar_path,s.display_name)}<span class="feed-name">${escapeHtml(s.display_name||'Anon')}</span><span class="feed-tod">· ${formatTOD(s.time_of_day)}</span></div><div class="feed-tags">${tags.join('')}</div>${vt}</div><div class="feed-rating">${s.rating?`<div class="rbadge ${getRatingClass(s.rating)}">${s.rating}</div>`:'<div class="rbadge" style="background:#f1f5f9;color:#94a3b8">—</div>'}</div></div>`;}).join('');
-list.querySelectorAll('.feed-card').forEach(c=>c.addEventListener('click',()=>openSession(c.dataset.id)));}catch{$('#session-list').innerHTML='<div class="empty-state">Error</div>';}}
+async function loadSessions(){
+  const list=$('#session-list');
+  if(!currentSpot){list.innerHTML='<div class="empty-state"><p>Select a spot first to see the feed.</p></div>';return;}
+  const dir=$('#filter-direction').value,mo=$('#filter-month').value,p=new URLSearchParams();
+  p.set('spot_id',currentSpot.id);if(currentUser)p.set('feed_for',currentUser.pubkey);if(dir)p.set('swell_dir',dir);if(mo)p.set('month',mo);
+  try{const{sessions}=await(await fetch(`/api/sessions?${p}`)).json();
+  if(!sessions.length){list.innerHTML='<div class="empty-state"><p>No sessions yet. Be the first to log one!</p></div>';return;}
+  list.innerHTML=sessions.map(s=>renderSessionCard(s)).join('');
+  list.querySelectorAll('.feed-card').forEach(c=>c.addEventListener('click',()=>openSession(c.dataset.id)));
+  }catch{list.innerHTML='<div class="empty-state">Error</div>';}
+}
 $('#filter-direction').addEventListener('change',()=>{if(currentUser)loadFeed();else loadSessions();});$('#filter-month').addEventListener('change',()=>{if(currentUser)loadFeed();else loadSessions();});
 
 // ===== DETAIL =====
