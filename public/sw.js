@@ -1,5 +1,5 @@
-const CACHE_NAME = 'swellnotes-v6';
-const STATIC_ASSETS = ['/', '/styles.css', '/app.js', '/primal-logo.png', '/dominical-hero.jpg', '/wave-bg.jpg', '/manifest.json'];
+const CACHE_NAME = 'swellnotes-v8';
+const STATIC_ASSETS = ['/', '/styles.css', '/app.js', '/primal-logo.png', '/sn-logo.png', '/dominical-hero.jpg', '/wave-bg.jpg', '/manifest.json'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE_NAME).then(c => c.addAll(STATIC_ASSETS)));

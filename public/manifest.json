@@ -1,7 +1,7 @@
 {
   "name": "Swellnotes",
   "short_name": "Swellnotes",
-  "description": "Track the swell. Rate your sessions. Predict when it fires.",
+  "description": "Know your spot.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0a1628",
@@ -9,7 +9,7 @@
   "orientation": "portrait-primary",
   "icons": [
     {
-      "src": "/primal-logo.png",
+      "src": "/sn-logo.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
