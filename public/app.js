@@ -172,6 +172,7 @@ $('#avatar-file').addEventListener('change',e=>{avatarFile=e.target.files[0];if(
 
 $('#create-form').addEventListener('submit',async e=>{
   e.preventDefault();const name=$('#create-name').value.trim();if(!name)return;
+  $('#create-submit-btn').disabled=true;$('#create-submit-btn').classList.add('hidden');$('#create-loading').classList.remove('hidden');
   try{const{generateSecretKey,getPublicKey}=await import('https://esm.sh/nostr-tools@2.10.0');const{bytesToHex}=await import('https://esm.sh/@noble/hashes@1.8.0/utils');
   const sk=generateSecretKey(),secretKey=bytesToHex(sk),pubkey=getPublicKey(sk);
   currentUser={pubkey,secretKey,display_name:name,avatar_path:null};
@@ -184,6 +185,7 @@ $('#create-form').addEventListener('submit',async e=>{
   await publishProfile(name,avatarUrl);
   updateAuthUI();$('#create-modal').classList.add('hidden');avatarFile=null;toast(`Welcome, ${name}!`);
   }catch{toast('Failed','error');}
+  finally{$('#create-submit-btn').disabled=false;$('#create-submit-btn').classList.remove('hidden');$('#create-loading').classList.add('hidden');}
 });
 
 const isMobile=/Android|iPhone|iPad|iPod/i.test(navigator.userAgent);

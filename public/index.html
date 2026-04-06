@@ -131,7 +131,8 @@
           <input type="file" id="avatar-file" accept="image/*" class="hidden">
         </div>
         <div class="field"><label>Surfer Name</label><input type="text" id="create-name" placeholder="e.g. KookSlayer420" required maxlength="30"></div>
-        <button type="submit" class="btn-solid btn-block">Create My Account</button>
+        <button type="submit" class="btn-solid btn-block" id="create-submit-btn">Create My Account</button>
+        <div id="create-loading" class="modal-loading hidden"><div class="spinner"></div><span>Creating your account...</span></div>
       </form>
       <div class="modal-divider"></div>
       <p class="modal-footer-text">Already on Nostr? <button id="switch-to-primal" class="link-btn">Log in with Primal →</button></p>
