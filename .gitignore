@@ -1,10 +1,13 @@
 node_modules/
 surf-diary.db
+swellnotes.db
+swellnotes.db-shm
+swellnotes.db-wal
 audio/
 videos/
 avatars/
 .DS_Store
-surf-diary.db-shm
-surf-diary.db-wal
-# deploy test 2
-# persistence test Sun Apr  5 23:00:10 CST 2026
+# iOS build artifacts
+ios/App/App/public/
+ios/App/Pods/
+*.xcuserdatad

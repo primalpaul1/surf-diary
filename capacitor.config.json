@@ -1,0 +1,18 @@
+{
+  "appId": "com.swellnotes.app",
+  "appName": "Swellnotes",
+  "webDir": "public",
+  "ios": {
+    "contentInset": "always",
+    "allowsLinkPreview": false,
+    "scrollEnabled": true,
+    "preferredContentMode": "mobile"
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 2000,
+      "backgroundColor": "#0a1628",
+      "launchAutoHide": true
+    }
+  }
+}

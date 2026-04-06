@@ -35,6 +35,8 @@ async function initDB(){
     `CREATE TABLE IF NOT EXISTS follows(follower_pubkey TEXT NOT NULL,followed_pubkey TEXT NOT NULL,created_at INTEGER DEFAULT ${ts},PRIMARY KEY(follower_pubkey,followed_pubkey))`,
     `CREATE TABLE IF NOT EXISTS forecast_cache(id ${serial},spot_id TEXT,fetched_at INTEGER DEFAULT ${ts},data_json TEXT NOT NULL)`,
     `CREATE TABLE IF NOT EXISTS spot_follows(pubkey TEXT NOT NULL,spot_id TEXT NOT NULL,created_at INTEGER DEFAULT ${ts},PRIMARY KEY(pubkey,spot_id))`,
+    `CREATE TABLE IF NOT EXISTS reports(id ${serial},reporter_pubkey TEXT NOT NULL,target_type TEXT NOT NULL,target_id TEXT NOT NULL,reason TEXT,created_at INTEGER DEFAULT ${ts})`,
+    `CREATE TABLE IF NOT EXISTS blocks(blocker_pubkey TEXT NOT NULL,blocked_pubkey TEXT NOT NULL,created_at INTEGER DEFAULT ${ts},PRIMARY KEY(blocker_pubkey,blocked_pubkey))`,
   ];
   for(const sql of tables){try{await db.exec(sql);console.log('✅',sql.slice(0,60));}catch(err){console.log('⚠️ Table:',err.message?.slice(0,100));}}
   // Check what's actually in the DB
@@ -83,6 +85,11 @@ async function getForecast(spotId){
 }
 
 function saveFile(base64,dir,ext){const fn=`${Date.now()}_${Math.random().toString(36).slice(2,8)}.${ext}`;fs.writeFileSync(path.join(__dirname,dir,fn),Buffer.from(base64,'base64'));return`/${dir}/${fn}`;}
+
+// Make media paths absolute so Capacitor local mode can resolve them
+function absUrl(p,req){if(!p||p.startsWith('http'))return p;const host=req?.headers?.origin||`http://localhost:${PORT}`;return`https://swellnotes.com${p}`;}
+function absSession(s,req){if(!s)return s;if(s.voice_memo_path)s.voice_memo_path=absUrl(s.voice_memo_path,req);if(s.video_path)s.video_path=absUrl(s.video_path,req);if(s.avatar_path)s.avatar_path=absUrl(s.avatar_path,req);return s;}
+function absUser(u,req){if(!u)return u;if(u.avatar_path)u.avatar_path=absUrl(u.avatar_path,req);return u;}
 
 // ===== AUTH =====
 function requireAuth(req,res,next){const p=req.headers['x-nostr-pubkey'];if(!p||!/^[0-9a-f]{64}$/.test(p))return res.status(401).json({error:'Missing pubkey'});req.pubkey=p;next();}
@@ -218,7 +225,7 @@ app.get('/api/feed',requireAuth,async(req,res)=>{
     if(swell_dir){w.push(`swells_json LIKE $${n++}`);p.push(`%"direction_compass":"${swell_dir}"%`);}
     const wc='WHERE '+w.join(' AND ');
     const sessions=await db.query(`SELECT s.*,u.display_name,u.avatar_path FROM sessions s LEFT JOIN users u ON s.pubkey=u.pubkey ${wc} ORDER BY s.session_date DESC,s.created_at DESC LIMIT $${n++}`,[...p,+limit]);
-    if(sessions.length)result.push({spot:{id:spot.id,name:spot.name,location_text:spot.location_text,cover_image_url:spot.cover_image_url,member_count:spot.member_count},sessions});
+    if(sessions.length)result.push({spot:{id:spot.id,name:spot.name,location_text:spot.location_text,cover_image_url:spot.cover_image_url,member_count:spot.member_count},sessions:sessions.map(s=>absSession(s,req))});
   }
   res.json(result);
 });
@@ -236,7 +243,7 @@ app.get('/api/conditions',async(req,res)=>{
 });
 
 // ===== NIP-46 =====
-app.get('/api/nip46/init',async(req,res)=>{try{const{generateSecretKey,getPublicKey}=await import('nostr-tools');const sk=generateSecretKey();const secretKey=Buffer.from(sk).toString('hex');const publicKey=getPublicKey(sk);const rh=crypto.randomBytes(16).toString('hex');const secret=`sec-${rh.slice(0,8)}-${rh.slice(8,12)}-${rh.slice(12,16)}-${rh.slice(16,20)}-${rh.slice(20,32)}`;const relay='wss://relay.primal.net';const p=new URLSearchParams();p.append('relay',relay);p.append('secret',secret);p.append('name','Swellnotes');p.append('url',req.query.origin||`http://localhost:${PORT}`);const qrURI=`nostrconnect://${publicKey}?${p.toString()}`;const cp=new URLSearchParams(p);cp.append('callback',`${req.query.origin||`http://localhost:${PORT}`}/login-callback`);res.json({secretKey,publicKey,secret,relay,qrDataUrl:await QRCode.toDataURL(qrURI,{width:280,margin:2}),qrURI,mobileURI:`nostrconnect://${publicKey}?${cp.toString()}`});}catch(err){console.error('NIP-46 init error:',err);res.status(500).json({error:'NIP-46 init failed: '+(err.message||'unknown')});}});
+app.get('/api/nip46/init',async(req,res)=>{try{const{generateSecretKey,getPublicKey}=await import('nostr-tools');const sk=generateSecretKey();const secretKey=Buffer.from(sk).toString('hex');const publicKey=getPublicKey(sk);const rh=crypto.randomBytes(16).toString('hex');const secret=`sec-${rh.slice(0,8)}-${rh.slice(8,12)}-${rh.slice(12,16)}-${rh.slice(16,20)}-${rh.slice(20,32)}`;const relay='wss://relay.primal.net';const p=new URLSearchParams();p.append('relay',relay);p.append('secret',secret);p.append('name','Swellnotes');p.append('url',req.query.origin||`http://localhost:${PORT}`);const qrURI=`nostrconnect://${publicKey}?${p.toString()}`;const cp=new URLSearchParams(p);const callbackBase=req.query.platform==='ios'?'swellnotes://login-callback':`${req.query.origin||`http://localhost:${PORT}`}/login-callback`;cp.append('callback',callbackBase);res.json({secretKey,publicKey,secret,relay,qrDataUrl:await QRCode.toDataURL(qrURI,{width:280,margin:2}),qrURI,mobileURI:`nostrconnect://${publicKey}?${cp.toString()}`});}catch(err){console.error('NIP-46 init error:',err);res.status(500).json({error:'NIP-46 init failed: '+(err.message||'unknown')});}});
 
 // ===== AUTH =====
 app.post('/api/auth/login',async(req,res)=>{
@@ -261,10 +268,12 @@ app.post('/api/auth/login',async(req,res)=>{
 
 app.get('/api/users',async(req,res)=>{
   const spotId=req.query.spot_id;
-  if(spotId)res.json(await db.query('SELECT u.pubkey,u.display_name,u.avatar_path,sm.role,(SELECT COUNT(*)FROM sessions WHERE pubkey=u.pubkey AND spot_id=$1) as session_count FROM spot_members sm LEFT JOIN users u ON sm.pubkey=u.pubkey WHERE sm.spot_id=$1 ORDER BY session_count DESC',[spotId]));
-  else res.json(await db.query('SELECT u.pubkey,u.display_name,u.avatar_path,(SELECT COUNT(*)FROM sessions WHERE pubkey=u.pubkey) as session_count FROM users u ORDER BY session_count DESC'));
+  let users;
+  if(spotId)users=await db.query('SELECT u.pubkey,u.display_name,u.avatar_path,sm.role,(SELECT COUNT(*)FROM sessions WHERE pubkey=u.pubkey AND spot_id=$1) as session_count FROM spot_members sm LEFT JOIN users u ON sm.pubkey=u.pubkey WHERE sm.spot_id=$1 ORDER BY session_count DESC',[spotId]);
+  else users=await db.query('SELECT u.pubkey,u.display_name,u.avatar_path,(SELECT COUNT(*)FROM sessions WHERE pubkey=u.pubkey) as session_count FROM users u ORDER BY session_count DESC');
+  res.json(users.map(u=>absUser(u,req)));
 });
-app.get('/api/users/:pubkey',async(req,res)=>{const u=await db.get('SELECT*FROM users WHERE pubkey=$1',[req.params.pubkey]);if(!u)return res.status(404).json({error:'Not found'});const c=await db.get('SELECT COUNT(*) as c FROM sessions WHERE pubkey=$1',[req.params.pubkey]);res.json({...u,session_count:c?.c||0});});
+app.get('/api/users/:pubkey',async(req,res)=>{const u=await db.get('SELECT*FROM users WHERE pubkey=$1',[req.params.pubkey]);if(!u)return res.status(404).json({error:'Not found'});const c=await db.get('SELECT COUNT(*) as c FROM sessions WHERE pubkey=$1',[req.params.pubkey]);res.json(absUser({...u,session_count:c?.c||0},req));});
 
 // ===== FOLLOWS =====
 app.get('/api/follows',requireAuth,async(req,res)=>{
@@ -296,13 +305,14 @@ app.get('/api/sessions',async(req,res)=>{
   const wc=w.length?'WHERE '+w.join(' AND '):'';
   const sessions=await db.query(`SELECT s.*,u.display_name,u.avatar_path FROM sessions s LEFT JOIN users u ON s.pubkey=u.pubkey ${wc} ORDER BY s.session_date DESC,s.created_at DESC LIMIT $${n++} OFFSET $${n++}`,[...p,+limit,+offset]);
   const total=await db.get(`SELECT COUNT(*) as count FROM sessions s ${wc}`,p);
-  res.json({sessions,total:total?.count||0});
+  res.json({sessions:sessions.map(s=>absSession(s,req)),total:total?.count||0});
 });
 
 app.get('/api/sessions/:id',async(req,res)=>{
   const s=await db.get('SELECT s.*,u.display_name,u.avatar_path FROM sessions s LEFT JOIN users u ON s.pubkey=u.pubkey WHERE s.id=$1',[req.params.id]);
   if(!s)return res.status(404).json({error:'Not found'});
-  res.json({session:s,comments:await db.query('SELECT c.*,u.display_name,u.avatar_path FROM comments c LEFT JOIN users u ON c.pubkey=u.pubkey WHERE c.session_id=$1 ORDER BY c.created_at ASC',[req.params.id])});
+  const comments=await db.query('SELECT c.*,u.display_name,u.avatar_path FROM comments c LEFT JOIN users u ON c.pubkey=u.pubkey WHERE c.session_id=$1 ORDER BY c.created_at ASC',[req.params.id]);
+  res.json({session:absSession(s,req),comments:comments.map(c=>absUser(c,req))});
 });
 
 app.post('/api/sessions',requireAuth,async(req,res)=>{
@@ -312,7 +322,7 @@ app.post('/api/sessions',requireAuth,async(req,res)=>{
   if(b.spot_id){const spot=await db.get('SELECT surfline_spot_id FROM spots WHERE id=$1',[b.spot_id]);if(spot)surflineSpotId=spot.surfline_spot_id;}
   try{c=getConditions(await getForecast(surflineSpotId),b.session_date,b.time_of_day);}catch{}
   let voicePath=b.voice_url||null,videoPath=b.video_url||null;
-  if(!voicePath&&b.voice_memo_base64)voicePath=saveFile(b.voice_memo_base64,'audio','webm');
+  if(!voicePath&&b.voice_memo_base64)voicePath=saveFile(b.voice_memo_base64,'audio',b.voice_ext||'webm');
   if(!videoPath&&b.video_base64)videoPath=saveFile(b.video_base64,'videos','mp4');
   const r=await db.run('INSERT INTO sessions(pubkey,spot_id,session_date,time_of_day,swells_json,surf_height_min_ft,surf_height_max_ft,wind_speed_mph,wind_direction_deg,wind_type,wind_gust_mph,tide_height_ft,rating,wave_shape,session_type,notes,voice_memo_path,voice_transcript,video_path)VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)',
     [req.pubkey,b.spot_id||null,b.session_date,b.time_of_day,JSON.stringify(c.swells||[]),c.surf_height_min_ft??null,c.surf_height_max_ft??null,c.wind_speed_mph??null,c.wind_direction_deg??null,c.wind_type??null,c.wind_gust_mph??null,c.tide_height_ft??null,b.rating,b.wave_shape||null,b.session_type||'surfed',b.notes||null,voicePath,b.voice_transcript||null,videoPath]);
@@ -345,7 +355,7 @@ app.get('/api/search',async(req,res)=>{
   else sessions=await db.query(`SELECT s.*,u.display_name,u.avatar_path FROM sessions s LEFT JOIN users u ON s.pubkey=u.pubkey ${baseWhere} ORDER BY s.session_date DESC`);
   const results=sessions.filter(s=>{const swells=JSON.parse(s.swells_json||'[]');if(!swells.length)return false;if(dir_min||dir_max){const dmin=parseFloat(dir_min)||0,dmax=parseFloat(dir_max)||360;if(!swells.some(sw=>sw.direction_deg>=dmin&&sw.direction_deg<=dmax))return false;}if(height_min&&swells[0].height_ft<parseFloat(height_min))return false;if(height_max&&swells[0].height_ft>parseFloat(height_max))return false;if(period_min&&swells[0].period_s<parseFloat(period_min))return false;if(period_max&&swells[0].period_s>parseFloat(period_max))return false;if(rating_min&&(s.rating||0)<parseInt(rating_min))return false;if(rating_max&&(s.rating||0)>parseInt(rating_max))return false;return true;});
   const ratings=results.filter(s=>s.rating).map(s=>s.rating);
-  res.json({sessions:results.slice(0,100),summary:{count:results.length,avg_rating:ratings.length?Math.round(ratings.reduce((a,b)=>a+b,0)/ratings.length*10)/10:null,best_rating:ratings.length?Math.max(...ratings):null,worst_rating:ratings.length?Math.min(...ratings):null}});
+  res.json({sessions:results.slice(0,100).map(s=>absSession(s,req)),summary:{count:results.length,avg_rating:ratings.length?Math.round(ratings.reduce((a,b)=>a+b,0)/ratings.length*10)/10:null,best_rating:ratings.length?Math.max(...ratings):null,worst_rating:ratings.length?Math.min(...ratings):null}});
 });
 
 // ===== ANALYSIS (spot-aware) =====
@@ -366,6 +376,28 @@ app.get('/api/analysis/timeline',async(req,res)=>{
   else ss=await db.query(`SELECT session_date,ROUND(AVG(rating),1) as avg_rating,ROUND(AVG(surf_height_min_ft),1) as avg_min,ROUND(AVG(surf_height_max_ft),1) as avg_max,COUNT(*) as entries FROM sessions WHERE 1=1${extra} GROUP BY session_date ORDER BY session_date DESC LIMIT 90`);
   for(const r of ss){const s=await db.get('SELECT swells_json FROM sessions WHERE session_date=$1 AND swells_json IS NOT NULL LIMIT 1',[r.session_date]);if(s?.swells_json)r.directions=JSON.parse(s.swells_json).filter(w=>w.height_ft>0).map(w=>w.direction_compass).join(',');}
   res.json(ss);
+});
+
+// ===== REPORT & BLOCK =====
+app.post('/api/report',requireAuth,async(req,res)=>{
+  const{target_type,target_id,reason}=req.body;
+  if(!target_type||!target_id)return res.status(400).json({error:'Missing fields'});
+  if(!['session','comment','user'].includes(target_type))return res.status(400).json({error:'Invalid type'});
+  await db.run('INSERT INTO reports(reporter_pubkey,target_type,target_id,reason)VALUES($1,$2,$3,$4)',[req.pubkey,target_type,target_id,reason||null]);
+  res.json({ok:true});
+});
+app.post('/api/blocks/:pubkey',requireAuth,async(req,res)=>{
+  if(req.params.pubkey===req.pubkey)return res.status(400).json({error:'Cannot block yourself'});
+  await db.run('INSERT INTO blocks(blocker_pubkey,blocked_pubkey)VALUES($1,$2)ON CONFLICT DO NOTHING',[req.pubkey,req.params.pubkey]);
+  res.json({ok:true});
+});
+app.delete('/api/blocks/:pubkey',requireAuth,async(req,res)=>{
+  await db.run('DELETE FROM blocks WHERE blocker_pubkey=$1 AND blocked_pubkey=$2',[req.pubkey,req.params.pubkey]);
+  res.json({ok:true});
+});
+app.get('/api/blocks',requireAuth,async(req,res)=>{
+  const blocks=await db.query('SELECT blocked_pubkey FROM blocks WHERE blocker_pubkey=$1',[req.pubkey]);
+  res.json(blocks.map(b=>b.blocked_pubkey));
 });
 
 app.get('/api/debug',async(req,res)=>{try{if(USE_PG){const tables=await db.query("SELECT tablename FROM pg_tables WHERE schemaname='public'");const counts={};for(const t of tables){try{const c=await db.get(`SELECT COUNT(*) as n FROM ${t.tablename}`);counts[t.tablename]=+(c?.n||0);}catch{counts[t.tablename]='error';}}res.json({use_pg:true,db_url:process.env.DATABASE_URL?.slice(0,40)+'...',tables:counts});}else{res.json({use_pg:false});}}catch(err){res.json({error:err.message});}});

@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Privacy Policy - Swellnotes</title>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Outfit', system-ui, sans-serif; background: #0a1628; color: #e2e8f0; line-height: 1.7; padding: 2rem 1rem; }
+    .container { max-width: 720px; margin: 0 auto; }
+    h1 { font-size: 2rem; margin-bottom: 0.5rem; color: #fff; }
+    h2 { font-size: 1.25rem; margin: 2rem 0 0.75rem; color: #00c9a7; }
+    p, li { margin-bottom: 0.75rem; color: #cbd5e1; font-size: 0.95rem; }
+    ul { padding-left: 1.5rem; }
+    a { color: #00c9a7; }
+    .updated { color: #64748b; font-size: 0.85rem; margin-bottom: 2rem; }
+    .back { display: inline-block; margin-bottom: 1.5rem; color: #00c9a7; text-decoration: none; font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <a href="/" class="back">&larr; Back to Swellnotes</a>
+    <h1>Privacy Policy</h1>
+    <p class="updated">Last updated: April 6, 2026</p>
+
+    <h2>Overview</h2>
+    <p>Swellnotes ("we", "the app") is a surf session logging platform. We respect your privacy and collect only what is needed to provide the service.</p>
+
+    <h2>Data We Collect</h2>
+    <ul>
+      <li><strong>Nostr Public Key</strong> — Your cryptographic identity, used to associate sessions with your account. Your private key is generated and stored on your device only and is never sent to our server.</li>
+      <li><strong>Display Name</strong> — The surfer name you choose when creating an account.</li>
+      <li><strong>Profile Photo</strong> — An optional avatar image you upload.</li>
+      <li><strong>Surf Sessions</strong> — Date, time, rating, notes, wave shape, and session type that you log.</li>
+      <li><strong>Voice Memos</strong> — Audio recordings you optionally attach to sessions. Voice transcription is processed locally by your browser's Speech Recognition API and is not sent to any third-party service.</li>
+      <li><strong>Video Clips</strong> — Video files you optionally attach to sessions.</li>
+      <li><strong>Surf Spot Selection</strong> — The surf spots you search for and add. We use this to fetch forecast data from Surfline. No personal location data is sent to Surfline.</li>
+      <li><strong>Comments</strong> — Text comments you post on sessions.</li>
+      <li><strong>Social Graph</strong> — Which users you follow and who follows you.</li>
+    </ul>
+
+    <h2>Data We Do NOT Collect</h2>
+    <ul>
+      <li>Passwords (authentication is cryptographic, not password-based)</li>
+      <li>Email addresses</li>
+      <li>Phone numbers</li>
+      <li>Precise GPS location (spots are selected manually, not auto-detected)</li>
+      <li>Device identifiers or advertising IDs</li>
+      <li>Analytics or tracking data</li>
+    </ul>
+
+    <h2>How We Use Your Data</h2>
+    <ul>
+      <li>To provide the core service: logging sessions, displaying feeds, and generating analysis</li>
+      <li>To fetch surf conditions from Surfline based on the spot you select</li>
+      <li>To display your profile to other users in the surfers list and feed</li>
+    </ul>
+
+    <h2>Third-Party Services</h2>
+    <ul>
+      <li><strong>Surfline</strong> — We fetch public wave, wind, and tide forecasts server-side. No user data is sent to Surfline.</li>
+      <li><strong>Primal / Nostr Relays</strong> — If you log in with Primal (NIP-46), your public key is exchanged via Nostr relays. Your profile may be synced with Nostr relays (kind 0 events). This is standard Nostr protocol behavior.</li>
+      <li><strong>Blossom (Primal CDN)</strong> — Media files (voice memos, videos, avatars) may be uploaded to Blossom (blossom.primal.net) for content delivery. Uploads are authenticated with your Nostr key.</li>
+    </ul>
+
+    <h2>Data Storage</h2>
+    <p>Your data is stored on our server hosted by Hetzner in their data centers. Media files are stored on the server filesystem and optionally on Blossom CDN.</p>
+
+    <h2>Data Retention & Deletion</h2>
+    <p>You can delete individual surf sessions at any time. To request full account deletion, contact us at the email below. We will remove your user record, all sessions, comments, and uploaded media.</p>
+
+    <h2>Private Keys</h2>
+    <p>If you create a local account, a Nostr keypair is generated entirely on your device. The private key (secret key) is stored in your browser's localStorage and is <strong>never transmitted to our server</strong>. If you lose your device or clear browser data, the private key is lost. We cannot recover it.</p>
+
+    <h2>Children</h2>
+    <p>Swellnotes is not directed at children under 13. We do not knowingly collect data from children.</p>
+
+    <h2>Changes</h2>
+    <p>We may update this policy from time to time. Changes will be posted on this page with an updated date.</p>
+
+    <h2>Contact</h2>
+    <p>For privacy questions or deletion requests, contact: <a href="mailto:privacy@swellnotes.com">privacy@swellnotes.com</a></p>
+  </div>
+</body>
+</html>

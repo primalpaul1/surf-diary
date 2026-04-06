@@ -1,8 +1,10 @@
 node_modules
 surf-diary.db
-surf-diary.db-shm
-surf-diary.db-wal
+swellnotes.db
+swellnotes.db-shm
+swellnotes.db-wal
 audio
 videos
 avatars
+ios
 .DS_Store
