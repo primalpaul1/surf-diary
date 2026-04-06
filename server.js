@@ -124,10 +124,10 @@ app.get('/api/nip46/init',async(req,res)=>{try{const{generateSecretKey,getPublic
 function requireAuth(req,res,next){const p=req.headers['x-nostr-pubkey'];if(!p||!/^[0-9a-f]{64}$/.test(p))return res.status(401).json({error:'Missing pubkey'});req.pubkey=p;next();}
 
 app.post('/api/auth/login',(req,res)=>{
-  const{pubkey,display_name,avatar_base64}=req.body;
+  const{pubkey,display_name,avatar_base64,avatar_url}=req.body;
   if(!pubkey||!/^[0-9a-f]{64}$/.test(pubkey))return res.status(400).json({error:'Invalid pubkey'});
-  let avatarPath=null;
-  if(avatar_base64)avatarPath=saveFile(avatar_base64,'avatars','jpg');
+  let avatarPath=avatar_url||null;
+  if(!avatarPath&&avatar_base64)avatarPath=saveFile(avatar_base64,'avatars','jpg');
   if(avatarPath)db.prepare('INSERT INTO users(pubkey,display_name,avatar_path)VALUES(?,?,?)ON CONFLICT(pubkey)DO UPDATE SET display_name=excluded.display_name,avatar_path=excluded.avatar_path').run(pubkey,display_name||'Anon',avatarPath);
   else db.prepare('INSERT INTO users(pubkey,display_name)VALUES(?,?)ON CONFLICT(pubkey)DO UPDATE SET display_name=excluded.display_name').run(pubkey,display_name||'Anon');
   const user=db.prepare('SELECT * FROM users WHERE pubkey=?').get(pubkey);
@@ -163,9 +163,10 @@ app.get('/api/sessions/:id',(req,res)=>{
 
 app.post('/api/sessions',requireAuth,async(req,res)=>{
   const b=req.body;let c={};try{c=getConditions(await getForecast(),b.session_date,b.time_of_day);}catch{}
-  let voicePath=null,videoPath=null;
-  if(b.voice_memo_base64)voicePath=saveFile(b.voice_memo_base64,'audio','webm');
-  if(b.video_base64)videoPath=saveFile(b.video_base64,'videos','mp4');
+  // Accept Blossom URLs directly, or fall back to base64 local storage
+  let voicePath=b.voice_url||null,videoPath=b.video_url||null;
+  if(!voicePath&&b.voice_memo_base64)voicePath=saveFile(b.voice_memo_base64,'audio','webm');
+  if(!videoPath&&b.video_base64)videoPath=saveFile(b.video_base64,'videos','mp4');
   const r=db.prepare('INSERT INTO sessions(pubkey,session_date,time_of_day,swells_json,surf_height_min_ft,surf_height_max_ft,wind_speed_mph,wind_direction_deg,wind_type,wind_gust_mph,tide_height_ft,rating,wave_shape,session_type,notes,voice_memo_path,voice_transcript,video_path)VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').run(
     req.pubkey,b.session_date,b.time_of_day,JSON.stringify(c.swells||[]),
     c.surf_height_min_ft??null,c.surf_height_max_ft??null,c.wind_speed_mph??null,c.wind_direction_deg??null,c.wind_type??null,c.wind_gust_mph??null,c.tide_height_ft??null,

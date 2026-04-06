@@ -1,5 +1,7 @@
-let currentUser=null,followingSet=new Set(),voiceBlob=null,voiceTranscript='',mediaRecorder=null,recordingChunks=[],recordingTimer=null,recordingSeconds=0,nip46Data=null,speechRecognition=null,videoFile=null,avatarBase64=null;
+let currentUser=null,followingSet=new Set(),voiceBlob=null,voiceTranscript='',mediaRecorder=null,recordingChunks=[],recordingTimer=null,recordingSeconds=0,nip46Data=null,speechRecognition=null,videoFile=null,avatarFile=null;
 const $=s=>document.querySelector(s),$$=s=>document.querySelectorAll(s);
+const BLOSSOM='https://blossom.primal.net';
+const RELAYS=['wss://relay.primal.net','wss://relay.damus.io','wss://nos.lol'];
 
 // Nav
 $$('.nav-btn[data-view]').forEach(b=>{b.addEventListener('click',()=>{$$('.nav-btn').forEach(x=>x.classList.remove('active'));b.classList.add('active');$$('.view').forEach(v=>v.classList.remove('active'));$(`#view-${b.dataset.view}`).classList.add('active');if(b.dataset.view==='history')loadSessions();if(b.dataset.view==='surfers')loadSurfers();if(b.dataset.view==='analysis')loadAnalysis();});});
@@ -10,19 +12,120 @@ function getRatingClass(r){if(!r)return'';return r<=3?'r-low':r<=5?'r-mid':r<=7?
 function formatTOD(t){return{dawn:'Dawn Patrol',morning:'Morning',midday:'Midday',afternoon:'Afternoon',evening:'Evening','5am':'5 AM','6am':'6 AM','7am':'7 AM','8am':'8 AM','9am':'9 AM','10am':'10 AM','11am':'11 AM','12pm':'12 PM','1pm':'1 PM','2pm':'2 PM','3pm':'3 PM','4pm':'4 PM','5pm':'5 PM','6pm':'6 PM'}[t]||t;}
 function avatarHTML(path,name,cls='feed-avatar'){if(path)return`<img src="${path}" class="${cls}" alt="">`;const i=(name||'?')[0].toUpperCase();return`<div class="${cls}-placeholder">${i}</div>`;}
 
+// ===== BLOSSOM UPLOAD =====
+async function uploadToBlossom(file) {
+  if (!currentUser?.secretKey) {
+    // No local secret key (NIP-46 user) — fall back to base64 server upload
+    return null;
+  }
+  try {
+    const { finalizeEvent } = await import('https://esm.sh/nostr-tools@2.10.0/pure');
+    const { hexToBytes } = await import('https://esm.sh/@noble/hashes@1.8.0/utils');
+    const { sha256 } = await import('https://esm.sh/@noble/hashes@1.8.0/sha256');
+    const { bytesToHex } = await import('https://esm.sh/@noble/hashes@1.8.0/utils');
+
+    // Read file as ArrayBuffer and hash it
+    const buf = await file.arrayBuffer();
+    const hashBytes = sha256(new Uint8Array(buf));
+    const fileHash = bytesToHex(hashBytes);
+    const now = Math.floor(Date.now() / 1000);
+
+    // Build kind 24242 auth event
+    const authEvent = finalizeEvent({
+      kind: 24242,
+      created_at: now,
+      tags: [['t', 'upload'], ['x', fileHash], ['expiration', String(now + 300)]],
+      content: 'Upload file'
+    }, hexToBytes(currentUser.secretKey));
+
+    const authHeader = 'Nostr ' + btoa(JSON.stringify(authEvent));
+
+    // Upload to Blossom
+    const res = await fetch(`${BLOSSOM}/upload`, {
+      method: 'PUT',
+      headers: {
+        'Authorization': authHeader,
+        'Content-Type': file.type || 'application/octet-stream'
+      },
+      body: buf
+    });
+
+    if (!res.ok) throw new Error(`Blossom upload failed: ${res.status}`);
+    const data = await res.json();
+    return data.url || `${BLOSSOM}/${fileHash}`;
+  } catch (err) {
+    console.error('Blossom upload failed:', err);
+    return null; // Fall back to base64
+  }
+}
+
+// ===== NOSTR KIND 3 FOLLOWS =====
+async function fetchKind3(pubkey) {
+  try {
+    const { Relay } = await import('https://esm.sh/nostr-tools@2.10.0/relay');
+    const relay = await Relay.connect(RELAYS[0]);
+    return new Promise((resolve) => {
+      let event = null;
+      relay.subscribe([{ kinds: [3], authors: [pubkey], limit: 1 }], {
+        onevent: (ev) => { if (!event || ev.created_at > event.created_at) event = ev; },
+        oneose: () => { relay.close(); resolve(event); }
+      });
+      setTimeout(() => { try { relay.close(); } catch {} resolve(event); }, 5000);
+    });
+  } catch { return null; }
+}
+
+async function publishKind3(followPubkeys) {
+  if (!currentUser?.secretKey) return; // Can't sign without local key
+  try {
+    const { finalizeEvent } = await import('https://esm.sh/nostr-tools@2.10.0/pure');
+    const { Relay } = await import('https://esm.sh/nostr-tools@2.10.0/relay');
+    const { hexToBytes } = await import('https://esm.sh/@noble/hashes@1.8.0/utils');
+
+    const tags = followPubkeys.map(pk => ['p', pk]);
+    const event = finalizeEvent({
+      kind: 3,
+      created_at: Math.floor(Date.now() / 1000),
+      tags,
+      content: ''
+    }, hexToBytes(currentUser.secretKey));
+
+    // Publish to all relays
+    for (const url of RELAYS) {
+      try {
+        const relay = await Relay.connect(url);
+        await relay.publish(event);
+        relay.close();
+      } catch {}
+    }
+  } catch (err) { console.error('Failed to publish kind 3:', err); }
+}
+
+async function syncFollowsFromRelay() {
+  if (!currentUser) return;
+  const event = await fetchKind3(currentUser.pubkey);
+  if (!event) return;
+  const pTags = event.tags.filter(t => t[0] === 'p').map(t => t[1]);
+  followingSet = new Set(pTags);
+  // Sync to server cache
+  for (const pk of pTags) {
+    try { await fetch(`/api/follows/${pk}`, { method: 'POST', headers: { 'X-Nostr-Pubkey': currentUser.pubkey } }); } catch {}
+  }
+}
+
 // ===== AUTH =====
 $('#create-account-btn').addEventListener('click',()=>$('#create-modal').classList.remove('hidden'));
 $('#create-modal .modal-backdrop').addEventListener('click',()=>$('#create-modal').classList.add('hidden'));
 $('#create-modal .modal-close').addEventListener('click',()=>$('#create-modal').classList.add('hidden'));
 $('#switch-to-primal').addEventListener('click',()=>{$('#create-modal').classList.add('hidden');openLoginModal();});
 
-// Avatar upload
+// Avatar upload preview
 $('#avatar-upload').addEventListener('click',()=>$('#avatar-file').click());
 $('#avatar-file').addEventListener('change',e=>{
-  const f=e.target.files[0];if(!f)return;
+  avatarFile=e.target.files[0];if(!avatarFile)return;
   const reader=new FileReader();
-  reader.onload=ev=>{avatarBase64=ev.target.result.split(',')[1];$('#avatar-preview').innerHTML=`<img src="${ev.target.result}">`};
-  reader.readAsDataURL(f);
+  reader.onload=ev=>{$('#avatar-preview').innerHTML=`<img src="${ev.target.result}">`};
+  reader.readAsDataURL(avatarFile);
 });
 
 $('#create-form').addEventListener('submit',async e=>{
@@ -31,12 +134,29 @@ $('#create-form').addEventListener('submit',async e=>{
     const{generateSecretKey,getPublicKey}=await import('https://esm.sh/nostr-tools@2.10.0');
     const{bytesToHex}=await import('https://esm.sh/@noble/hashes@1.8.0/utils');
     const sk=generateSecretKey(),secretKey=bytesToHex(sk),pubkey=getPublicKey(sk);
-    const body={pubkey,display_name:name};if(avatarBase64)body.avatar_base64=avatarBase64;
+
+    // Set currentUser early so Blossom upload can use the secretKey
+    currentUser={pubkey,secretKey,display_name:name,avatar_path:null};
+
+    // Upload avatar to Blossom if provided
+    let avatarUrl=null;
+    if(avatarFile){
+      avatarUrl=await uploadToBlossom(avatarFile);
+    }
+
+    const body={pubkey,display_name:name};
+    if(avatarUrl)body.avatar_url=avatarUrl;
+    else if(avatarFile){
+      // Fallback: send as base64
+      const r=new FileReader();
+      body.avatar_base64=await new Promise(res=>{r.onloadend=()=>res(r.result.split(',')[1]);r.readAsDataURL(avatarFile);});
+    }
+
     const res=await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     const data=await res.json();
-    currentUser={pubkey,secretKey,display_name:name,avatar_path:data.avatar_path||null};
+    currentUser.avatar_path=data.avatar_path||avatarUrl||null;
     localStorage.setItem('surf_diary_user',JSON.stringify(currentUser));
-    updateAuthUI();$('#create-modal').classList.add('hidden');avatarBase64=null;
+    updateAuthUI();$('#create-modal').classList.add('hidden');avatarFile=null;
     toast(`Welcome, ${name}!`);
   }catch{toast('Failed to create account','error');}
 });
@@ -60,9 +180,29 @@ $('#logout-btn').addEventListener('click',()=>{currentUser=null;followingSet.cle
 
 function updateAuthUI(){if(currentUser){$('#auth-buttons').classList.add('hidden');$('#user-info').classList.remove('hidden');$('#user-name').textContent=currentUser.display_name;const av=$('#user-avatar');if(currentUser.avatar_path){av.src=currentUser.avatar_path;av.style.display='';}else av.style.display='none';$('#submit-btn').disabled=false;$('#submit-btn').textContent='Log Session';$('#comment-form')?.classList.remove('hidden');loadFollowing();}else{$('#auth-buttons').classList.remove('hidden');$('#user-info').classList.add('hidden');$('#submit-btn').disabled=true;$('#submit-btn').textContent='Log in to Log Session';$('#comment-form')?.classList.add('hidden');}}
 
-// ===== FOLLOWS =====
-async function loadFollowing(){if(!currentUser)return;try{const{following}=await(await fetch('/api/follows',{headers:{'X-Nostr-Pubkey':currentUser.pubkey}})).json();followingSet=new Set(following.map(f=>f.pubkey));}catch{}}
-async function toggleFollow(pk){if(!currentUser)return toast('Log in first','error');const is=followingSet.has(pk);await fetch(`/api/follows/${pk}`,{method:is?'DELETE':'POST',headers:{'X-Nostr-Pubkey':currentUser.pubkey}});if(is)followingSet.delete(pk);else followingSet.add(pk);loadSurfers();}
+// ===== FOLLOWS (Nostr kind 3 + server cache) =====
+async function loadFollowing(){
+  if(!currentUser)return;
+  // First load from server cache (fast)
+  try{const{following}=await(await fetch('/api/follows',{headers:{'X-Nostr-Pubkey':currentUser.pubkey}})).json();followingSet=new Set(following.map(f=>f.pubkey));}catch{}
+  // Then sync from Nostr relay (may update)
+  syncFollowsFromRelay();
+}
+
+async function toggleFollow(pk){
+  if(!currentUser)return toast('Log in first','error');
+  const isFollowing=followingSet.has(pk);
+
+  // Update local state immediately
+  if(isFollowing)followingSet.delete(pk); else followingSet.add(pk);
+  loadSurfers();
+
+  // Update server cache
+  await fetch(`/api/follows/${pk}`,{method:isFollowing?'DELETE':'POST',headers:{'X-Nostr-Pubkey':currentUser.pubkey}});
+
+  // Publish kind 3 to Nostr relays
+  await publishKind3([...followingSet]);
+}
 window.toggleFollow=toggleFollow;
 
 async function loadSurfers(){try{const users=await(await fetch('/api/users')).json();const list=$('#surfers-list');if(!users.length){list.innerHTML='<div class="empty-state"><p>No surfers yet.</p></div>';return;}
@@ -76,20 +216,11 @@ const sw=(c.swells||[]).map(s=>`<div class="swell-item"><span class="swell-compa
 p.innerHTML=`<div class="cond-grid"><div class="cond-block"><h4>Surf</h4><div class="cond-val">${c.surf_height_min_ft||'?'}-${c.surf_height_max_ft||'?'} ft</div></div><div class="cond-block"><h4>Swells (${c.swells?.length||0})</h4><div class="swells-list">${sw||'—'}</div></div><div class="cond-block"><h4>Wind</h4><div class="cond-val">${c.wind_speed_mph||0} mph</div><div class="cond-sub">${c.wind_type||''} ${c.wind_gust_mph?'gusts '+c.wind_gust_mph:''}</div></div><div class="cond-block"><h4>Tide</h4><div class="cond-val">${c.tide_height_ft||'?'} ft</div></div></div>`;}catch{p.innerHTML='<div class="cond-loading">Could not fetch.</div>';}}
 $('#session_date').addEventListener('change',fetchConditions);$('#time_of_day').addEventListener('change',fetchConditions);fetchConditions();
 
-// ===== TABS (shape multi-select + session type single-select) =====
+// ===== TABS =====
 $$('.shape-tab').forEach(btn=>{btn.addEventListener('click',()=>{
   const group=btn.dataset.group;
-  if(group==='session_type'){
-    // Single select for session type
-    $$('.shape-tab[data-group="session_type"]').forEach(b=>b.classList.remove('active'));
-    btn.classList.add('active');
-    $('#session_type').value=btn.dataset.val;
-  } else {
-    // Multi-select for wave shape
-    btn.classList.toggle('active');
-    const selected=[...$$('.shape-tab[data-shape].active')].map(b=>b.dataset.shape);
-    $('#wave_shape').value=selected.join(',');
-  }
+  if(group==='session_type'){$$('.shape-tab[data-group="session_type"]').forEach(b=>b.classList.remove('active'));btn.classList.add('active');$('#session_type').value=btn.dataset.val;}
+  else{btn.classList.toggle('active');$('#wave_shape').value=[...$$('.shape-tab[data-shape].active')].map(b=>b.dataset.shape).join(',');}
 });});
 document.querySelector('.shape-tab[data-val="surfed"]')?.classList.add('active');
 
@@ -103,7 +234,6 @@ const rb=$('#record-btn'),rl=$('#record-label');
 function setupSR(){const S=window.SpeechRecognition||window.webkitSpeechRecognition;if(!S)return null;const r=new S();r.continuous=true;r.interimResults=true;r.lang='en-US';let ft='';r.onresult=e=>{let i='';for(let x=e.resultIndex;x<e.results.length;x++){if(e.results[x].isFinal)ft+=e.results[x][0].transcript+' ';else i+=e.results[x][0].transcript;}voiceTranscript=ft.trim();$('#transcript-text').textContent=ft+i;$('#transcript-section').classList.remove('hidden');};r.onerror=()=>{};r.onend=()=>$('#transcript-text')?.classList.remove('listening');return{recognition:r,reset:()=>{ft='';}};}
 rb.addEventListener('mousedown',startRec);rb.addEventListener('mouseup',stopRec);rb.addEventListener('mouseleave',stopRec);
 rb.addEventListener('touchstart',e=>{e.preventDefault();startRec();});rb.addEventListener('touchend',e=>{e.preventDefault();stopRec();});
-
 async function startRec(){if(mediaRecorder?.state==='recording')return;try{const s=await navigator.mediaDevices.getUserMedia({audio:true});recordingChunks=[];mediaRecorder=new MediaRecorder(s,{mimeType:'audio/webm;codecs=opus'});mediaRecorder.ondataavailable=e=>{if(e.data.size>0)recordingChunks.push(e.data);};mediaRecorder.onstop=()=>{s.getTracks().forEach(t=>t.stop());voiceBlob=new Blob(recordingChunks,{type:'audio/webm'});$('#voice-audio').src=URL.createObjectURL(voiceBlob);$('#voice-playback').classList.remove('hidden');};mediaRecorder.start(100);const sr=setupSR();if(sr){speechRecognition=sr.recognition;sr.reset();voiceTranscript='';$('#transcript-text').textContent='';$('#transcript-text').classList.add('listening');$('#transcript-section').classList.remove('hidden');speechRecognition.start();}rb.classList.add('recording');rl.textContent='Release to stop';$('#recording-status').classList.remove('hidden');recordingSeconds=0;updTimer();recordingTimer=setInterval(()=>{recordingSeconds++;updTimer();},1000);}catch{toast('Mic denied','error');}}
 function stopRec(){if(!mediaRecorder||mediaRecorder.state!=='recording')return;mediaRecorder.stop();if(speechRecognition){speechRecognition.stop();speechRecognition=null;}clearInterval(recordingTimer);rb.classList.remove('recording');rl.textContent='Voice Note';$('#recording-status').classList.add('hidden');}
 function updTimer(){$('#record-timer').textContent=`${Math.floor(recordingSeconds/60)}:${(recordingSeconds%60).toString().padStart(2,'0')}`;}
@@ -117,9 +247,33 @@ $('#delete-video').addEventListener('click',()=>{videoFile=null;$('#video-player
 $('#session-form').addEventListener('submit',async e=>{
   e.preventDefault();if(!currentUser)return toast('Log in first','error');
   const data={session_date:$('#session_date').value,time_of_day:$('#time_of_day').value,rating:+$('#rating').value,wave_shape:$('#wave_shape').value||null,session_type:$('#session_type').value||'surfed',notes:$('#notes').value||null,voice_transcript:voiceTranscript||null};
-  if(voiceBlob){const r=new FileReader();data.voice_memo_base64=await new Promise(res=>{r.onloadend=()=>res(r.result.split(',')[1]);r.readAsDataURL(voiceBlob);});}
-  if(videoFile){const r=new FileReader();data.video_base64=await new Promise(res=>{r.onloadend=()=>res(r.result.split(',')[1]);r.readAsDataURL(videoFile);});}
-  try{$('#submit-btn').disabled=true;$('#submit-btn').textContent='Logging...';const res=await fetch('/api/sessions',{method:'POST',headers:{'Content-Type':'application/json','X-Nostr-Pubkey':currentUser.pubkey},body:JSON.stringify(data)});if(res.ok){toast('Session logged!');$('#notes').value='';rs.value=5;updateRating();$$('.shape-tab[data-shape]').forEach(b=>b.classList.remove('active'));$('#wave_shape').value='';$$('.shape-tab[data-group="session_type"]').forEach(b=>b.classList.remove('active'));document.querySelector('.shape-tab[data-val="surfed"]')?.classList.add('active');$('#session_type').value='surfed';voiceBlob=null;voiceTranscript='';$('#voice-audio').src='';$('#voice-playback').classList.add('hidden');$('#transcript-section').classList.add('hidden');videoFile=null;$('#video-player').src='';$('#video-preview').classList.add('hidden');$('#video-file').value='';}else{const err=await res.json();toast(err.error||'Failed','error');}}catch{toast('Network error','error');}
+
+  try{
+    $('#submit-btn').disabled=true;$('#submit-btn').textContent='Uploading...';
+
+    // Upload media to Blossom first (if local account with secretKey)
+    if(voiceBlob){
+      const voiceFile=new File([voiceBlob],'voice.webm',{type:'audio/webm'});
+      const url=await uploadToBlossom(voiceFile);
+      if(url)data.voice_url=url;
+      else{const r=new FileReader();data.voice_memo_base64=await new Promise(res=>{r.onloadend=()=>res(r.result.split(',')[1]);r.readAsDataURL(voiceBlob);});}
+    }
+    if(videoFile){
+      const url=await uploadToBlossom(videoFile);
+      if(url)data.video_url=url;
+      else{const r=new FileReader();data.video_base64=await new Promise(res=>{r.onloadend=()=>res(r.result.split(',')[1]);r.readAsDataURL(videoFile);});}
+    }
+
+    $('#submit-btn').textContent='Logging...';
+    const res=await fetch('/api/sessions',{method:'POST',headers:{'Content-Type':'application/json','X-Nostr-Pubkey':currentUser.pubkey},body:JSON.stringify(data)});
+    if(res.ok){
+      toast('Session logged!');$('#notes').value='';rs.value=5;updateRating();
+      $$('.shape-tab[data-shape]').forEach(b=>b.classList.remove('active'));$('#wave_shape').value='';
+      $$('.shape-tab[data-group="session_type"]').forEach(b=>b.classList.remove('active'));document.querySelector('.shape-tab[data-val="surfed"]')?.classList.add('active');$('#session_type').value='surfed';
+      voiceBlob=null;voiceTranscript='';$('#voice-audio').src='';$('#voice-playback').classList.add('hidden');$('#transcript-section').classList.add('hidden');
+      videoFile=null;$('#video-player').src='';$('#video-preview').classList.add('hidden');$('#video-file').value='';
+    }else{const err=await res.json();toast(err.error||'Failed','error');}
+  }catch(err){console.error(err);toast('Upload error','error');}
   finally{$('#submit-btn').disabled=!currentUser;$('#submit-btn').textContent=currentUser?'Log Session':'Log in to Log Session';}
 });
 
@@ -151,38 +305,10 @@ $('#session-modal .modal-close').addEventListener('click',()=>$('#session-modal'
 
 // ===== SEARCH =====
 $('#search-btn').addEventListener('click',runSearch);
-$('#search-clear').addEventListener('click',()=>{
-  ['search-dir-min','search-dir-max','search-height-min','search-height-max','search-period-min','search-period-max','search-rating-min','search-rating-max'].forEach(id=>$(`#${id}`).value='');
-  $('#search-results').innerHTML='';
-});
-
-async function runSearch(){
-  const p=new URLSearchParams();
-  if(currentUser)p.set('pubkey',currentUser.pubkey);
-  const fields={dir_min:'search-dir-min',dir_max:'search-dir-max',height_min:'search-height-min',height_max:'search-height-max',period_min:'search-period-min',period_max:'search-period-max',rating_min:'search-rating-min',rating_max:'search-rating-max'};
-  Object.entries(fields).forEach(([k,id])=>{const v=$(`#${id}`).value;if(v)p.set(k,v);});
-  try{
-    const{sessions,summary}=await(await fetch(`/api/search?${p}`)).json();
-    const sr=$('#search-results');
-    if(!sessions.length){sr.innerHTML='<div class="empty-state"><p>No sessions match your filters.</p></div>';return;}
-    const summaryHTML=`<div class="search-summary">
-      <div class="search-stat"><span class="search-stat-label">Sessions</span><span class="search-stat-value">${summary.count}</span></div>
-      <div class="search-stat"><span class="search-stat-label">Avg Rating</span><span class="search-stat-value">${summary.avg_rating||'—'}/10</span></div>
-      <div class="search-stat"><span class="search-stat-label">Best</span><span class="search-stat-value">${summary.best_rating||'—'}/10</span></div>
-      <div class="search-stat"><span class="search-stat-label">Worst</span><span class="search-stat-value">${summary.worst_rating||'—'}/10</span></div>
-    </div>`;
-    const listHTML=sessions.map(s=>{
-      const d=new Date(s.session_date+'T12:00:00'),sw=JSON.parse(s.swells_json||'[]');
-      const swTags=sw.map(x=>`<span class="tag tag-swell">${x.height_ft}ft ${x.period_s}s ${x.direction_compass} ${x.direction_deg}°</span>`).join('');
-      return`<div class="feed-card" data-id="${s.id}" onclick="openSession(${s.id})">
-        <div class="feed-date"><div class="day">${d.getDate()}</div><div class="mo">${d.toLocaleString('en',{month:'short'})}</div></div>
-        <div class="feed-body"><div class="feed-user">${avatarHTML(s.avatar_path,s.display_name)}<span class="feed-name">${escapeHtml(s.display_name||'Anon')}</span><span class="feed-tod">· ${formatTOD(s.time_of_day)}</span></div><div class="feed-tags">${swTags}${s.surf_height_min_ft!=null?`<span class="tag tag-height">${s.surf_height_min_ft}-${s.surf_height_max_ft}ft</span>`:''}${s.wind_type?`<span class="tag tag-wind">${s.wind_speed_mph}mph ${s.wind_type}</span>`:''}</div></div>
-        <div class="feed-rating">${s.rating?`<div class="rbadge ${getRatingClass(s.rating)}">${s.rating}</div>`:'<div class="rbadge" style="background:#f1f5f9;color:#94a3b8">—</div>'}</div>
-      </div>`;
-    }).join('');
-    sr.innerHTML=summaryHTML+'<div class="search-result-list">'+listHTML+'</div>';
-  }catch{$('#search-results').innerHTML='<div class="empty-state">Search failed</div>';}
-}
+$('#search-clear').addEventListener('click',()=>{['search-dir-min','search-dir-max','search-height-min','search-height-max','search-period-min','search-period-max','search-rating-min','search-rating-max'].forEach(id=>$(`#${id}`).value='');$('#search-results').innerHTML='';});
+async function runSearch(){const p=new URLSearchParams();if(currentUser)p.set('pubkey',currentUser.pubkey);const fields={dir_min:'search-dir-min',dir_max:'search-dir-max',height_min:'search-height-min',height_max:'search-height-max',period_min:'search-period-min',period_max:'search-period-max',rating_min:'search-rating-min',rating_max:'search-rating-max'};Object.entries(fields).forEach(([k,id])=>{const v=$(`#${id}`).value;if(v)p.set(k,v);});
+try{const{sessions,summary}=await(await fetch(`/api/search?${p}`)).json();const sr=$('#search-results');if(!sessions.length){sr.innerHTML='<div class="empty-state"><p>No matches.</p></div>';return;}
+sr.innerHTML=`<div class="search-summary"><div class="search-stat"><span class="search-stat-label">Sessions</span><span class="search-stat-value">${summary.count}</span></div><div class="search-stat"><span class="search-stat-label">Avg Rating</span><span class="search-stat-value">${summary.avg_rating||'—'}/10</span></div><div class="search-stat"><span class="search-stat-label">Best</span><span class="search-stat-value">${summary.best_rating||'—'}/10</span></div><div class="search-stat"><span class="search-stat-label">Worst</span><span class="search-stat-value">${summary.worst_rating||'—'}/10</span></div></div><div class="search-result-list">${sessions.map(s=>{const d=new Date(s.session_date+'T12:00:00'),sw=JSON.parse(s.swells_json||'[]');const swTags=sw.map(x=>`<span class="tag tag-swell">${x.height_ft}ft ${x.period_s}s ${x.direction_compass} ${x.direction_deg}°</span>`).join('');return`<div class="feed-card" data-id="${s.id}" onclick="openSession(${s.id})"><div class="feed-date"><div class="day">${d.getDate()}</div><div class="mo">${d.toLocaleString('en',{month:'short'})}</div></div><div class="feed-body"><div class="feed-user">${avatarHTML(s.avatar_path,s.display_name)}<span class="feed-name">${escapeHtml(s.display_name||'Anon')}</span><span class="feed-tod">· ${formatTOD(s.time_of_day)}</span></div><div class="feed-tags">${swTags}${s.surf_height_min_ft!=null?`<span class="tag tag-height">${s.surf_height_min_ft}-${s.surf_height_max_ft}ft</span>`:''}${s.wind_type?`<span class="tag tag-wind">${s.wind_speed_mph}mph ${s.wind_type}</span>`:''}</div></div><div class="feed-rating">${s.rating?`<div class="rbadge ${getRatingClass(s.rating)}">${s.rating}</div>`:'<div class="rbadge" style="background:#f1f5f9;color:#94a3b8">—</div>'}</div></div>`;}).join('')}</div>`;}catch{$('#search-results').innerHTML='<div class="empty-state">Search failed</div>';}}
 window.openSession=openSession;
 
 // ===== ANALYSIS =====
