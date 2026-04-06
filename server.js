@@ -34,6 +34,7 @@ async function initDB(){
     `CREATE TABLE IF NOT EXISTS comments(id ${serial},session_id INTEGER NOT NULL,pubkey TEXT NOT NULL,body TEXT NOT NULL,created_at INTEGER DEFAULT ${ts})`,
     `CREATE TABLE IF NOT EXISTS follows(follower_pubkey TEXT NOT NULL,followed_pubkey TEXT NOT NULL,created_at INTEGER DEFAULT ${ts},PRIMARY KEY(follower_pubkey,followed_pubkey))`,
     `CREATE TABLE IF NOT EXISTS forecast_cache(id ${serial},spot_id TEXT,fetched_at INTEGER DEFAULT ${ts},data_json TEXT NOT NULL)`,
+    `CREATE TABLE IF NOT EXISTS spot_follows(pubkey TEXT NOT NULL,spot_id TEXT NOT NULL,created_at INTEGER DEFAULT ${ts},PRIMARY KEY(pubkey,spot_id))`,
   ];
   for(const sql of tables){try{await db.exec(sql);console.log('✅',sql.slice(0,60));}catch(err){console.log('⚠️ Table:',err.message?.slice(0,100));}}
   // Check what's actually in the DB
@@ -167,6 +168,57 @@ app.post('/api/invite/:code/claim',requireAuth,async(req,res)=>{
   await db.run('INSERT INTO spot_members(spot_id,pubkey,role,invited_by)VALUES($1,$2,$3,$4)ON CONFLICT DO NOTHING',[inv.spot_id,req.pubkey,'member',inv.created_by]);
   await db.run('UPDATE spot_invites SET use_count=use_count+1 WHERE id=$1',[req.params.code]);
   res.json({ok:true,spot_id:inv.spot_id});
+});
+
+// ===== SPOT BROWSE & FOLLOW =====
+app.get('/api/spots/browse',async(req,res)=>{
+  const q=req.query.q;const pk=req.headers['x-nostr-pubkey']||null;
+  let spots;
+  if(q){spots=await db.query('SELECT s.*,(SELECT COUNT(*)FROM spot_members WHERE spot_id=s.id) as member_count FROM spots s WHERE s.is_private=0 AND LOWER(s.name) LIKE LOWER($1) ORDER BY s.name',[`%${q}%`]);}
+  else{spots=await db.query('SELECT s.*,(SELECT COUNT(*)FROM spot_members WHERE spot_id=s.id) as member_count FROM spots s WHERE s.is_private=0 ORDER BY s.name');}
+  if(pk){const followed=await db.query('SELECT spot_id FROM spot_follows WHERE pubkey=$1',[pk]);const fset=new Set(followed.map(r=>r.spot_id));const membered=await db.query('SELECT spot_id FROM spot_members WHERE pubkey=$1',[pk]);const mset=new Set(membered.map(r=>r.spot_id));spots=spots.map(s=>({...s,is_following:fset.has(s.id)?1:0,is_member:mset.has(s.id)?1:0}));}
+  res.json(spots);
+});
+
+app.get('/api/spots/following',requireAuth,async(req,res)=>{
+  const spots=await db.query('SELECT s.*,(SELECT COUNT(*)FROM spot_members WHERE spot_id=s.id) as member_count FROM spots s WHERE s.id IN(SELECT spot_id FROM spot_follows WHERE pubkey=$1) ORDER BY s.name',[req.pubkey]);
+  res.json(spots);
+});
+
+app.post('/api/spots/:id/follow',requireAuth,async(req,res)=>{
+  const spot=await db.get('SELECT*FROM spots WHERE id=$1',[req.params.id]);
+  if(!spot)return res.status(404).json({error:'Not found'});
+  if(spot.is_private)return res.status(403).json({error:'Cannot follow private spot'});
+  await db.run('INSERT INTO spot_follows(pubkey,spot_id)VALUES($1,$2)ON CONFLICT DO NOTHING',[req.pubkey,req.params.id]);
+  res.json({ok:true});
+});
+
+app.delete('/api/spots/:id/follow',requireAuth,async(req,res)=>{
+  await db.run('DELETE FROM spot_follows WHERE pubkey=$1 AND spot_id=$2',[req.pubkey,req.params.id]);
+  res.json({ok:true});
+});
+
+// ===== MULTI-SPOT FEED =====
+app.get('/api/feed',requireAuth,async(req,res)=>{
+  const{swell_dir,month,limit=10}=req.query;
+  // Get all spot IDs: member spots + followed spots
+  const memberSpots=await db.query('SELECT spot_id FROM spot_members WHERE pubkey=$1',[req.pubkey]);
+  const followedSpots=await db.query('SELECT spot_id FROM spot_follows WHERE pubkey=$1',[req.pubkey]);
+  const allIds=[...new Set([...memberSpots.map(r=>r.spot_id),...followedSpots.map(r=>r.spot_id)])];
+  if(!allIds.length)return res.json([]);
+  // Get spot details
+  const spotDetails=await db.query(`SELECT s.*,(SELECT COUNT(*)FROM spot_members WHERE spot_id=s.id) as member_count FROM spots s WHERE s.id IN(${allIds.map((_,i)=>`$${i+1}`).join(',')})`,allIds);
+  // For each spot, get recent sessions
+  const result=[];
+  for(const spot of spotDetails.sort((a,b)=>a.name.localeCompare(b.name))){
+    let w=['s.spot_id=$1'],p=[spot.id],n=2;
+    if(month){w.push(`substring(session_date,1,7)=$${n++}`);p.push(month);}
+    if(swell_dir){w.push(`swells_json LIKE $${n++}`);p.push(`%"direction_compass":"${swell_dir}"%`);}
+    const wc='WHERE '+w.join(' AND ');
+    const sessions=await db.query(`SELECT s.*,u.display_name,u.avatar_path FROM sessions s LEFT JOIN users u ON s.pubkey=u.pubkey ${wc} ORDER BY s.session_date DESC,s.created_at DESC LIMIT $${n++}`,[...p,+limit]);
+    if(sessions.length)result.push({spot:{id:spot.id,name:spot.name,location_text:spot.location_text,cover_image_url:spot.cover_image_url,member_count:spot.member_count},sessions});
+  }
+  res.json(result);
 });
 
 // ===== CONDITIONS (spot-aware) =====

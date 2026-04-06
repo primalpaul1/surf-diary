@@ -222,9 +222,18 @@
     <section id="view-history" class="view">
       <div class="card">
         <div class="feed-header"><h2>Feed</h2>
-          <div class="filters"><select id="filter-direction"><option value="">All Swells</option><option>S</option><option>SSW</option><option>SW</option><option>WSW</option><option>W</option><option>WNW</option><option>NW</option><option>NNW</option><option>N</option></select><input type="month" id="filter-month"></div>
+          <div class="filters">
+            <button id="browse-spots-btn" class="btn-outline btn-sm">Browse Spots</button>
+            <select id="filter-direction"><option value="">All Swells</option><option>S</option><option>SSW</option><option>SW</option><option>WSW</option><option>W</option><option>WNW</option><option>NW</option><option>NNW</option><option>N</option></select><input type="month" id="filter-month">
+          </div>
         </div>
         <div id="session-list" class="feed-list"></div>
+      </div>
+      <!-- Browse Spots Panel -->
+      <div id="browse-spots-panel" class="card hidden">
+        <div class="feed-header"><h2>Browse Spots</h2><button id="close-browse" class="btn-outline btn-sm">Close</button></div>
+        <div class="field" style="margin:0.75rem 0"><input type="text" id="browse-search" placeholder="Search public spots..." autocomplete="off"></div>
+        <div id="browse-spot-list" class="browse-spot-list"></div>
       </div>
     </section>
 

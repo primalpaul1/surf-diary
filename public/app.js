@@ -4,7 +4,7 @@ const BLOSSOM='https://blossom.primal.net';
 const RELAYS=['wss://relay.primal.net','wss://relay.damus.io','wss://nos.lol'];
 
 // Nav
-$$('.nav-btn[data-view]').forEach(b=>{b.addEventListener('click',()=>{$$('.nav-btn').forEach(x=>x.classList.remove('active'));b.classList.add('active');$$('.view').forEach(v=>v.classList.remove('active'));$(`#view-${b.dataset.view}`).classList.add('active');if(b.dataset.view==='history')loadSessions();if(b.dataset.view==='surfers')loadSurfers();if(b.dataset.view==='analysis')loadAnalysis();});});
+$$('.nav-btn[data-view]').forEach(b=>{b.addEventListener('click',()=>{$$('.nav-btn').forEach(x=>x.classList.remove('active'));b.classList.add('active');$$('.view').forEach(v=>v.classList.remove('active'));$(`#view-${b.dataset.view}`).classList.add('active');if(b.dataset.view==='history')loadFeed();if(b.dataset.view==='surfers')loadSurfers();if(b.dataset.view==='analysis')loadAnalysis();});});
 
 function toast(m,t='success'){const e=document.createElement('div');e.className=`toast toast-${t}`;e.textContent=m;document.body.appendChild(e);setTimeout(()=>e.remove(),3000);}
 function escapeHtml(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML;}
@@ -337,14 +337,97 @@ $('#share-modal .modal-backdrop').addEventListener('click',()=>$('#share-modal')
 $('#share-modal .modal-close').addEventListener('click',()=>$('#share-modal').classList.add('hidden'));
 $('#share-post-btn').addEventListener('click',async()=>{if(!currentUser?.secretKey||!pendingShareData)return;try{$('#share-post-btn').disabled=true;$('#share-post-btn').textContent='Posting...';const{finalizeEvent}=await import('https://esm.sh/nostr-tools@2.10.0/pure');const{Relay}=await import('https://esm.sh/nostr-tools@2.10.0/relay');const{hexToBytes}=await import('https://esm.sh/@noble/hashes@1.8.0/utils');const sd=pendingShareData;const c=sd.conditions;const sw=(c.swells||[]).map(s=>`${s.height_ft}ft ${s.period_s}s ${s.direction_compass} ${s.direction_deg}°`).join(', ');const sh=c.surf_height_min_ft&&c.surf_height_max_ft?`${c.surf_height_min_ft}-${c.surf_height_max_ft}ft`:'';let content=$('#share-text').value.trim();if(!content.includes(sd.spot_name))content=`🌊 ${sd.spot_name} · ${sh} · ${sd.rating}/10\n\n${content}`;if(sw&&!content.includes(sw))content+=`\n\nSwell: ${sw}`;if(c.wind_type)content+=`\nWind: ${c.wind_speed_mph}mph ${c.wind_type}`;if(sd.video_url)content+=`\n\n${sd.video_url}`;const tags=[['t','surf'],['t',sd.spot_name.toLowerCase().replace(/\s+/g,'')],['t','surfing']];if(sd.video_url)tags.push(['imeta',`url ${sd.video_url}`,`m video/mp4`]);const ev=finalizeEvent({kind:1,created_at:Math.floor(Date.now()/1000),tags,content},hexToBytes(currentUser.secretKey));for(const u of RELAYS){try{const r=await Relay.connect(u);await r.publish(ev);r.close();}catch{}}toast('Shared!');$('#share-modal').classList.add('hidden');}catch{toast('Share failed','error');}finally{$('#share-post-btn').disabled=false;$('#share-post-btn').textContent='Share';}});
 
-// ===== FEED =====
+// ===== MULTI-SPOT FEED =====
+let spotFollowingSet=new Set();
+
+async function loadFeed(){
+  if(!currentUser){loadSessions();return;}
+  const dir=$('#filter-direction').value,mo=$('#filter-month').value,p=new URLSearchParams();
+  if(dir)p.set('swell_dir',dir);if(mo)p.set('month',mo);
+  try{
+    const groups=await(await fetch(`/api/feed?${p}`,{headers:{'X-Nostr-Pubkey':currentUser.pubkey}})).json();
+    const list=$('#session-list');
+    if(!groups.length){list.innerHTML='<div class="empty-state"><p>No spots in your feed yet.</p><p class="muted">Browse and follow spots to see sessions here.</p></div>';return;}
+    list.innerHTML=groups.map(g=>{
+      const spotHeader=`<div class="feed-spot-header" onclick="switchToSpot('${g.spot.id}')">
+        ${g.spot.cover_image_url?`<img src="${g.spot.cover_image_url}" class="feed-spot-cover" alt="">`:`<div class="feed-spot-cover-placeholder">🌊</div>`}
+        <div><h3 class="feed-spot-name">${escapeHtml(g.spot.name)}</h3>${g.spot.location_text?`<span class="feed-spot-loc">${escapeHtml(g.spot.location_text)}</span>`:''}</div>
+        <span class="feed-spot-count">${g.spot.member_count} member${g.spot.member_count!==1?'s':''}</span>
+      </div>`;
+      const cards=g.sessions.map(s=>renderSessionCard(s)).join('');
+      return`<div class="feed-spot-group">${spotHeader}${cards}</div>`;
+    }).join('');
+    list.querySelectorAll('.feed-card').forEach(c=>c.addEventListener('click',()=>openSession(c.dataset.id)));
+  }catch{$('#session-list').innerHTML='<div class="empty-state">Error loading feed</div>';}
+}
+
+function renderSessionCard(s){
+  const d=new Date(s.session_date+'T12:00:00'),tags=[],sw=JSON.parse(s.swells_json||'[]');
+  sw.forEach(x=>tags.push(`<span class="tag tag-swell">${x.height_ft}ft ${x.period_s}s ${x.direction_compass} ${x.direction_deg}°</span>`));
+  if(s.surf_height_min_ft!=null)tags.push(`<span class="tag tag-height">${s.surf_height_min_ft}-${s.surf_height_max_ft}ft</span>`);
+  if(s.wind_type)tags.push(`<span class="tag tag-wind">${s.wind_speed_mph||''}mph ${s.wind_type}</span>`);
+  if(s.session_type==='observed')tags.push('<span class="tag tag-observed">observed</span>');
+  if(s.wave_shape)tags.push(`<span class="tag tag-shape">${s.wave_shape}</span>`);
+  if(s.video_path)tags.push('<span class="tag tag-video">📹</span>');
+  if(s.voice_memo_path)tags.push('<span class="tag tag-voice">🎙</span>');
+  const vt=s.video_path?`<div class="feed-video-thumb"><video src="${s.video_path}" preload="metadata" muted></video></div>`:'';
+  return`<div class="feed-card" data-id="${s.id}"><div class="feed-date"><div class="day">${d.getDate()}</div><div class="mo">${d.toLocaleString('en',{month:'short'})}</div></div><div class="feed-body"><div class="feed-user">${avatarHTML(s.avatar_path,s.display_name)}<span class="feed-name">${escapeHtml(s.display_name||'Anon')}</span><span class="feed-tod">· ${formatTOD(s.time_of_day)}</span></div><div class="feed-tags">${tags.join('')}</div>${vt}</div><div class="feed-rating">${s.rating?`<div class="rbadge ${getRatingClass(s.rating)}">${s.rating}</div>`:'<div class="rbadge" style="background:#f1f5f9;color:#94a3b8">—</div>'}</div></div>`;
+}
+
+window.switchToSpot=async id=>{
+  try{const spot=await(await fetch(`/api/spots/${id}`)).json();selectSpot(spot);}catch{}
+};
+
+// ===== BROWSE & FOLLOW SPOTS =====
+$('#browse-spots-btn').addEventListener('click',()=>{$('#browse-spots-panel').classList.remove('hidden');loadBrowseSpots();});
+$('#close-browse').addEventListener('click',()=>$('#browse-spots-panel').classList.add('hidden'));
+
+let browseTimeout;
+$('#browse-search').addEventListener('input',e=>{
+  clearTimeout(browseTimeout);browseTimeout=setTimeout(()=>loadBrowseSpots(e.target.value.trim()),300);
+});
+
+async function loadBrowseSpots(q=''){
+  const params=new URLSearchParams();if(q)params.set('q',q);
+  const headers=currentUser?{'X-Nostr-Pubkey':currentUser.pubkey}:{};
+  try{
+    const spots=await(await fetch(`/api/spots/browse?${params}`,{headers})).json();
+    spotFollowingSet=new Set(spots.filter(s=>s.is_following).map(s=>s.id));
+    const list=$('#browse-spot-list');
+    if(!spots.length){list.innerHTML='<p class="muted" style="padding:1rem;text-align:center">No public spots found</p>';return;}
+    list.innerHTML=spots.map(s=>{
+      const isMember=s.is_member;const isFollowing=spotFollowingSet.has(s.id);
+      let btn;
+      if(isMember)btn='<button class="btn-follow is-you" disabled>Member</button>';
+      else if(!currentUser)btn='';
+      else if(isFollowing)btn=`<button class="btn-follow following" onclick="toggleSpotFollow('${s.id}')">Following</button>`;
+      else btn=`<button class="btn-follow" onclick="toggleSpotFollow('${s.id}')">Follow</button>`;
+      return`<div class="browse-spot-card">
+        ${s.cover_image_url?`<img src="${s.cover_image_url}" class="browse-spot-img" alt="">`:`<div class="browse-spot-img-placeholder">🌊</div>`}
+        <div class="browse-spot-info"><div class="browse-spot-name">${escapeHtml(s.name)}</div><div class="browse-spot-meta">${escapeHtml(s.location_text||'')} · ${s.member_count} member${s.member_count!==1?'s':''}</div></div>
+        ${btn}
+      </div>`;
+    }).join('');
+  }catch{$('#browse-spot-list').innerHTML='<p class="muted" style="padding:1rem;text-align:center">Error</p>';}
+}
+
+window.toggleSpotFollow=async id=>{
+  if(!currentUser)return toast('Log in first','error');
+  const isFollowing=spotFollowingSet.has(id);
+  if(isFollowing)spotFollowingSet.delete(id);else spotFollowingSet.add(id);
+  loadBrowseSpots($('#browse-search').value.trim());
+  await fetch(`/api/spots/${id}/follow`,{method:isFollowing?'DELETE':'POST',headers:{'X-Nostr-Pubkey':currentUser.pubkey}});
+  loadFeed();
+};
+
+// ===== SINGLE-SPOT FEED (fallback for logged-out) =====
 async function loadSessions(){const dir=$('#filter-direction').value,mo=$('#filter-month').value,p=new URLSearchParams();if(currentSpot)p.set('spot_id',currentSpot.id);if(currentUser)p.set('feed_for',currentUser.pubkey);if(dir)p.set('swell_dir',dir);if(mo)p.set('month',mo);
 try{const{sessions}=await(await fetch(`/api/sessions?${p}`)).json();const list=$('#session-list');if(!sessions.length){list.innerHTML='<div class="empty-state"><p>No sessions yet. Be the first to log one!</p></div>';return;}
 list.innerHTML=sessions.map(s=>{const d=new Date(s.session_date+'T12:00:00'),tags=[],sw=JSON.parse(s.swells_json||'[]');sw.forEach(x=>tags.push(`<span class="tag tag-swell">${x.height_ft}ft ${x.period_s}s ${x.direction_compass} ${x.direction_deg}°</span>`));if(s.surf_height_min_ft!=null)tags.push(`<span class="tag tag-height">${s.surf_height_min_ft}-${s.surf_height_max_ft}ft</span>`);if(s.wind_type)tags.push(`<span class="tag tag-wind">${s.wind_speed_mph||''}mph ${s.wind_type}</span>`);if(s.session_type==='observed')tags.push('<span class="tag tag-observed">observed</span>');if(s.wave_shape)tags.push(`<span class="tag tag-shape">${s.wave_shape}</span>`);if(s.video_path)tags.push('<span class="tag tag-video">📹</span>');if(s.voice_memo_path)tags.push('<span class="tag tag-voice">🎙</span>');
 const vt=s.video_path?`<div class="feed-video-thumb"><video src="${s.video_path}" preload="metadata" muted></video></div>`:'';
 return`<div class="feed-card" data-id="${s.id}"><div class="feed-date"><div class="day">${d.getDate()}</div><div class="mo">${d.toLocaleString('en',{month:'short'})}</div></div><div class="feed-body"><div class="feed-user">${avatarHTML(s.avatar_path,s.display_name)}<span class="feed-name">${escapeHtml(s.display_name||'Anon')}</span><span class="feed-tod">· ${formatTOD(s.time_of_day)}</span></div><div class="feed-tags">${tags.join('')}</div>${vt}</div><div class="feed-rating">${s.rating?`<div class="rbadge ${getRatingClass(s.rating)}">${s.rating}</div>`:'<div class="rbadge" style="background:#f1f5f9;color:#94a3b8">—</div>'}</div></div>`;}).join('');
 list.querySelectorAll('.feed-card').forEach(c=>c.addEventListener('click',()=>openSession(c.dataset.id)));}catch{$('#session-list').innerHTML='<div class="empty-state">Error</div>';}}
-$('#filter-direction').addEventListener('change',loadSessions);$('#filter-month').addEventListener('change',loadSessions);
+$('#filter-direction').addEventListener('change',()=>{if(currentUser)loadFeed();else loadSessions();});$('#filter-month').addEventListener('change',()=>{if(currentUser)loadFeed();else loadSessions();});
 
 // ===== DETAIL =====
 async function openSession(id){try{const{session:s,comments}=await(await fetch(`/api/sessions/${id}`)).json();const d=new Date(s.session_date+'T12:00:00');const ds=d.toLocaleDateString('en',{weekday:'long',year:'numeric',month:'long',day:'numeric'});const sw=JSON.parse(s.swells_json||'[]');const swH=sw.map((x,i)=>`<div class="detail-block"><h4>${i?'Secondary':'Primary'} Swell</h4><p>${x.height_ft}ft ${x.period_s}s ${x.direction_compass} ${x.direction_deg}° <small style="opacity:.5">(${x.impact}%)</small></p></div>`).join('');
