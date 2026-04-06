@@ -147,7 +147,15 @@ async function uploadToBlossom(file){
 }
 
 // ===== PROFILE (kind 0) + FOLLOWS (kind 3) =====
-async function fetchProfile(pk){try{const{Relay}=await import('https://esm.sh/nostr-tools@2.10.0/relay');const relay=await Relay.connect(RELAYS[0]);return new Promise(r=>{let ev=null;relay.subscribe([{kinds:[0],authors:[pk],limit:1}],{onevent:e=>{if(!ev||e.created_at>ev.created_at)ev=e;},oneose:()=>{relay.close();try{r(ev?JSON.parse(ev.content):null);}catch{r(null);}}});setTimeout(()=>{try{relay.close();}catch{}r(null);},5000);});}catch{return null;}}
+async function fetchProfile(pk){
+  // Try Primal's cache API first (fast, reliable)
+  try{
+    const r=await fetch('https://cache1.primal.net/api/',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(["user_infos",{"pubkeys":[pk]}])});
+    if(r.ok){const data=await r.json();const profile=data?.find(e=>e.kind===0&&e.pubkey===pk);if(profile)return JSON.parse(profile.content);}
+  }catch(e){console.log('Primal cache fetch failed:',e);}
+  // Fallback: fetch from relay directly
+  try{const{Relay}=await import('https://esm.sh/nostr-tools@2.10.0/relay');const relay=await Relay.connect(RELAYS[0]);return new Promise(r=>{let ev=null;relay.subscribe([{kinds:[0],authors:[pk],limit:1}],{onevent:e=>{if(!ev||e.created_at>ev.created_at)ev=e;},oneose:()=>{relay.close();try{r(ev?JSON.parse(ev.content):null);}catch{r(null);}}});setTimeout(()=>{try{relay.close();}catch{}r(null);},5000);});}catch{return null;}
+}
 async function publishProfile(name,pic){if(!currentUser?.secretKey)return;try{const{finalizeEvent}=await import('https://esm.sh/nostr-tools@2.10.0/pure');const{Relay}=await import('https://esm.sh/nostr-tools@2.10.0/relay');const{hexToBytes}=await import('https://esm.sh/@noble/hashes@1.8.0/utils');const ex=await fetchProfile(currentUser.pubkey)||{};const p={...ex,name};if(pic)p.picture=pic;const ev=finalizeEvent({kind:0,created_at:Math.floor(Date.now()/1000),tags:[],content:JSON.stringify(p)},hexToBytes(currentUser.secretKey));for(const u of RELAYS){try{const r=await Relay.connect(u);await r.publish(ev);r.close();}catch{}}}catch{}}
 async function fetchKind3(pk){try{const{Relay}=await import('https://esm.sh/nostr-tools@2.10.0/relay');const relay=await Relay.connect(RELAYS[0]);return new Promise(r=>{let ev=null;relay.subscribe([{kinds:[3],authors:[pk],limit:1}],{onevent:e=>{if(!ev||e.created_at>ev.created_at)ev=e;},oneose:()=>{relay.close();r(ev);}});setTimeout(()=>{try{relay.close();}catch{}r(ev);},5000);});}catch{return null;}}
 async function publishKind3(pks){if(!currentUser?.secretKey)return;try{const{finalizeEvent}=await import('https://esm.sh/nostr-tools@2.10.0/pure');const{Relay}=await import('https://esm.sh/nostr-tools@2.10.0/relay');const{hexToBytes}=await import('https://esm.sh/@noble/hashes@1.8.0/utils');const ev=finalizeEvent({kind:3,created_at:Math.floor(Date.now()/1000),tags:pks.map(p=>['p',p]),content:''},hexToBytes(currentUser.secretKey));for(const u of RELAYS){try{const r=await Relay.connect(u);await r.publish(ev);r.close();}catch{}}}catch{}}
