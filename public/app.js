@@ -168,6 +168,30 @@ async function fetchKind3(pk){try{const{Relay}=await import('https://esm.sh/nost
 async function publishKind3(pks){if(!currentUser?.secretKey)return;try{const{finalizeEvent}=await import('https://esm.sh/nostr-tools@2.10.0/pure');const{Relay}=await import('https://esm.sh/nostr-tools@2.10.0/relay');const{hexToBytes}=await import('https://esm.sh/@noble/hashes@1.8.0/utils');const ev=finalizeEvent({kind:3,created_at:Math.floor(Date.now()/1000),tags:pks.map(p=>['p',p]),content:''},hexToBytes(currentUser.secretKey));for(const u of RELAYS){try{const r=await Relay.connect(u);await r.publish(ev);r.close();}catch{}}}catch{}}
 async function syncFollowsFromRelay(){if(!currentUser)return;const ev=await fetchKind3(currentUser.pubkey);if(!ev)return;const pks=ev.tags.filter(t=>t[0]==='p').map(t=>t[1]);followingSet=new Set(pks);for(const pk of pks){try{await fetch(`/api/follows/${pk}`,{method:'POST',headers:{'X-Nostr-Pubkey':currentUser.pubkey}});}catch{}}}
 
+// ===== LANDING PAGE AUTH =====
+let landingAvatarFile=null;
+$('#landing-avatar-upload').addEventListener('click',()=>$('#landing-avatar-file').click());
+$('#landing-avatar-file').addEventListener('change',e=>{landingAvatarFile=e.target.files[0];if(!landingAvatarFile)return;const r=new FileReader();r.onload=ev=>{$('#landing-avatar-preview').innerHTML=`<img src="${ev.target.result}">`};r.readAsDataURL(landingAvatarFile);});
+$('#landing-primal-btn').addEventListener('click',openLoginModal);
+
+$('#landing-create-form').addEventListener('submit',async e=>{
+  e.preventDefault();const name=$('#landing-create-name').value.trim();if(!name)return;
+  $('#landing-submit-btn').disabled=true;$('#landing-submit-btn').classList.add('hidden');$('#landing-loading').classList.remove('hidden');
+  try{const{generateSecretKey,getPublicKey}=await import('https://esm.sh/nostr-tools@2.10.0');const{bytesToHex}=await import('https://esm.sh/@noble/hashes@1.8.0/utils');
+  const sk=generateSecretKey(),secretKey=bytesToHex(sk),pubkey=getPublicKey(sk);
+  currentUser={pubkey,secretKey,display_name:name,avatar_path:null};
+  let avatarUrl=null;if(landingAvatarFile)avatarUrl=await uploadToBlossom(landingAvatarFile);
+  const body={pubkey,display_name:name};if(avatarUrl)body.avatar_url=avatarUrl;
+  else if(landingAvatarFile){const r=new FileReader();body.avatar_base64=await new Promise(res=>{r.onloadend=()=>res(r.result.split(',')[1]);r.readAsDataURL(landingAvatarFile);});}
+  const res=await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const data=await res.json();currentUser.avatar_path=data.avatar_path||avatarUrl;
+  localStorage.setItem('swellnotes_user',JSON.stringify(currentUser));
+  await publishProfile(name,avatarUrl);
+  updateAuthUI();landingAvatarFile=null;toast(`Welcome, ${name}!`);
+  }catch{toast('Failed','error');}
+  finally{$('#landing-submit-btn').disabled=false;$('#landing-submit-btn').classList.remove('hidden');$('#landing-loading').classList.add('hidden');}
+});
+
 // ===== AUTH =====
 $('#create-account-btn').addEventListener('click',()=>$('#create-modal').classList.remove('hidden'));
 $('#create-modal .modal-backdrop').addEventListener('click',()=>$('#create-modal').classList.add('hidden'));
@@ -331,8 +355,19 @@ $('#settings-modal .modal-close').addEventListener('click',()=>$('#settings-moda
 $('#logout-btn').addEventListener('click',()=>{currentUser=null;currentSpot=null;mySpots=[];followingSet.clear();localStorage.removeItem('swellnotes_user');localStorage.removeItem('swellnotes_spot');updateAuthUI();location.reload();});
 
 function updateAuthUI(){
-  if(currentUser){$('#auth-buttons').classList.add('hidden');$('#user-info').classList.remove('hidden');$('#spot-picker-auth')?.classList.add('hidden');$('#user-name').textContent=currentUser.display_name;const av=$('#user-avatar');if(currentUser.avatar_path){av.src=currentUser.avatar_path;av.style.display='';}else av.style.display='none';$('#submit-btn').disabled=false;$('#submit-btn').textContent='Log Session';$('#comment-form')?.classList.remove('hidden');loadFollowing();loadMySpots().then(showMySpots);}
-  else{$('#auth-buttons').classList.remove('hidden');$('#user-info').classList.add('hidden');$('#submit-btn').disabled=true;$('#submit-btn').textContent='Log in to Log Session';$('#comment-form')?.classList.add('hidden');}
+  if(currentUser){
+    $('#landing-page').classList.add('hidden');
+    $('#app-header').classList.remove('hidden');
+    $('#hero').classList.remove('hidden');
+    $('#auth-buttons').classList.add('hidden');$('#user-info').classList.remove('hidden');$('#spot-picker-auth')?.classList.add('hidden');$('#user-name').textContent=currentUser.display_name;const av=$('#user-avatar');if(currentUser.avatar_path){av.src=currentUser.avatar_path;av.style.display='';}else av.style.display='none';$('#submit-btn').disabled=false;$('#submit-btn').textContent='Log Session';$('#comment-form')?.classList.remove('hidden');loadFollowing();loadMySpots().then(showMySpots);
+  } else {
+    $('#landing-page').classList.remove('hidden');
+    $('#app-header').classList.add('hidden');
+    $('#hero').classList.add('hidden');
+    $('#main-content').classList.add('hidden');
+    $('#spot-picker')?.classList.add('hidden');
+    $('#auth-buttons').classList.remove('hidden');$('#user-info').classList.add('hidden');$('#submit-btn').disabled=true;$('#submit-btn').textContent='Log in to Log Session';$('#comment-form')?.classList.add('hidden');
+  }
 }
 
 // ===== FOLLOWS =====

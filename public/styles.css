@@ -29,6 +29,36 @@
   --font-body: 'Outfit', system-ui, sans-serif;
 }
 
+/* ---- LANDING PAGE ---- */
+.landing-page {
+  min-height: 100vh; display: flex; align-items: center; justify-content: center;
+  position: relative; overflow: hidden;
+}
+.landing-bg {
+  position: absolute; inset: 0;
+  background: linear-gradient(135deg, var(--ocean-deep) 0%, var(--ocean-mid) 40%, #1a5a8a 70%, var(--cyan) 100%);
+}
+.landing-bg::after {
+  content: ''; position: absolute; inset: 0;
+  background: radial-gradient(ellipse at 30% 80%, rgba(56,189,248,0.15) 0%, transparent 60%),
+              radial-gradient(ellipse at 70% 20%, rgba(26,115,232,0.1) 0%, transparent 50%);
+}
+.landing-card {
+  position: relative; z-index: 1;
+  background: var(--card); border-radius: 20px;
+  padding: 2.5rem 2rem; width: 100%; max-width: 400px;
+  margin: 1rem; box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+  text-align: center;
+}
+.landing-logo { height: 44px; width: auto; margin-bottom: 0.75rem; }
+.landing-sub {
+  color: var(--text-muted); font-size: 0.88rem; line-height: 1.5;
+  margin-bottom: 1.5rem;
+}
+.landing-card .avatar-upload { margin: 0 auto 1rem; }
+.landing-card .field { text-align: left; }
+.landing-card .modal-divider { margin: 1.25rem 0; }
+
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
