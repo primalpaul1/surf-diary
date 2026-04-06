@@ -2,6 +2,8 @@ let currentUser=null,currentSpot=null,mySpots=[],followingSet=new Set(),voiceBlo
 const $=s=>document.querySelector(s),$$=s=>document.querySelectorAll(s);
 const BLOSSOM='https://blossom.primal.net';
 const RELAYS=['wss://relay.primal.net','wss://relay.damus.io','wss://nos.lol'];
+const IS_CAPACITOR=!!window.Capacitor;
+const API_BASE=IS_CAPACITOR?'https://swellnotes.com':'';
 
 // Nav
 $$('.nav-btn[data-view]').forEach(b=>{b.addEventListener('click',()=>{$$('.nav-btn').forEach(x=>x.classList.remove('active'));b.classList.add('active');$$('.view').forEach(v=>v.classList.remove('active'));$(`#view-${b.dataset.view}`).classList.add('active');if(b.dataset.view==='history')loadFeed();if(b.dataset.view==='surfers')loadSurfers();if(b.dataset.view==='analysis')loadAnalysis();if(b.dataset.view==='findspot')renderMySpotsList();});});
@@ -24,6 +26,9 @@ function selectSpot(spot){
   currentSpot=spot;
   localStorage.setItem('swellnotes_spot',JSON.stringify(spot));
   $('#spot-picker')?.classList.add('hidden');
+  $('#app-header').classList.remove('hidden');
+  $('#hero').classList.remove('hidden');
+  document.body.style.overflow='';
   $('#main-content')?.classList.remove('hidden');
   $('#header-spot-name').textContent=spot.name;$('#header-spot-name').style.display='';
   $('#hero-title').textContent=spot.name;
@@ -43,7 +48,7 @@ function selectSpot(spot){
 
 async function loadMySpots(){
   if(!currentUser)return;
-  try{mySpots=await(await fetch('/api/spots',{headers:{'X-Nostr-Pubkey':currentUser.pubkey}})).json();updateSpotSwitcher();}catch{}
+  try{mySpots=await(await fetch(API_BASE+'/api/spots',{headers:{'X-Nostr-Pubkey':currentUser.pubkey}})).json();updateSpotSwitcher();}catch{}
 }
 
 function updateSpotSwitcher(){
@@ -55,7 +60,7 @@ function updateSpotSwitcher(){
 
 $('#spot-select').addEventListener('change',async e=>{
   const spot=mySpots.find(s=>s.id===e.target.value);
-  if(spot){const full=await(await fetch(`/api/spots/${spot.id}`)).json();selectSpot(full);}
+  if(spot){const full=await(await fetch(`${API_BASE}/api/spots/${spot.id}`)).json();selectSpot(full);}
 });
 
 // ===== SPOT SEARCH =====
@@ -66,7 +71,7 @@ $('#spot-search-input').addEventListener('input',e=>{
   if(q.length<2){$('#spot-search-results').innerHTML='';return;}
   searchTimeout=setTimeout(async()=>{
     try{
-      const results=await(await fetch(`/api/spots/search?q=${encodeURIComponent(q)}`)).json();
+      const results=await(await fetch(`${API_BASE}/api/spots/search?q=${encodeURIComponent(q)}`)).json();
       $('#spot-search-results').innerHTML=results.map(r=>`
         <div class="spot-result" data-surfline="${r.surfline_id}" data-name="${escapeHtml(r.name)}" data-loc="${escapeHtml(r.location)}" data-lat="${r.lat}" data-lng="${r.lng}">
           <div class="spot-result-icon">🌊</div>
@@ -94,7 +99,7 @@ async function showMySpots(){
     </div>
   `).join('');
 }
-window.joinExistingSpot=async id=>{const spot=await(await fetch(`/api/spots/${id}`)).json();selectSpot(spot);};
+window.joinExistingSpot=async id=>{const spot=await(await fetch(`${API_BASE}/api/spots/${id}`)).json();selectSpot(spot);};
 
 // ===== CREATE SPOT =====
 $('#cover-upload').addEventListener('click',()=>$('#cover-file').click());
@@ -106,10 +111,10 @@ $('#create-spot-form').addEventListener('submit',async e=>{
     let coverUrl=null;
     if(coverFile)coverUrl=await uploadToBlossom(coverFile);
     const body={...pendingSpotData,cover_image_url:coverUrl,is_private:$('#spot-private').checked};
-    const res=await fetch('/api/spots',{method:'POST',headers:{'Content-Type':'application/json','X-Nostr-Pubkey':currentUser.pubkey},body:JSON.stringify(body)});
+    const res=await fetch(API_BASE+'/api/spots',{method:'POST',headers:{'Content-Type':'application/json','X-Nostr-Pubkey':currentUser.pubkey},body:JSON.stringify(body)});
     const data=await res.json();
     if(data.ok){
-      const spot=await(await fetch(`/api/spots/${data.id}`)).json();
+      const spot=await(await fetch(`${API_BASE}/api/spots/${data.id}`)).json();
       await loadMySpots();
       selectSpot(spot);
       $('#create-spot-modal').classList.add('hidden');
@@ -126,7 +131,7 @@ $('#create-spot-modal .modal-close').addEventListener('click',()=>$('#create-spo
 $('#invite-btn').addEventListener('click',async()=>{
   if(!currentSpot||!currentUser)return;
   try{
-    const res=await fetch(`/api/spots/${currentSpot.id}/invites`,{method:'POST',headers:{'Content-Type':'application/json','X-Nostr-Pubkey':currentUser.pubkey},body:JSON.stringify({})});
+    const res=await fetch(`${API_BASE}/api/spots/${currentSpot.id}/invites`,{method:'POST',headers:{'Content-Type':'application/json','X-Nostr-Pubkey':currentUser.pubkey},body:JSON.stringify({})});
     const data=await res.json();
     $('#invite-link-input').value=data.link||`${location.origin}/join/${data.invite_code}`;
     $('#invite-modal').classList.remove('hidden');
@@ -166,11 +171,11 @@ async function fetchProfile(pk){
 async function publishProfile(name,pic){if(!currentUser?.secretKey)return;try{const{finalizeEvent}=await import('https://esm.sh/nostr-tools@2.10.0/pure');const{Relay}=await import('https://esm.sh/nostr-tools@2.10.0/relay');const{hexToBytes}=await import('https://esm.sh/@noble/hashes@1.8.0/utils');const ex=await fetchProfile(currentUser.pubkey)||{};const p={...ex,name};if(pic)p.picture=pic;const ev=finalizeEvent({kind:0,created_at:Math.floor(Date.now()/1000),tags:[],content:JSON.stringify(p)},hexToBytes(currentUser.secretKey));for(const u of RELAYS){try{const r=await Relay.connect(u);await r.publish(ev);r.close();}catch{}}}catch{}}
 async function fetchKind3(pk){try{const{Relay}=await import('https://esm.sh/nostr-tools@2.10.0/relay');const relay=await Relay.connect(RELAYS[0]);return new Promise(r=>{let ev=null;relay.subscribe([{kinds:[3],authors:[pk],limit:1}],{onevent:e=>{if(!ev||e.created_at>ev.created_at)ev=e;},oneose:()=>{relay.close();r(ev);}});setTimeout(()=>{try{relay.close();}catch{}r(ev);},5000);});}catch{return null;}}
 async function publishKind3(pks){if(!currentUser?.secretKey)return;try{const{finalizeEvent}=await import('https://esm.sh/nostr-tools@2.10.0/pure');const{Relay}=await import('https://esm.sh/nostr-tools@2.10.0/relay');const{hexToBytes}=await import('https://esm.sh/@noble/hashes@1.8.0/utils');const ev=finalizeEvent({kind:3,created_at:Math.floor(Date.now()/1000),tags:pks.map(p=>['p',p]),content:''},hexToBytes(currentUser.secretKey));for(const u of RELAYS){try{const r=await Relay.connect(u);await r.publish(ev);r.close();}catch{}}}catch{}}
-async function syncFollowsFromRelay(){if(!currentUser)return;const ev=await fetchKind3(currentUser.pubkey);if(!ev)return;const pks=ev.tags.filter(t=>t[0]==='p').map(t=>t[1]);followingSet=new Set(pks);for(const pk of pks){try{await fetch(`/api/follows/${pk}`,{method:'POST',headers:{'X-Nostr-Pubkey':currentUser.pubkey}});}catch{}}}
+async function syncFollowsFromRelay(){if(!currentUser)return;const ev=await fetchKind3(currentUser.pubkey);if(!ev)return;const pks=ev.tags.filter(t=>t[0]==='p').map(t=>t[1]);followingSet=new Set(pks);for(const pk of pks){try{await fetch(`${API_BASE}/api/follows/${pk}`,{method:'POST',headers:{'X-Nostr-Pubkey':currentUser.pubkey}});}catch{}}}
 
 // ===== LANDING PAGE AUTH =====
 let landingAvatarFile=null;
-$('#landing-avatar-upload').addEventListener('click',()=>$('#landing-avatar-file').click());
+$('#landing-avatar-preview').addEventListener('click',e=>{e.stopPropagation();$('#landing-avatar-file').click();});
 $('#landing-avatar-file').addEventListener('change',e=>{landingAvatarFile=e.target.files[0];if(!landingAvatarFile)return;const r=new FileReader();r.onload=ev=>{$('#landing-avatar-preview').innerHTML=`<img src="${ev.target.result}">`};r.readAsDataURL(landingAvatarFile);});
 $('#landing-primal-btn').addEventListener('click',openLoginModal);
 
@@ -183,7 +188,7 @@ $('#landing-create-form').addEventListener('submit',async e=>{
   let avatarUrl=null;if(landingAvatarFile)avatarUrl=await uploadToBlossom(landingAvatarFile);
   const body={pubkey,display_name:name};if(avatarUrl)body.avatar_url=avatarUrl;
   else if(landingAvatarFile){const r=new FileReader();body.avatar_base64=await new Promise(res=>{r.onloadend=()=>res(r.result.split(',')[1]);r.readAsDataURL(landingAvatarFile);});}
-  const res=await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const res=await fetch(API_BASE+'/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   const data=await res.json();currentUser.avatar_path=data.avatar_path||avatarUrl;
   localStorage.setItem('swellnotes_user',JSON.stringify(currentUser));
   await publishProfile(name,avatarUrl);
@@ -210,7 +215,7 @@ $('#create-form').addEventListener('submit',async e=>{
   let avatarUrl=null;if(avatarFile)avatarUrl=await uploadToBlossom(avatarFile);
   const body={pubkey,display_name:name};if(avatarUrl)body.avatar_url=avatarUrl;
   else if(avatarFile){const r=new FileReader();body.avatar_base64=await new Promise(res=>{r.onloadend=()=>res(r.result.split(',')[1]);r.readAsDataURL(avatarFile);});}
-  const res=await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const res=await fetch(API_BASE+'/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   const data=await res.json();currentUser.avatar_path=data.avatar_path||avatarUrl;
   localStorage.setItem('swellnotes_user',JSON.stringify(currentUser));
   await publishProfile(name,avatarUrl);
@@ -231,18 +236,21 @@ async function openLoginModal(){
       const st=$('#landing-primal-status');if(st){st.classList.remove('hidden');st.style.display='flex';$('#landing-primal-status-text').textContent='Connecting to Primal...';}
       $('#landing-primal-btn').disabled=true;$('#landing-primal-btn').style.opacity='0.5';
     }
-    const r=await fetch(`/api/nip46/init?origin=${encodeURIComponent(location.origin)}`);
+    const nip46Origin=IS_CAPACITOR?'https://swellnotes.com':location.origin;
+    const nip46Params=`origin=${encodeURIComponent(nip46Origin)}${IS_CAPACITOR?'&platform=ios':''}`;
+    const r=await fetch(`${API_BASE}/api/nip46/init?${nip46Params}`);
     if(!r.ok)throw new Error('Server error: '+r.status);
     nip46Data=await r.json();
     if(!nip46Data.mobileURI||!nip46Data.secretKey)throw new Error('Invalid NIP-46 response');
-    if(isMobile){
+    if(isMobile||IS_CAPACITOR){
       localStorage.setItem('nip46_pending',JSON.stringify({localSecretKey:nip46Data.secretKey,localPublicKey:nip46Data.publicKey,secret:nip46Data.secret,timestamp:Date.now()}));
       // Start relay listener BEFORE redirecting — so it's ready when user returns
       waitForNIP46();
       // Small delay to let listener start, then redirect to Primal
-      setTimeout(()=>{
+      setTimeout(async()=>{
         const st=$('#landing-primal-status');if(st){$('#landing-primal-status-text').textContent='Waiting for Primal...';}
-        window.location.href=nip46Data.mobileURI;
+        if(IS_CAPACITOR){try{const{Browser}=await import('https://esm.sh/@capacitor/browser');await Browser.open({url:nip46Data.mobileURI});}catch{window.location.href=nip46Data.mobileURI;}}
+        else{window.location.href=nip46Data.mobileURI;}
       },300);
     }else{
       $('#qr-image').src=nip46Data.qrDataUrl;$('#login-qr').classList.remove('hidden');$('#login-loading').classList.add('hidden');
@@ -255,7 +263,7 @@ async function openLoginModal(){
     else{$('#landing-primal-btn').disabled=false;$('#landing-primal-btn').style.opacity='';const st=$('#landing-primal-status');if(st){st.classList.add('hidden');st.style.display='';}}
   }
 }
-$('#mobile-login-btn')?.addEventListener('click',()=>{if(!nip46Data)return;localStorage.setItem('nip46_pending',JSON.stringify({localSecretKey:nip46Data.secretKey,localPublicKey:nip46Data.publicKey,secret:nip46Data.secret,timestamp:Date.now()}));location.href=nip46Data.mobileURI;});
+$('#mobile-login-btn')?.addEventListener('click',async()=>{if(!nip46Data)return;localStorage.setItem('nip46_pending',JSON.stringify({localSecretKey:nip46Data.secretKey,localPublicKey:nip46Data.publicKey,secret:nip46Data.secret,timestamp:Date.now()}));if(IS_CAPACITOR){try{const{Browser}=await import('https://esm.sh/@capacitor/browser');await Browser.open({url:nip46Data.mobileURI});}catch{location.href=nip46Data.mobileURI;}}else{location.href=nip46Data.mobileURI;}});
 async function waitForNIP46(){
   if(!nip46Data)return;
   try{
@@ -324,7 +332,7 @@ document.addEventListener('visibilitychange',()=>{if(!document.hidden&&!currentU
 
 async function completeLogin(pk){
   const profile=await fetchProfile(pk);const name=profile?.name||profile?.display_name||pk.slice(0,8)+'...';const picture=profile?.picture||null;
-  await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pubkey:pk,display_name:name,avatar_url:picture})});
+  await fetch(API_BASE+'/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pubkey:pk,display_name:name,avatar_url:picture})});
   currentUser={pubkey:pk,display_name:name,avatar_path:picture};localStorage.setItem('swellnotes_user',JSON.stringify(currentUser));
   // Reset mobile login UI
   $('#landing-primal-btn').disabled=false;$('#landing-primal-btn').style.opacity='';
@@ -332,7 +340,7 @@ async function completeLogin(pk){
   updateAuthUI();$('#login-loading')?.classList.add('hidden');$('#login-qr')?.classList.add('hidden');$('#mobile-login-btn')?.classList.add('hidden');$('#login-connected')?.classList.remove('hidden');
   // Auto-load and select first spot after login
   await loadMySpots();
-  if(mySpots.length>0&&!currentSpot){const spot=await(await fetch(`/api/spots/${mySpots[0].id}`)).json();if(spot&&!spot.error)selectSpot(spot);}
+  if(mySpots.length>0&&!currentSpot){const spot=await(await fetch(`${API_BASE}/api/spots/${mySpots[0].id}`)).json();if(spot&&!spot.error)selectSpot(spot);}
   setTimeout(()=>{$('#login-modal').classList.add('hidden');toast(`Welcome, ${name}!`);},1000);
 }
 
@@ -386,9 +394,9 @@ function updateAuthUI(){
     $('#landing-page').classList.add('hidden');
     document.body.style.overflow='';
     $('#app-header').classList.remove('hidden');
-    $('#hero').classList.remove('hidden');
     $('#auth-buttons').classList.add('hidden');$('#user-info').classList.remove('hidden');$('#spot-picker-auth')?.classList.add('hidden');$('#user-name').textContent=currentUser.display_name;const av=$('#user-avatar');if(currentUser.avatar_path){av.src=currentUser.avatar_path;av.style.display='';}else av.style.display='none';$('#submit-btn').disabled=false;$('#submit-btn').textContent='Log Session';$('#comment-form')?.classList.remove('hidden');
-    if(!currentSpot){$('#spot-picker')?.classList.remove('hidden');$('#main-content')?.classList.add('hidden');}
+    if(!currentSpot){$('#spot-picker')?.classList.remove('hidden');$('#main-content')?.classList.add('hidden');$('#hero').classList.add('hidden');$('#app-header').classList.add('hidden');document.body.style.overflow='hidden';}
+    else{$('#hero').classList.remove('hidden');$('#app-header').classList.remove('hidden');}
     loadFollowing();loadMySpots().then(showMySpots);
   } else {
     $('#landing-page').classList.remove('hidden');
@@ -402,13 +410,13 @@ function updateAuthUI(){
 }
 
 // ===== FOLLOWS =====
-async function loadFollowing(){if(!currentUser)return;try{const{following}=await(await fetch('/api/follows',{headers:{'X-Nostr-Pubkey':currentUser.pubkey}})).json();followingSet=new Set(following.map(f=>f.pubkey));}catch{};syncFollowsFromRelay();}
-async function toggleFollow(pk){if(!currentUser)return toast('Log in first','error');const is=followingSet.has(pk);if(is)followingSet.delete(pk);else followingSet.add(pk);loadSurfers();await fetch(`/api/follows/${pk}`,{method:is?'DELETE':'POST',headers:{'X-Nostr-Pubkey':currentUser.pubkey}});await publishKind3([...followingSet]);}
+async function loadFollowing(){if(!currentUser)return;try{const{following}=await(await fetch(API_BASE+'/api/follows',{headers:{'X-Nostr-Pubkey':currentUser.pubkey}})).json();followingSet=new Set(following.map(f=>f.pubkey));}catch{};syncFollowsFromRelay();}
+async function toggleFollow(pk){if(!currentUser)return toast('Log in first','error');const is=followingSet.has(pk);if(is)followingSet.delete(pk);else followingSet.add(pk);loadSurfers();await fetch(`${API_BASE}/api/follows/${pk}`,{method:is?'DELETE':'POST',headers:{'X-Nostr-Pubkey':currentUser.pubkey}});await publishKind3([...followingSet]);}
 window.toggleFollow=toggleFollow;
 
 async function loadSurfers(){
   const params=currentSpot?`?spot_id=${currentSpot.id}`:'';
-  try{const users=await(await fetch('/api/users'+params)).json();const list=$('#surfers-list');if(!users.length){list.innerHTML='<div class="empty-state"><p>No surfers in this spot yet.</p></div>';return;}
+  try{const users=await(await fetch(API_BASE+'/api/users'+params)).json();const list=$('#surfers-list');if(!users.length){list.innerHTML='<div class="empty-state"><p>No surfers in this spot yet.</p></div>';return;}
   list.innerHTML=users.map(u=>{const me=currentUser?.pubkey===u.pubkey;const fol=followingSet.has(u.pubkey);let btn;if(me)btn='<button class="btn-follow is-you" disabled>You</button>';else if(!currentUser)btn='';else if(fol)btn=`<button class="btn-follow following" onclick="toggleFollow('${u.pubkey}')">Following</button>`;else btn=`<button class="btn-follow" onclick="toggleFollow('${u.pubkey}')">Follow</button>`;
   const isAdmin=currentSpot?.members?.some(m=>m.pubkey===currentUser?.pubkey&&m.role==='admin');
   const adminBtn=(!me&&isAdmin&&u.role!=='admin'&&currentSpot)?`<button class="btn-outline btn-xs" style="margin-left:0.3rem" onclick="event.stopPropagation();makeAdmin('${currentSpot.id}','${u.pubkey}')">Make Admin</button>`:'';
@@ -418,7 +426,7 @@ async function loadSurfers(){
 $('#session_date').value=new Date().toISOString().split('T')[0];
 async function fetchConditions(){const d=$('#session_date').value,t=$('#time_of_day').value,p=$('#conditions-preview');p.innerHTML='<div class="cond-loading">Fetching conditions...</div>';
   const spotParam=currentSpot?`&spot_id=${currentSpot.id}`:'';
-  try{const c=await(await fetch(`/api/conditions?date=${d}&time_of_day=${t}${spotParam}`)).json();if(!c.surf_height_min_ft&&!c.swells?.length){p.innerHTML='<div class="cond-loading">No forecast data.</div>';return;}
+  try{const c=await(await fetch(`${API_BASE}/api/conditions?date=${d}&time_of_day=${t}${spotParam}`)).json();if(!c.surf_height_min_ft&&!c.swells?.length){p.innerHTML='<div class="cond-loading">No forecast data.</div>';return;}
   const sw=(c.swells||[]).map(s=>`<div class="swell-item"><span class="swell-compass">${s.direction_compass}</span><span class="swell-detail">${s.height_ft}ft ${s.period_s}s</span><span class="swell-meta">${s.direction_deg}°</span></div>`).join('');
   p.innerHTML=`<div class="cond-grid"><div class="cond-block"><h4>Surf</h4><div class="cond-val">${c.surf_height_min_ft||'?'}-${c.surf_height_max_ft||'?'} ft</div></div><div class="cond-block"><h4>Swells (${c.swells?.length||0})</h4><div class="swells-list">${sw||'—'}</div></div><div class="cond-block"><h4>Wind</h4><div class="cond-val">${c.wind_speed_mph||0} mph</div><div class="cond-sub">${c.wind_type||''} ${c.wind_gust_mph?'gusts '+c.wind_gust_mph:''}</div></div><div class="cond-block"><h4>Tide</h4><div class="cond-val">${c.tide_height_ft||'?'} ft</div></div></div>`;}catch{p.innerHTML='<div class="cond-loading">Could not fetch.</div>';}}
 $('#session_date').addEventListener('change',fetchConditions);$('#time_of_day').addEventListener('change',fetchConditions);
@@ -472,7 +480,7 @@ const rb=$('#record-btn'),rl=$('#record-label');
 function setupSR(){const S=window.SpeechRecognition||window.webkitSpeechRecognition;if(!S)return null;const r=new S();r.continuous=true;r.interimResults=true;r.lang='en-US';let ft='';r.onresult=e=>{let i='';for(let x=e.resultIndex;x<e.results.length;x++){if(e.results[x].isFinal)ft+=e.results[x][0].transcript+' ';else i+=e.results[x][0].transcript;}voiceTranscript=ft.trim();$('#transcript-text').textContent=ft+i;$('#transcript-section').classList.remove('hidden');};r.onerror=()=>{};r.onend=()=>$('#transcript-text')?.classList.remove('listening');return{recognition:r,reset:()=>{ft='';}};}
 rb.addEventListener('mousedown',startRec);rb.addEventListener('mouseup',stopRec);rb.addEventListener('mouseleave',stopRec);
 rb.addEventListener('touchstart',e=>{e.preventDefault();startRec();});rb.addEventListener('touchend',e=>{e.preventDefault();stopRec();});
-async function startRec(){if(mediaRecorder?.state==='recording')return;try{const s=await navigator.mediaDevices.getUserMedia({audio:true});recordingChunks=[];mediaRecorder=new MediaRecorder(s,{mimeType:'audio/webm;codecs=opus'});mediaRecorder.ondataavailable=e=>{if(e.data.size>0)recordingChunks.push(e.data);};mediaRecorder.onstop=()=>{s.getTracks().forEach(t=>t.stop());voiceBlob=new Blob(recordingChunks,{type:'audio/webm'});$('#voice-audio').src=URL.createObjectURL(voiceBlob);$('#voice-playback').classList.remove('hidden');};mediaRecorder.start(100);const sr=setupSR();if(sr){speechRecognition=sr.recognition;sr.reset();voiceTranscript='';$('#transcript-text').textContent='';$('#transcript-text').classList.add('listening');$('#transcript-section').classList.remove('hidden');speechRecognition.start();}rb.classList.add('recording');rl.textContent='Release to stop';$('#recording-status').classList.remove('hidden');recordingSeconds=0;updTimer();recordingTimer=setInterval(()=>{recordingSeconds++;updTimer();},1000);}catch{toast('Mic denied','error');}}
+async function startRec(){if(mediaRecorder?.state==='recording')return;try{if(IS_CAPACITOR){try{const{Microphone}=await import('https://esm.sh/@capacitor/microphone');const perm=await Microphone.requestPermissions();if(perm.microphone!=='granted'){toast('Mic permission denied','error');return;}}catch{}}const s=await navigator.mediaDevices.getUserMedia({audio:true});recordingChunks=[];const recMime=MediaRecorder.isTypeSupported('audio/webm;codecs=opus')?'audio/webm;codecs=opus':'audio/mp4';mediaRecorder=new MediaRecorder(s,{mimeType:recMime});mediaRecorder.ondataavailable=e=>{if(e.data.size>0)recordingChunks.push(e.data);};mediaRecorder.onstop=()=>{s.getTracks().forEach(t=>t.stop());voiceBlob=new Blob(recordingChunks,{type:recMime});voiceBlob._ext=recMime.includes('mp4')?'m4a':'webm';$('#voice-audio').src=URL.createObjectURL(voiceBlob);$('#voice-playback').classList.remove('hidden');};mediaRecorder.start(100);const sr=setupSR();if(sr){speechRecognition=sr.recognition;sr.reset();voiceTranscript='';$('#transcript-text').textContent='';$('#transcript-text').classList.add('listening');$('#transcript-section').classList.remove('hidden');speechRecognition.start();}rb.classList.add('recording');rl.textContent='Release to stop';$('#recording-status').classList.remove('hidden');recordingSeconds=0;updTimer();recordingTimer=setInterval(()=>{recordingSeconds++;updTimer();},1000);}catch{toast('Mic denied','error');}}
 function stopRec(){if(!mediaRecorder||mediaRecorder.state!=='recording')return;mediaRecorder.stop();if(speechRecognition){speechRecognition.stop();speechRecognition=null;}clearInterval(recordingTimer);rb.classList.remove('recording');rl.textContent='Voice Note';$('#recording-status').classList.add('hidden');}
 function updTimer(){$('#record-timer').textContent=`${Math.floor(recordingSeconds/60)}:${(recordingSeconds%60).toString().padStart(2,'0')}`;}
 $('#delete-voice').addEventListener('click',()=>{voiceBlob=null;voiceTranscript='';$('#voice-audio').src='';$('#voice-playback').classList.add('hidden');$('#transcript-section').classList.add('hidden');});
@@ -484,10 +492,10 @@ $('#session-form').addEventListener('submit',async e=>{
   e.preventDefault();if(!currentUser)return toast('Log in first','error');
   const data={session_date:$('#session_date').value,time_of_day:$('#time_of_day').value,rating:+$('#rating').value,wave_shape:$('#wave_shape').value||null,session_type:$('#session_type').value||'surfed',notes:$('#notes').value||null,voice_transcript:voiceTranscript||null,spot_id:currentSpot?.id||null};
   try{$('#submit-btn').disabled=true;$('#submit-btn').textContent='Uploading...';
-  if(voiceBlob){const vf=new File([voiceBlob],'voice.webm',{type:'audio/webm'});const u=await uploadToBlossom(vf);if(u)data.voice_url=u;else{const r=new FileReader();data.voice_memo_base64=await new Promise(res=>{r.onloadend=()=>res(r.result.split(',')[1]);r.readAsDataURL(voiceBlob);});}}
+  if(voiceBlob){const vExt=voiceBlob._ext||'webm';const vType=vExt==='m4a'?'audio/mp4':'audio/webm';const vf=new File([voiceBlob],`voice.${vExt}`,{type:vType});const u=await uploadToBlossom(vf);if(u)data.voice_url=u;else{const r=new FileReader();data.voice_memo_base64=await new Promise(res=>{r.onloadend=()=>res(r.result.split(',')[1]);r.readAsDataURL(voiceBlob);});}}
   if(videoFile){const u=await uploadToBlossom(videoFile);if(u)data.video_url=u;else{const r=new FileReader();data.video_base64=await new Promise(res=>{r.onloadend=()=>res(r.result.split(',')[1]);r.readAsDataURL(videoFile);});}}
   $('#submit-btn').textContent='Logging...';
-  const res=await fetch('/api/sessions',{method:'POST',headers:{'Content-Type':'application/json','X-Nostr-Pubkey':currentUser.pubkey},body:JSON.stringify(data)});
+  const res=await fetch(API_BASE+'/api/sessions',{method:'POST',headers:{'Content-Type':'application/json','X-Nostr-Pubkey':currentUser.pubkey},body:JSON.stringify(data)});
   if(res.ok){const result=await res.json();toast('Session logged!');
     const shareData={rating:data.rating,session_type:data.session_type,wave_shape:data.wave_shape,notes:data.notes,video_url:data.video_url||null,conditions:result.conditions||{},spot_name:currentSpot?.name||'Unknown'};
     $('#notes').value='';rs.value=5;updateRating();$$('.shape-tab[data-shape]').forEach(b=>b.classList.remove('active'));$('#wave_shape').value='';$$('.shape-tab[data-group="session_type"]').forEach(b=>b.classList.remove('active'));document.querySelector('.shape-tab[data-val="surfed"]')?.classList.add('active');$('#session_type').value='surfed';voiceBlob=null;voiceTranscript='';$('#voice-audio').src='';$('#voice-playback').classList.add('hidden');$('#transcript-section').classList.add('hidden');videoFile=null;$('#video-player').src='';$('#video-preview').classList.add('hidden');$('#video-file').value='';
@@ -514,7 +522,7 @@ async function loadFeed(){
   const dir=$('#filter-direction').value,mo=$('#filter-month').value,p=new URLSearchParams();
   if(dir)p.set('swell_dir',dir);if(mo)p.set('month',mo);
   try{
-    const groups=await(await fetch(`/api/feed?${p}`,{headers:{'X-Nostr-Pubkey':currentUser.pubkey}})).json();
+    const groups=await(await fetch(`${API_BASE}/api/feed?${p}`,{headers:{'X-Nostr-Pubkey':currentUser.pubkey}})).json();
     const list=$('#session-list');
     if(!groups.length){list.innerHTML='<div class="empty-state"><p>No spots in your feed yet.</p><p class="muted">Browse and follow spots to see sessions here.</p></div>';return;}
     list.innerHTML=groups.map(g=>{
@@ -544,7 +552,7 @@ function renderSessionCard(s){
 }
 
 window.switchToSpot=async id=>{
-  try{const spot=await(await fetch(`/api/spots/${id}`)).json();selectSpot(spot);}catch{}
+  try{const spot=await(await fetch(`${API_BASE}/api/spots/${id}`)).json();selectSpot(spot);}catch{}
 };
 
 // ===== BROWSE & FOLLOW SPOTS =====
@@ -560,7 +568,7 @@ async function loadBrowseSpots(q=''){
   const params=new URLSearchParams();if(q)params.set('q',q);
   const headers=currentUser?{'X-Nostr-Pubkey':currentUser.pubkey}:{};
   try{
-    const spots=await(await fetch(`/api/spots/browse?${params}`,{headers})).json();
+    const spots=await(await fetch(`${API_BASE}/api/spots/browse?${params}`,{headers})).json();
     spotFollowingSet=new Set(spots.filter(s=>s.is_following).map(s=>s.id));
     const list=$('#browse-spot-list');
     if(!spots.length){list.innerHTML='<p class="muted" style="padding:1rem;text-align:center">No public spots found</p>';return;}
@@ -585,7 +593,7 @@ window.toggleSpotFollow=async id=>{
   const isFollowing=spotFollowingSet.has(id);
   if(isFollowing)spotFollowingSet.delete(id);else spotFollowingSet.add(id);
   loadBrowseSpots($('#browse-search').value.trim());
-  await fetch(`/api/spots/${id}/follow`,{method:isFollowing?'DELETE':'POST',headers:{'X-Nostr-Pubkey':currentUser.pubkey}});
+  await fetch(`${API_BASE}/api/spots/${id}/follow`,{method:isFollowing?'DELETE':'POST',headers:{'X-Nostr-Pubkey':currentUser.pubkey}});
   loadFeed();
 };
 
@@ -595,7 +603,7 @@ async function loadSessions(){
   if(!currentSpot){list.innerHTML='<div class="empty-state"><p>Select a spot first to see the feed.</p></div>';return;}
   const dir=$('#filter-direction').value,mo=$('#filter-month').value,p=new URLSearchParams();
   p.set('spot_id',currentSpot.id);if(currentUser)p.set('feed_for',currentUser.pubkey);if(dir)p.set('swell_dir',dir);if(mo)p.set('month',mo);
-  try{const{sessions}=await(await fetch(`/api/sessions?${p}`)).json();
+  try{const{sessions}=await(await fetch(`${API_BASE}/api/sessions?${p}`)).json();
   if(!sessions.length){list.innerHTML='<div class="empty-state"><p>No sessions yet. Be the first to log one!</p></div>';return;}
   list.innerHTML=sessions.map(s=>renderSessionCard(s)).join('');
   list.querySelectorAll('.feed-card').forEach(c=>c.addEventListener('click',()=>openSession(c.dataset.id)));
@@ -604,12 +612,12 @@ async function loadSessions(){
 $('#filter-direction').addEventListener('change',()=>{if(currentUser)loadFeed();else loadSessions();});$('#filter-month').addEventListener('change',()=>{if(currentUser)loadFeed();else loadSessions();});
 
 // ===== DETAIL =====
-async function openSession(id){try{const{session:s,comments}=await(await fetch(`/api/sessions/${id}`)).json();const d=new Date(s.session_date+'T12:00:00');const ds=d.toLocaleDateString('en',{weekday:'long',year:'numeric',month:'long',day:'numeric'});const sw=JSON.parse(s.swells_json||'[]');const swH=sw.map((x,i)=>`<div class="detail-block"><h4>${i?'Secondary':'Primary'} Swell</h4><p>${x.height_ft}ft ${x.period_s}s ${x.direction_compass} ${x.direction_deg}° <small style="opacity:.5">(${x.impact}%)</small></p></div>`).join('');
+async function openSession(id){try{const{session:s,comments}=await(await fetch(`${API_BASE}/api/sessions/${id}`)).json();const d=new Date(s.session_date+'T12:00:00');const ds=d.toLocaleDateString('en',{weekday:'long',year:'numeric',month:'long',day:'numeric'});const sw=JSON.parse(s.swells_json||'[]');const swH=sw.map((x,i)=>`<div class="detail-block"><h4>${i?'Secondary':'Primary'} Swell</h4><p>${x.height_ft}ft ${x.period_s}s ${x.direction_compass} ${x.direction_deg}° <small style="opacity:.5">(${x.impact}%)</small></p></div>`).join('');
 // Check if user can delete (own session or spot admin)
 const canDelete=currentUser&&(s.pubkey===currentUser.pubkey||(currentSpot?.members?.some(m=>m.pubkey===currentUser.pubkey&&m.role==='admin')));
-$('#session-detail').innerHTML=`<h2>${ds}</h2><p class="muted"><a href="${primalLink(s.pubkey)}" target="_blank" rel="noopener" class="user-link-inline">${escapeHtml(s.display_name||'Anon')}</a> · ${formatTOD(s.time_of_day)}</p><div style="margin:.75rem 0"><div class="rbadge ${getRatingClass(s.rating)}" style="width:52px;height:52px;font-size:1.3rem;display:inline-flex">${s.rating||'—'}/10</div></div><div class="detail-grid"><div class="detail-block"><h4>Surf</h4><p>${s.surf_height_min_ft||'?'}–${s.surf_height_max_ft||'?'} ft</p></div>${swH}<div class="detail-block"><h4>Wind</h4><p>${s.wind_speed_mph||'?'} mph ${s.wind_type?'('+s.wind_type+')':''}</p></div><div class="detail-block"><h4>Tide</h4><p>${s.tide_height_ft||'?'} ft</p></div>${s.wave_shape?`<div class="detail-block"><h4>Shape</h4><p style="text-transform:capitalize">${s.wave_shape}</p></div>`:''}</div>${s.video_path?`<div class="detail-video"><video controls src="${s.video_path}" preload="metadata"></video></div>`:''}${s.voice_memo_path?`<div class="detail-voice"><audio controls src="${s.voice_memo_path}" style="width:100%;height:36px"></audio>${s.voice_transcript?`<div class="detail-transcript">"${escapeHtml(s.voice_transcript)}"</div>`:''}</div>`:''}${s.notes?`<div class="detail-notes">${escapeHtml(s.notes)}</div>`:''}${canDelete?`<button class="btn-delete-session" onclick="deleteSession(${s.id})">Delete Log</button>`:''}`;
-$('#comments-list').innerHTML=comments.length?comments.map(c=>`<div class="comment"><div class="comment-meta"><a href="${primalLink(c.pubkey)}" target="_blank" rel="noopener" class="user-link-inline">${escapeHtml(c.display_name||'Anon')}</a> · ${new Date(c.created_at*1000).toLocaleDateString()}</div><div class="comment-body">${escapeHtml(c.body)}</div></div>`).join(''):'<p class="muted" style="font-size:.82rem">No comments yet</p>';
-$('#comment-form').onsubmit=async e=>{e.preventDefault();if(!currentUser)return;const b=$('#comment-body').value.trim();if(!b)return;await fetch(`/api/sessions/${id}/comments`,{method:'POST',headers:{'Content-Type':'application/json','X-Nostr-Pubkey':currentUser.pubkey},body:JSON.stringify({body:b})});$('#comment-body').value='';openSession(id);};
+$('#session-detail').innerHTML=`<h2>${ds}</h2><p class="muted"><a href="${primalLink(s.pubkey)}" target="_blank" rel="noopener" class="user-link-inline">${escapeHtml(s.display_name||'Anon')}</a> · ${formatTOD(s.time_of_day)}</p><div style="margin:.75rem 0"><div class="rbadge ${getRatingClass(s.rating)}" style="width:52px;height:52px;font-size:1.3rem;display:inline-flex">${s.rating||'—'}/10</div></div><div class="detail-grid"><div class="detail-block"><h4>Surf</h4><p>${s.surf_height_min_ft||'?'}–${s.surf_height_max_ft||'?'} ft</p></div>${swH}<div class="detail-block"><h4>Wind</h4><p>${s.wind_speed_mph||'?'} mph ${s.wind_type?'('+s.wind_type+')':''}</p></div><div class="detail-block"><h4>Tide</h4><p>${s.tide_height_ft||'?'} ft</p></div>${s.wave_shape?`<div class="detail-block"><h4>Shape</h4><p style="text-transform:capitalize">${s.wave_shape}</p></div>`:''}</div>${s.video_path?`<div class="detail-video"><video controls src="${s.video_path}" preload="metadata"></video></div>`:''}${s.voice_memo_path?`<div class="detail-voice"><audio controls src="${s.voice_memo_path}" style="width:100%;height:36px"></audio>${s.voice_transcript?`<div class="detail-transcript">"${escapeHtml(s.voice_transcript)}"</div>`:''}</div>`:''}${s.notes?`<div class="detail-notes">${escapeHtml(s.notes)}</div>`:''}${canDelete?`<button class="btn-delete-session" onclick="deleteSession(${s.id})">Delete Log</button>`:''}${currentUser&&s.pubkey!==currentUser.pubkey?`<div class="detail-actions"><button class="btn-report" onclick="reportContent('session','${s.id}')">Report</button><button class="btn-report" onclick="blockUser('${s.pubkey}')">Block User</button></div>`:''}`;
+$('#comments-list').innerHTML=comments.length?comments.map(c=>`<div class="comment"><div class="comment-meta"><a href="${primalLink(c.pubkey)}" target="_blank" rel="noopener" class="user-link-inline">${escapeHtml(c.display_name||'Anon')}</a> · ${new Date(c.created_at*1000).toLocaleDateString()}${currentUser&&c.pubkey!==currentUser.pubkey?` · <button class="btn-report-inline" onclick="event.stopPropagation();reportContent('comment','${c.id}')">Report</button>`:''}</div><div class="comment-body">${escapeHtml(c.body)}</div></div>`).join(''):'<p class="muted" style="font-size:.82rem">No comments yet</p>';
+$('#comment-form').onsubmit=async e=>{e.preventDefault();if(!currentUser)return;const b=$('#comment-body').value.trim();if(!b)return;await fetch(`${API_BASE}/api/sessions/${id}/comments`,{method:'POST',headers:{'Content-Type':'application/json','X-Nostr-Pubkey':currentUser.pubkey},body:JSON.stringify({body:b})});$('#comment-body').value='';openSession(id);};
 $('#session-modal').classList.remove('hidden');}catch{toast('Error','error');}}
 window.openSession=openSession;
 window.openLoginModal=openLoginModal;
@@ -617,7 +625,7 @@ window.openLoginModal=openLoginModal;
 async function deleteSession(id){
   if(!confirm('Delete this log? This cannot be undone.'))return;
   try{
-    const res=await fetch(`/api/sessions/${id}`,{method:'DELETE',headers:{'X-Nostr-Pubkey':currentUser.pubkey}});
+    const res=await fetch(`${API_BASE}/api/sessions/${id}`,{method:'DELETE',headers:{'X-Nostr-Pubkey':currentUser.pubkey}});
     if(res.ok){toast('Log deleted');$('#session-modal').classList.add('hidden');loadSessions();}
     else{const err=await res.json();toast(err.error||'Failed','error');}
   }catch{toast('Failed to delete','error');}
@@ -627,22 +635,43 @@ window.deleteSession=deleteSession;
 async function makeAdmin(spotId,pubkey){
   if(!confirm('Make this surfer an admin? They will be able to delete posts and invite others.'))return;
   try{
-    await fetch(`/api/spots/${spotId}/members/${pubkey}`,{method:'PUT',headers:{'Content-Type':'application/json','X-Nostr-Pubkey':currentUser.pubkey},body:JSON.stringify({role:'admin'})});
+    await fetch(`${API_BASE}/api/spots/${spotId}/members/${pubkey}`,{method:'PUT',headers:{'Content-Type':'application/json','X-Nostr-Pubkey':currentUser.pubkey},body:JSON.stringify({role:'admin'})});
     toast('Admin added');loadSurfers();
   }catch{toast('Failed','error');}
 }
 window.makeAdmin=makeAdmin;
+
+async function reportContent(type,id){
+  if(!currentUser)return toast('Log in first','error');
+  const reason=prompt('Why are you reporting this? (optional)');
+  if(reason===null)return; // cancelled
+  try{
+    await fetch(API_BASE+'/api/report',{method:'POST',headers:{'Content-Type':'application/json','X-Nostr-Pubkey':currentUser.pubkey},body:JSON.stringify({target_type:type,target_id:String(id),reason:reason||null})});
+    toast('Reported. We will review this.');
+  }catch{toast('Failed to report','error');}
+}
+window.reportContent=reportContent;
+
+async function blockUser(pubkey){
+  if(!currentUser)return toast('Log in first','error');
+  if(!confirm('Block this user? Their content will be hidden from your feed.'))return;
+  try{
+    await fetch(`${API_BASE}/api/blocks/${pubkey}`,{method:'POST',headers:{'X-Nostr-Pubkey':currentUser.pubkey}});
+    toast('User blocked');$('#session-modal').classList.add('hidden');
+  }catch{toast('Failed to block','error');}
+}
+window.blockUser=blockUser;
 $('#session-modal .modal-backdrop').addEventListener('click',()=>$('#session-modal').classList.add('hidden'));
 $('#session-modal .modal-close').addEventListener('click',()=>$('#session-modal').classList.add('hidden'));
 
 // ===== SEARCH =====
 $('#search-btn').addEventListener('click',runSearch);$('#search-clear').addEventListener('click',()=>{['search-dir-min','search-dir-max','search-height-min','search-height-max','search-period-min','search-period-max','search-rating-min','search-rating-max'].forEach(id=>$(`#${id}`).value='');$('#search-results').innerHTML='';});
 async function runSearch(){const p=new URLSearchParams();if(currentUser)p.set('pubkey',currentUser.pubkey);if(currentSpot)p.set('spot_id',currentSpot.id);const fields={dir_min:'search-dir-min',dir_max:'search-dir-max',height_min:'search-height-min',height_max:'search-height-max',period_min:'search-period-min',period_max:'search-period-max',rating_min:'search-rating-min',rating_max:'search-rating-max'};Object.entries(fields).forEach(([k,id])=>{const v=$(`#${id}`).value;if(v)p.set(k,v);});
-try{const{sessions,summary}=await(await fetch(`/api/search?${p}`)).json();const sr=$('#search-results');if(!sessions.length){sr.innerHTML='<div class="empty-state"><p>No matches.</p></div>';return;}
+try{const{sessions,summary}=await(await fetch(`${API_BASE}/api/search?${p}`)).json();const sr=$('#search-results');if(!sessions.length){sr.innerHTML='<div class="empty-state"><p>No matches.</p></div>';return;}
 sr.innerHTML=`<div class="search-summary"><div class="search-stat"><span class="search-stat-label">Sessions</span><span class="search-stat-value">${summary.count}</span></div><div class="search-stat"><span class="search-stat-label">Avg</span><span class="search-stat-value">${summary.avg_rating||'—'}/10</span></div><div class="search-stat"><span class="search-stat-label">Best</span><span class="search-stat-value">${summary.best_rating||'—'}</span></div><div class="search-stat"><span class="search-stat-label">Worst</span><span class="search-stat-value">${summary.worst_rating||'—'}</span></div></div><div class="search-result-list">${sessions.map(s=>{const d=new Date(s.session_date+'T12:00:00'),sw=JSON.parse(s.swells_json||'[]');return`<div class="feed-card" onclick="openSession(${s.id})"><div class="feed-date"><div class="day">${d.getDate()}</div><div class="mo">${d.toLocaleString('en',{month:'short'})}</div></div><div class="feed-body"><div class="feed-user">${avatarHTML(s.avatar_path,s.display_name)}<span class="feed-name">${escapeHtml(s.display_name||'Anon')}</span></div><div class="feed-tags">${sw.map(x=>`<span class="tag tag-swell">${x.height_ft}ft ${x.period_s}s ${x.direction_compass}</span>`).join('')}</div></div><div class="feed-rating">${s.rating?`<div class="rbadge ${getRatingClass(s.rating)}">${s.rating}</div>`:''}</div></div>`;}).join('')}</div>`;}catch{$('#search-results').innerHTML='<div class="empty-state">Failed</div>';}}
 
 // ===== ANALYSIS =====
-async function loadAnalysis(){try{const q=new URLSearchParams();if(currentUser)q.set('pubkey',currentUser.pubkey);if(currentSpot)q.set('spot_id',currentSpot.id);const qs=q.toString()?'?'+q:'';const[dr,br,tr]=await Promise.all([fetch('/api/analysis/by-direction'+qs),fetch('/api/analysis/best-conditions'+qs),fetch('/api/analysis/timeline'+qs)]);const[dirs,best,tl]=await Promise.all([dr.json(),br.json(),tr.json()]);
+async function loadAnalysis(){try{const q=new URLSearchParams();if(currentUser)q.set('pubkey',currentUser.pubkey);if(currentSpot)q.set('spot_id',currentSpot.id);const qs=q.toString()?'?'+q:'';const[dr,br,tr]=await Promise.all([fetch(API_BASE+'/api/analysis/by-direction'+qs),fetch(API_BASE+'/api/analysis/best-conditions'+qs),fetch(API_BASE+'/api/analysis/timeline'+qs)]);const[dirs,best,tl]=await Promise.all([dr.json(),br.json(),tr.json()]);
 $('#direction-analysis').innerHTML=!dirs.length?'<p class="empty-state">Log sessions to see patterns!</p>':`<table class="analysis-table"><thead><tr><th>Dir</th><th>#</th><th>Rating</th><th>Avg Swell</th></tr></thead><tbody>${dirs.map(d=>`<tr><td><span class="dir-badge">${d.direction}</span></td><td>${d.session_count}</td><td class="bar-cell"><div class="bar-bg" style="width:${(d.avg_rating/10)*100}%;background:var(--teal)"></div><span class="bar-value">${d.avg_rating}/10</span></td><td>${d.avg_swell_height||'-'}ft ${d.avg_swell_period||'-'}s</td></tr>`).join('')}</tbody></table>`;
 $('#best-conditions').innerHTML=!best.length?'<p class="empty-state">Need 2+ sessions per combo</p>':`<table class="analysis-table"><thead><tr><th>Dir</th><th>Swell</th><th>Period</th><th>Wind</th><th>#</th><th>Avg</th></tr></thead><tbody>${best.map(b=>`<tr><td><span class="dir-badge">${b.direction}</span></td><td>${b.swell_bucket}</td><td>${b.period_bucket}</td><td>${b.wind_type}</td><td>${b.count}</td><td><strong>${b.avg_rating}/10</strong></td></tr>`).join('')}</tbody></table>`;
 $('#timeline-chart').innerHTML=!tl.length?'<p class="empty-state">Log sessions first</p>':tl.map(t=>{const r=t.avg_rating||0;const c=r>=8?'var(--teal)':r>=5?'var(--gold)':r>=3?'#f97316':'var(--coral)';const d=new Date(t.session_date+'T12:00:00');return`<div class="timeline-row"><div class="timeline-date">${d.toLocaleDateString('en',{month:'short',day:'numeric'})}</div><div class="timeline-bar"><div class="timeline-fill" style="width:${Math.max(r/10*100,8)}%;background:${c}">${r}</div></div><div class="timeline-info">${t.avg_min}-${t.avg_max}ft ${t.directions||''}</div></div>`;}).join('');}catch(e){console.error(e);}}
@@ -652,14 +681,14 @@ async function checkInviteURL(){
   const m=location.pathname.match(/^\/join\/(\w+)$/);
   if(!m)return;
   try{
-    const inv=await(await fetch(`/api/invite/${m[1]}`)).json();
+    const inv=await(await fetch(`${API_BASE}/api/invite/${m[1]}`)).json();
     if(inv.error){toast(inv.error,'error');return;}
     if(!currentUser){toast('Create an account first, then open the invite link again','error');return;}
-    const res=await fetch(`/api/invite/${m[1]}/claim`,{method:'POST',headers:{'X-Nostr-Pubkey':currentUser.pubkey}});
+    const res=await fetch(`${API_BASE}/api/invite/${m[1]}/claim`,{method:'POST',headers:{'X-Nostr-Pubkey':currentUser.pubkey}});
     const data=await res.json();
     if(data.ok){
       await loadMySpots();
-      const spot=await(await fetch(`/api/spots/${data.spot_id}`)).json();
+      const spot=await(await fetch(`${API_BASE}/api/spots/${data.spot_id}`)).json();
       selectSpot(spot);
       toast(`Joined ${inv.spot_name}!`);
       history.replaceState(null,'','/');
@@ -675,7 +704,7 @@ $('#findspot-search')?.addEventListener('input',e=>{
   if(q.length<2){$('#findspot-results').innerHTML='';return;}
   findspotTimeout=setTimeout(async()=>{
     try{
-      const results=await(await fetch(`/api/spots/search?q=${encodeURIComponent(q)}`)).json();
+      const results=await(await fetch(`${API_BASE}/api/spots/search?q=${encodeURIComponent(q)}`)).json();
       $('#findspot-results').innerHTML=results.map(r=>`
         <div class="spot-result" data-surfline="${r.surfline_id}" data-name="${escapeHtml(r.name)}" data-loc="${escapeHtml(r.location)}" data-lat="${r.lat}" data-lng="${r.lng}">
           <div class="spot-result-icon">🌊</div>
@@ -712,3 +741,5 @@ updateAuthUI();checkCallback();checkInviteURL();
 if(!currentSpot)fetchConditions();
 // Register service worker for PWA
 if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
+// Capacitor: listen for deep link returns (NIP-46 callback)
+if(IS_CAPACITOR){import('https://esm.sh/@capacitor/app').then(({App})=>{App.addListener('appUrlOpen',data=>{if(data.url&&data.url.includes('login-callback'))checkCallback();});}).catch(()=>{});}

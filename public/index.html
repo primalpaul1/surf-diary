@@ -17,24 +17,28 @@
   <!-- LANDING PAGE (shown when not logged in) -->
   <div id="landing-page" class="landing-page">
     <div class="landing-bg"></div>
-    <div class="landing-card">
-      <img src="/swellnotes-logo.png" alt="Swellnotes" class="landing-logo">
-      <p class="landing-sub">Track the swell. Rate your sessions. Predict when the surf will be good.</p>
-      <form id="landing-create-form">
-        <div class="avatar-upload" id="landing-avatar-upload">
-          <div class="avatar-placeholder" id="landing-avatar-preview">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-            <span>Add Photo</span>
+    <div class="landing-content">
+      <div class="landing-top">
+        <img src="/swellnotes-logo.png" alt="Swellnotes" class="landing-logo">
+        <h1 class="landing-title">swellnotes</h1>
+        <p class="landing-sub">Track the swell. Rate your sessions.<br>Predict when the surf will be good.</p>
+      </div>
+      <div class="landing-form-area">
+        <form id="landing-create-form">
+          <div class="landing-avatar-row" id="landing-avatar-upload">
+            <div class="landing-avatar" id="landing-avatar-preview">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            </div>
+            <input type="text" id="landing-create-name" class="landing-input" placeholder="Surfer Name" required maxlength="30">
+            <input type="file" id="landing-avatar-file" accept="image/*" class="hidden">
           </div>
-          <input type="file" id="landing-avatar-file" accept="image/*" class="hidden">
-        </div>
-        <div class="field"><label>Surfer Name</label><input type="text" id="landing-create-name" placeholder="e.g. KookSlayer420" required maxlength="30"></div>
-        <button type="submit" class="btn-solid btn-block" id="landing-submit-btn">Create My Account</button>
-        <div id="landing-loading" class="modal-loading hidden"><div class="spinner"></div><span>Creating your account...</span></div>
-      </form>
-      <div class="modal-divider"></div>
-      <button id="landing-primal-btn" class="btn-primal-dark btn-block"><img src="/primal-logo.png" alt="" class="btn-icon">Log in with Primal</button>
-      <div id="landing-primal-status" class="hidden" style="margin-top:0.75rem;font-size:0.8rem;color:var(--text-muted);display:flex;align-items:center;justify-content:center;gap:0.4rem"><div class="spinner" style="width:16px;height:16px;border-width:2px"></div><span id="landing-primal-status-text">Waiting for Primal...</span></div>
+          <button type="submit" class="landing-btn landing-btn-create" id="landing-submit-btn">Create Account <span class="landing-arrow">&rarr;</span></button>
+          <div id="landing-loading" class="modal-loading hidden"><div class="spinner" style="border-top-color:#fff"></div><span style="color:#fff">Creating your account...</span></div>
+        </form>
+        <div class="landing-divider"></div>
+        <button id="landing-primal-btn" class="landing-btn landing-btn-primal"><img src="/primal-logo.png" alt="" class="btn-icon">Log in with Primal</button>
+        <div id="landing-primal-status" class="hidden" style="margin-top:0.5rem;font-size:0.8rem;color:rgba(255,255,255,0.7);display:flex;align-items:center;justify-content:center;gap:0.4rem"><div class="spinner" style="width:16px;height:16px;border-width:2px;border-color:rgba(255,255,255,0.2);border-top-color:#fff"></div><span id="landing-primal-status-text">Waiting for Primal...</span></div>
+      </div>
     </div>
   </div>
 
@@ -78,6 +82,7 @@
 
   <!-- SPOT PICKER (shown when no spot selected) -->
   <div id="spot-picker" class="spot-picker">
+    <img src="/swellnotes-logo.png" alt="Swellnotes" class="spot-picker-logo">
     <div class="card card-form">
       <div id="spot-picker-auth" class="spot-picker-auth">
         <h2>Get Started</h2>
