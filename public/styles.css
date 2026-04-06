@@ -1,17 +1,17 @@
 /* ============================================================
-   DOMINICAL SURF DIARY — Cinematic Coastal Editorial
+   SWELLNOTES — Coastal Editorial
    ============================================================ */
 
 :root {
-  --ocean-deep: #040d1a;
-  --ocean-dark: #091a2f;
-  --ocean-mid: #0e2a47;
-  --ocean-surface: #14375e;
+  --ocean-deep: #041428;
+  --ocean-dark: #0a2240;
+  --ocean-mid: #103560;
+  --ocean-surface: #1a4a7a;
   --foam: #e8f4f8;
   --sand: #f8f0e3;
   --sand-warm: #fff8ef;
-  --teal: #2d7ff9;
-  --teal-glow: #5b9bff;
+  --teal: #1a73e8;
+  --teal-glow: #4a9af5;
   --cyan: #38bdf8;
   --coral: #ff5757;
   --gold: #fbbf24;
@@ -50,8 +50,9 @@ header {
 .header-inner { max-width: 1200px; margin: 0 auto; display: flex; align-items: center; gap: 1.5rem; height: 60px; }
 
 .logo { display: flex; align-items: center; gap: 0.5rem; text-decoration: none; flex-shrink: 0; }
+.logo-img { height: 32px; width: auto; }
 .logo-icon { width: 28px; height: 28px; border-radius: 6px; }
-.logo-text { font-family: var(--font-display); font-size: 1.25rem; color: white; letter-spacing: -0.01em; }
+.logo-text { font-family: var(--font-body); font-size: 1.15rem; color: white; letter-spacing: -0.01em; font-weight: 300; display: none; }
 
 nav { display: flex; gap: 2px; flex: 1; }
 .nav-btn {
@@ -60,7 +61,7 @@ nav { display: flex; gap: 2px; flex: 1; }
   font: 500 0.85rem var(--font-body); transition: all 0.2s; text-decoration: none;
 }
 .nav-btn:hover { color: rgba(255,255,255,0.8); background: rgba(255,255,255,0.06); }
-.nav-btn.active { color: white; background: rgba(0,212,170,0.15); }
+.nav-btn.active { color: white; background: rgba(26,115,232,0.2); }
 .nav-ext { margin-left: auto; }
 
 .auth-section { flex-shrink: 0; display: flex; gap: 0.5rem; align-items: center; }
@@ -91,7 +92,7 @@ nav { display: flex; gap: 2px; flex: 1; }
   padding: 0.55rem 1.2rem; border-radius: 10px; font: 700 0.9rem var(--font-body);
   cursor: pointer; transition: all 0.2s; display: inline-flex; align-items: center; gap: 0.5rem; justify-content: center;
 }
-.btn-solid:hover { background: var(--teal-glow); transform: translateY(-1px); box-shadow: 0 4px 20px rgba(0,212,170,0.25); }
+.btn-solid:hover { background: var(--teal-glow); transform: translateY(-1px); box-shadow: 0 4px 20px rgba(26,115,232,0.3); }
 .btn-solid:disabled { opacity: 0.4; cursor: not-allowed; transform: none; box-shadow: none; }
 .btn-block { width: 100%; padding: 0.75rem; margin-top: 0.75rem; }
 

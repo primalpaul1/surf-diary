@@ -25,7 +25,7 @@ function selectSpot(spot){
   localStorage.setItem('swellnotes_spot',JSON.stringify(spot));
   $('#spot-picker')?.classList.add('hidden');
   $('#main-content')?.classList.remove('hidden');
-  $('#header-spot-name').textContent=spot.name;
+  $('#header-spot-name').textContent=spot.name;$('#header-spot-name').style.display='';
   $('#hero-title').textContent=spot.name;
   $('#hero-sub').textContent=spot.location_text||'Track the swell. Rate your sessions.';
   if(spot.cover_image_url){$('#hero-img').src=spot.cover_image_url;$('#hero-img').style.display='';}
