@@ -35,8 +35,10 @@ async function initDB(){
     `CREATE TABLE IF NOT EXISTS follows(follower_pubkey TEXT NOT NULL,followed_pubkey TEXT NOT NULL,created_at INTEGER DEFAULT ${ts},PRIMARY KEY(follower_pubkey,followed_pubkey))`,
     `CREATE TABLE IF NOT EXISTS forecast_cache(id ${serial},spot_id TEXT,fetched_at INTEGER DEFAULT ${ts},data_json TEXT NOT NULL)`,
   ];
-  for(const sql of tables){try{await db.exec(sql);}catch(err){console.log('Table create (ok if exists):',err.message?.slice(0,80));}}
-  console.log(`📦 Database: ${USE_PG?'PostgreSQL':'SQLite'}`);
+  for(const sql of tables){try{await db.exec(sql);console.log('✅',sql.slice(0,60));}catch(err){console.log('⚠️ Table:',err.message?.slice(0,100));}}
+  // Check what's actually in the DB
+  if(USE_PG){try{const r=await db.query("SELECT tablename FROM pg_tables WHERE schemaname='public'");console.log('📋 Tables:',r.map(t=>t.tablename).join(', '));for(const t of r){try{const c=await db.get(`SELECT COUNT(*) as n FROM ${t.tablename}`);console.log(`  ${t.tablename}: ${c?.n||0} rows`);}catch{}}}catch(e){console.log('Table check error:',e.message);}}
+  console.log(`📦 Database: ${USE_PG?'PostgreSQL':'SQLite'}, URL: ${process.env.DATABASE_URL?.slice(0,30)}...`);
 }
 
 // ===== SURFLINE =====
@@ -299,9 +301,8 @@ app.get('/api/analysis/timeline',async(req,res)=>{
   res.json(ss);
 });
 
+app.get('/api/debug',async(req,res)=>{try{if(USE_PG){const tables=await db.query("SELECT tablename FROM pg_tables WHERE schemaname='public'");const counts={};for(const t of tables){try{const c=await db.get(`SELECT COUNT(*) as n FROM ${t.tablename}`);counts[t.tablename]=+(c?.n||0);}catch{counts[t.tablename]='error';}}res.json({use_pg:true,db_url:process.env.DATABASE_URL?.slice(0,40)+'...',tables:counts});}else{res.json({use_pg:false});}}catch(err){res.json({error:err.message});}});
 app.get('/login-callback',(req,res)=>res.sendFile(path.join(__dirname,'public','login-callback.html')));
 app.get('/join/:code',(req,res)=>res.sendFile(path.join(__dirname,'public','index.html')));
 app.get('*',(req,res)=>res.sendFile(path.join(__dirname,'public','index.html')));
 initDB().then(()=>app.listen(PORT,()=>console.log(`🏄 Surf Diary running at http://localhost:${PORT}`))).catch(err=>{console.error('DB init failed:',err);process.exit(1);});
-// temp debug
-app.get('/api/debug',async(req,res)=>{try{const tables=await db.query("SELECT tablename FROM pg_tables WHERE schemaname='public'");const counts={};for(const t of tables){try{const c=await db.get(`SELECT COUNT(*) as n FROM ${t.tablename}`);counts[t.tablename]=c?.n||0;}catch{counts[t.tablename]='error';}}res.json({use_pg:USE_PG,tables:counts});}catch(err){res.json({use_pg:USE_PG,error:err.message});}});
