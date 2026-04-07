@@ -62,7 +62,7 @@ function updateSpotSwitcher(){
 
 $('#spot-select').addEventListener('change',async e=>{
   const spot=mySpots.find(s=>s.id===e.target.value);
-  if(spot){const full=await(await fetch(`${API_BASE}/api/spots/${spot.id}`)).json();selectSpot(full);}
+  if(spot){const full=await(await fetch(`${API_BASE}/api/spots/${spot.id}`,{headers:currentUser?{'X-Nostr-Pubkey':currentUser.pubkey}:{}})).json();selectSpot(full);}
 });
 
 // ===== SPOT SEARCH =====
@@ -101,7 +101,7 @@ async function showMySpots(){
     </div>
   `).join('');
 }
-window.joinExistingSpot=async id=>{const spot=await(await fetch(`${API_BASE}/api/spots/${id}`)).json();selectSpot(spot);};
+window.joinExistingSpot=async id=>{const spot=await(await fetch(`${API_BASE}/api/spots/${id}`,{headers:currentUser?{'X-Nostr-Pubkey':currentUser.pubkey}:{}})).json();selectSpot(spot);};
 
 // ===== CREATE SPOT =====
 $('#cover-upload').addEventListener('click',()=>$('#cover-file').click());
@@ -116,7 +116,7 @@ $('#create-spot-form').addEventListener('submit',async e=>{
     const res=await fetch(API_BASE+'/api/spots',{method:'POST',headers:{'Content-Type':'application/json','X-Nostr-Pubkey':currentUser.pubkey},body:JSON.stringify(body)});
     const data=await res.json();
     if(data.ok){
-      const spot=await(await fetch(`${API_BASE}/api/spots/${data.id}`)).json();
+      const spot=await(await fetch(`${API_BASE}/api/spots/${data.id}`,{headers:{'X-Nostr-Pubkey':currentUser.pubkey}})).json();
       await loadMySpots();
       selectSpot(spot);
       $('#create-spot-modal').classList.add('hidden');
@@ -143,8 +143,35 @@ $('#copy-invite').addEventListener('click',()=>{$('#invite-link-input').select()
 $('#invite-modal .modal-backdrop').addEventListener('click',()=>$('#invite-modal').classList.add('hidden'));
 $('#invite-modal .modal-close').addEventListener('click',()=>$('#invite-modal').classList.add('hidden'));
 
-// Spot settings (simple: invite button on surfers tab handles it)
-$('#spot-settings-btn').addEventListener('click',()=>{$$('.nav-btn').forEach(x=>x.classList.remove('active'));$$('.nav-btn[data-view="surfers"]').forEach(x=>x.classList.add('active'));$$('.view').forEach(v=>v.classList.remove('active'));$('#view-surfers').classList.add('active');loadSurfers();});
+// Crew Settings
+let crewCoverFile=null;
+$('#spot-settings-btn').addEventListener('click',()=>{
+  if(!currentSpot)return;
+  $('#crew-settings-name').value=currentSpot.name||'';
+  $('#crew-settings-region').value=currentSpot.region||'';
+  $('#crew-settings-description').value=currentSpot.description||'';
+  $('#crew-settings-private').checked=!!currentSpot.is_private;
+  if(currentSpot.cover_image_url){$('#crew-cover-preview').innerHTML=`<img src="${currentSpot.cover_image_url}">`;}
+  else{$('#crew-cover-preview').innerHTML='<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg><span>Change Cover Photo</span>';}
+  crewCoverFile=null;
+  $('#crew-settings-modal').classList.remove('hidden');
+});
+$('#crew-cover-upload').addEventListener('click',()=>$('#crew-cover-file').click());
+$('#crew-cover-file').addEventListener('change',e=>{crewCoverFile=e.target.files[0];if(!crewCoverFile)return;const r=new FileReader();r.onload=ev=>{$('#crew-cover-preview').innerHTML=`<img src="${ev.target.result}">`};r.readAsDataURL(crewCoverFile);});
+$('#crew-settings-form').addEventListener('submit',async e=>{
+  e.preventDefault();if(!currentSpot||!currentUser)return;
+  try{
+    const body={name:$('#crew-settings-name').value.trim(),region:$('#crew-settings-region').value.trim()||null,description:$('#crew-settings-description').value.trim()||null,is_private:$('#crew-settings-private').checked};
+    if(crewCoverFile){const url=await uploadToBlossom(crewCoverFile);if(url)body.cover_image_url=url;}
+    await fetch(`${API_BASE}/api/spots/${currentSpot.id}`,{method:'PUT',headers:{'Content-Type':'application/json','X-Nostr-Pubkey':currentUser.pubkey},body:JSON.stringify(body)});
+    const spot=await(await fetch(`${API_BASE}/api/spots/${currentSpot.id}`,{headers:{'X-Nostr-Pubkey':currentUser.pubkey}})).json();
+    await loadMySpots();selectSpot(spot);
+    $('#crew-settings-modal').classList.add('hidden');crewCoverFile=null;
+    toast('Crew updated!');
+  }catch{toast('Failed to update','error');}
+});
+$('#crew-settings-modal .modal-backdrop').addEventListener('click',()=>$('#crew-settings-modal').classList.add('hidden'));
+$('#crew-settings-modal .modal-close').addEventListener('click',()=>$('#crew-settings-modal').classList.add('hidden'));
 
 // ===== BLOSSOM UPLOAD =====
 async function uploadToBlossom(file){
@@ -342,7 +369,7 @@ async function completeLogin(pk){
   updateAuthUI();$('#login-loading')?.classList.add('hidden');$('#login-qr')?.classList.add('hidden');$('#mobile-login-btn')?.classList.add('hidden');$('#login-connected')?.classList.remove('hidden');
   // Auto-load and select first spot after login
   await loadMySpots();
-  if(mySpots.length>0&&!currentSpot){const spot=await(await fetch(`${API_BASE}/api/spots/${mySpots[0].id}`)).json();if(spot&&!spot.error)selectSpot(spot);}
+  if(mySpots.length>0&&!currentSpot){const spot=await(await fetch(`${API_BASE}/api/spots/${mySpots[0].id}`,{headers:currentUser?{'X-Nostr-Pubkey':currentUser.pubkey}:{}})).json();if(spot&&!spot.error)selectSpot(spot);}
   setTimeout(()=>{$('#login-modal').classList.add('hidden');toast(`Welcome, ${name}!`);},1000);
 }
 
