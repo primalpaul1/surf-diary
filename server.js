@@ -354,9 +354,11 @@ app.post('/api/auth/login',async(req,res)=>{
 });
 
 app.get('/api/users',async(req,res)=>{
-  const spotId=req.query.spot_id;
+  const{spot_id:spotId,sort,crew_id}=req.query;
   let users;
   if(spotId)users=await db.query('SELECT u.pubkey,u.display_name,u.avatar_path,sm.role,(SELECT COUNT(*)FROM sessions WHERE pubkey=u.pubkey AND spot_id=$1) as session_count,(SELECT COALESCE(SUM(barrels),0)FROM sessions WHERE pubkey=u.pubkey) as total_barrels FROM spot_members sm LEFT JOIN users u ON sm.pubkey=u.pubkey WHERE sm.spot_id=$1 ORDER BY session_count DESC',[spotId]);
+  else if(crew_id)users=await db.query('SELECT u.pubkey,u.display_name,u.avatar_path,sm.role,(SELECT COUNT(*)FROM sessions WHERE pubkey=u.pubkey) as session_count,(SELECT COALESCE(SUM(barrels),0)FROM sessions WHERE pubkey=u.pubkey) as total_barrels,(SELECT MAX(created_at)FROM sessions WHERE pubkey=u.pubkey) as last_active FROM spot_members sm LEFT JOIN users u ON sm.pubkey=u.pubkey WHERE sm.spot_id=$1 ORDER BY last_active DESC NULLS LAST',[crew_id]);
+  else if(sort==='recent')users=await db.query('SELECT u.pubkey,u.display_name,u.avatar_path,(SELECT COUNT(*)FROM sessions WHERE pubkey=u.pubkey) as session_count,(SELECT COALESCE(SUM(barrels),0)FROM sessions WHERE pubkey=u.pubkey) as total_barrels,(SELECT MAX(created_at)FROM sessions WHERE pubkey=u.pubkey) as last_active FROM users u WHERE (SELECT COUNT(*)FROM sessions WHERE pubkey=u.pubkey)>0 ORDER BY last_active DESC NULLS LAST');
   else users=await db.query('SELECT u.pubkey,u.display_name,u.avatar_path,(SELECT COUNT(*)FROM sessions WHERE pubkey=u.pubkey) as session_count,(SELECT COALESCE(SUM(barrels),0)FROM sessions WHERE pubkey=u.pubkey) as total_barrels FROM users u ORDER BY session_count DESC');
   res.json(users.map(u=>absUser(u,req)));
 });

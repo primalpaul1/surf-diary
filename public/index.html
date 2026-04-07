@@ -50,11 +50,10 @@
       </div>
       <nav>
         <button class="nav-btn active" data-view="log">Log</button>
-        <button class="nav-btn" data-view="history">Feed</button>
+        <button class="nav-btn" data-view="history">Reports</button>
         <button class="nav-btn" data-view="surfers">Surfers</button>
         <button class="nav-btn" data-view="analysis">Analysis</button>
-        <button class="nav-btn" data-view="search">Search</button>
-        <button class="nav-btn" data-view="pipeline">Pipeline</button>
+        <button class="nav-btn" data-view="pipeline">Crews</button>
       </nav>
       <div class="auth-section">
         <div id="auth-buttons">
@@ -403,48 +402,53 @@
           <div class="section-label">Pending Requests <span id="join-request-count" class="badge"></span></div>
           <div id="join-requests-list"></div>
         </div>
-        <p class="muted" style="margin-bottom:1rem">Follow surfers to see their reports in your feed & analysis.</p>
+        <div class="sub-tabs" style="margin-bottom:1rem">
+          <button class="sub-tab active" data-surfer-tab="active">Active</button>
+          <button class="sub-tab" data-surfer-tab="crew">By Crew</button>
+          <button class="sub-tab" data-surfer-tab="spot">This Crew</button>
+        </div>
+        <p class="muted" id="surfers-desc" style="margin-bottom:1rem">Latest active surfers. Follow to see their reports & analysis.</p>
+        <div id="surfer-crew-search" class="hidden" style="margin-bottom:1rem">
+          <div class="field"><input type="text" id="surfer-crew-select" placeholder="Search crews to find surfers..." autocomplete="off"></div>
+          <div id="surfer-crew-results" class="spot-results"></div>
+        </div>
         <div id="surfers-list" class="surfers-grid"></div>
       </div>
     </section>
 
-    <!-- ANALYSIS -->
+    <!-- ANALYSIS (combined with swell search) -->
     <section id="view-analysis" class="view">
       <div class="analysis-grid">
         <div class="card"><h2>By Swell Direction</h2><p class="muted">Which swells produce the best surf?</p><div id="direction-analysis"></div></div>
         <div class="card"><h2>Best Combos</h2><p class="muted">Top conditions (2+ sessions)</p><div id="best-conditions"></div></div>
         <div class="card full-span"><h2>Timeline</h2><p class="muted">Session ratings over time</p><div id="timeline-chart"></div></div>
-      </div>
-    </section>
-
-    <!-- SEARCH -->
-    <section id="view-search" class="view">
-      <div class="card card-form">
-        <h2>Search Sessions</h2>
-        <p class="muted">Filter by swell direction, height, period, and rating.</p>
-        <div class="search-filters">
-          <div class="row-2">
-            <div class="field"><label>Direction Min (°)</label><input type="number" id="search-dir-min" placeholder="0" min="0" max="360"></div>
-            <div class="field"><label>Direction Max (°)</label><input type="number" id="search-dir-max" placeholder="360" min="0" max="360"></div>
+        <div class="card full-span">
+          <h2>Swell Search</h2>
+          <p class="muted">Filter sessions by swell direction, height, period, and rating.</p>
+          <div class="search-filters">
+            <div class="row-2">
+              <div class="field"><label>Direction Min (°)</label><input type="number" id="search-dir-min" placeholder="0" min="0" max="360"></div>
+              <div class="field"><label>Direction Max (°)</label><input type="number" id="search-dir-max" placeholder="360" min="0" max="360"></div>
+            </div>
+            <div class="row-2">
+              <div class="field"><label>Height Min (ft)</label><input type="number" id="search-height-min" placeholder="0" step="0.5"></div>
+              <div class="field"><label>Height Max (ft)</label><input type="number" id="search-height-max" placeholder="20" step="0.5"></div>
+            </div>
+            <div class="row-2">
+              <div class="field"><label>Period Min (s)</label><input type="number" id="search-period-min" placeholder="0"></div>
+              <div class="field"><label>Period Max (s)</label><input type="number" id="search-period-max" placeholder="25"></div>
+            </div>
+            <div class="row-2">
+              <div class="field"><label>Rating Min</label><input type="number" id="search-rating-min" placeholder="1" min="1" max="10"></div>
+              <div class="field"><label>Rating Max</label><input type="number" id="search-rating-max" placeholder="10" min="1" max="10"></div>
+            </div>
+            <div class="row-2">
+              <button type="button" id="search-btn" class="btn-solid">Search</button>
+              <button type="button" id="search-clear" class="btn-outline">Clear</button>
+            </div>
           </div>
-          <div class="row-2">
-            <div class="field"><label>Height Min (ft)</label><input type="number" id="search-height-min" placeholder="0" step="0.5"></div>
-            <div class="field"><label>Height Max (ft)</label><input type="number" id="search-height-max" placeholder="20" step="0.5"></div>
-          </div>
-          <div class="row-2">
-            <div class="field"><label>Period Min (s)</label><input type="number" id="search-period-min" placeholder="0"></div>
-            <div class="field"><label>Period Max (s)</label><input type="number" id="search-period-max" placeholder="25"></div>
-          </div>
-          <div class="row-2">
-            <div class="field"><label>Rating Min</label><input type="number" id="search-rating-min" placeholder="1" min="1" max="10"></div>
-            <div class="field"><label>Rating Max</label><input type="number" id="search-rating-max" placeholder="10" min="1" max="10"></div>
-          </div>
-          <div class="row-2">
-            <button type="button" id="search-btn" class="btn-solid">Search</button>
-            <button type="button" id="search-clear" class="btn-outline">Clear</button>
-          </div>
+          <div id="search-results" style="margin-top:1rem"></div>
         </div>
-        <div id="search-results" style="margin-top:1rem"></div>
       </div>
     </section>
 

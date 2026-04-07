@@ -443,10 +443,56 @@ async function loadFollowing(){if(!currentUser)return;try{const{following}=await
 async function toggleFollow(pk){if(!currentUser)return toast('Log in first','error');const is=followingSet.has(pk);if(is)followingSet.delete(pk);else followingSet.add(pk);loadSurfers();await fetch(`${API_BASE}/api/follows/${pk}`,{method:is?'DELETE':'POST',headers:{'X-Nostr-Pubkey':currentUser.pubkey}});await publishKind3([...followingSet]);}
 window.toggleFollow=toggleFollow;
 
+// Crew search for surfer "By Crew" tab
+let surferCrewTimeout;
+$('#surfer-crew-select')?.addEventListener('input',e=>{
+  clearTimeout(surferCrewTimeout);const q=e.target.value.trim();
+  const results=$('#surfer-crew-results');
+  if(q.length<2){results.innerHTML='';return;}
+  surferCrewTimeout=setTimeout(async()=>{
+    const headers=currentUser?{'X-Nostr-Pubkey':currentUser.pubkey}:{};
+    const spots=await(await fetch(`${API_BASE}/api/spots/browse?q=${encodeURIComponent(q)}`,{headers})).json();
+    if(!spots.length){results.innerHTML='<p class="muted" style="padding:0.5rem;text-align:center">No crews found</p>';return;}
+    results.innerHTML=spots.map(s=>{
+      const name=s.is_member||!s.is_private?escapeHtml(s.name||s.region||'Unknown'):escapeHtml(s.region||'Unknown Region');
+      return`<div class="spot-result" data-crew-id="${s.id}">
+        <div class="spot-result-icon">${s.cover_image_url?`<img src="${s.cover_image_url}" style="width:36px;height:36px;border-radius:8px;object-fit:cover">`:'🌊'}</div>
+        <div><div class="spot-result-name">${name}</div><div class="spot-result-loc">${s.member_count} member${s.member_count!==1?'s':''}</div></div>
+      </div>`;
+    }).join('');
+    results.querySelectorAll('.spot-result').forEach(el=>el.addEventListener('click',()=>{
+      $('#surfer-crew-select').dataset.crewId=el.dataset.crewId;
+      $('#surfer-crew-select').value=el.querySelector('.spot-result-name').textContent;
+      results.innerHTML='';
+      loadSurfers();
+    }));
+  },300);
+});
+
+let currentSurferTab='active';
+// Surfer sub-tabs
+$$('.sub-tab[data-surfer-tab]').forEach(btn=>{btn.addEventListener('click',()=>{
+  $$('.sub-tab[data-surfer-tab]').forEach(b=>b.classList.remove('active'));btn.classList.add('active');
+  currentSurferTab=btn.dataset.surferTab;loadSurfers();
+});});
+
 async function loadSurfers(){
   loadJoinRequests();
-  const params=currentSpot?`?spot_id=${currentSpot.id}`:'';
-  try{const users=await(await fetch(API_BASE+'/api/users'+params)).json();const list=$('#surfers-list');if(!users.length){list.innerHTML='<div class="empty-state"><p>No surfers in this crew yet.</p></div>';return;}
+  const crewSearch=$('#surfer-crew-search');const desc=$('#surfers-desc');
+  let params='';
+  if(currentSurferTab==='active'){
+    params='?sort=recent';crewSearch.classList.add('hidden');
+    desc.textContent='Latest active surfers. Follow to see their reports & analysis.';
+  }else if(currentSurferTab==='crew'){
+    crewSearch.classList.remove('hidden');
+    desc.textContent='Find surfers by searching for a crew.';
+    if(!$('#surfer-crew-select').dataset.crewId){$('#surfers-list').innerHTML='<div class="empty-state"><p>Search for a crew above to see its members.</p></div>';return;}
+    params=`?crew_id=${$('#surfer-crew-select').dataset.crewId}`;
+  }else{
+    params=currentSpot?`?spot_id=${currentSpot.id}`:'';crewSearch.classList.add('hidden');
+    desc.textContent='Members of this crew. Follow to see their reports & analysis.';
+  }
+  try{const users=await(await fetch(API_BASE+'/api/users'+params)).json();const list=$('#surfers-list');if(!users.length){list.innerHTML='<div class="empty-state"><p>No surfers found.</p></div>';return;}
   list.innerHTML=users.map(u=>{const me=currentUser?.pubkey===u.pubkey;const fol=followingSet.has(u.pubkey);let btn;if(me)btn='<button class="btn-follow is-you" disabled>You</button>';else if(!currentUser)btn='';else if(fol)btn=`<button class="btn-follow following" onclick="toggleFollow('${u.pubkey}')">Following</button>`;else btn=`<button class="btn-follow" onclick="toggleFollow('${u.pubkey}')">Follow</button>`;
   const isAdmin=currentSpot?.members?.some(m=>m.pubkey===currentUser?.pubkey&&m.role==='admin');
   const adminBtn=(!me&&isAdmin&&u.role!=='admin'&&currentSpot)?`<button class="btn-outline btn-xs" style="margin-left:0.3rem" onclick="event.stopPropagation();makeAdmin('${currentSpot.id}','${u.pubkey}')">Make Admin</button>`:'';
@@ -565,7 +611,7 @@ async function loadFeed(){
   try{
     const groups=await(await fetch(`${API_BASE}/api/feed?${p}`,{headers:{'X-Nostr-Pubkey':currentUser.pubkey}})).json();
     const list=$('#session-list');
-    if(!groups.length){list.innerHTML='<div class="empty-state"><p>No spots in your feed yet.</p><p class="muted">Browse and follow spots to see sessions here.</p></div>';return;}
+    if(!groups.length){list.innerHTML='<div class="empty-state"><p>No reports yet.</p><p class="muted">Join a crew and log sessions to see reports here.</p></div>';return;}
     list.innerHTML=groups.map(g=>{
       const spotHeader=`<div class="feed-spot-header" onclick="switchToSpot('${g.spot.id}')">
         ${g.spot.cover_image_url?`<img src="${g.spot.cover_image_url}" class="feed-spot-cover" alt="">`:`<div class="feed-spot-cover-placeholder">🌊</div>`}
