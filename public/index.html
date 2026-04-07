@@ -190,11 +190,16 @@
     <div class="modal-backdrop"></div>
     <div class="modal-content modal-sm">
       <button class="modal-close">&times;</button>
-      <h2>Share to Primal</h2>
-      <p class="modal-sub">Post this session to your Primal feed.</p>
+      <h2>Share Session</h2>
+      <p class="modal-sub">Share your session with friends.</p>
       <div id="share-preview" class="share-preview"></div>
       <textarea id="share-text" class="share-text" rows="3" placeholder="Add a caption..."></textarea>
-      <button id="share-post-btn" class="btn-solid btn-block"><img src="/primal-logo.png" alt="" class="btn-icon">Share to Primal</button>
+      <div class="share-buttons">
+        <button id="share-whatsapp-btn" class="btn-share btn-whatsapp">WhatsApp</button>
+        <button id="share-messages-btn" class="btn-share btn-messages">Messages</button>
+        <button id="share-native-btn" class="btn-share btn-native">More...</button>
+      </div>
+      <button id="share-post-btn" class="btn-solid btn-block" style="margin-top:0.75rem"><img src="/primal-logo.png" alt="" class="btn-icon">Post to Primal</button>
       <button id="share-skip-btn" class="link-btn" style="display:block;text-align:center;margin-top:0.75rem;color:var(--text-muted)">No thanks</button>
     </div>
   </div>

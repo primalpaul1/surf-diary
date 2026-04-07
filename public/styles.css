@@ -587,6 +587,14 @@ textarea { resize: vertical; }
   width: 100%; padding: 0.6rem 0.75rem; border: 1.5px solid #dde3eb; border-radius: 10px;
   font: 400 0.92rem var(--font-body); resize: vertical; margin-bottom: 0.5rem;
 }
+.share-buttons { display: flex; gap: 0.5rem; }
+.btn-share {
+  flex: 1; padding: 0.6rem; border: none; border-radius: 10px; font: 600 0.85rem var(--font-body);
+  color: white; cursor: pointer;
+}
+.btn-whatsapp { background: #25D366; }
+.btn-messages { background: #34C759; }
+.btn-native { background: var(--ocean-mid); }
 
 /* ---- SEARCH ---- */
 .search-card { margin-bottom: 1rem; }
