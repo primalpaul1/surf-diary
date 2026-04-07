@@ -55,7 +55,7 @@ async function fetchSurflineData(spotId){
   const urls=[
     `https://services.surfline.com/kbyg/spots/forecasts/wave?spotId=${spotId}&days=3&intervalHours=3&units%5BswellHeight%5D=FT&units%5BwaveHeight%5D=FT`,
     `https://services.surfline.com/kbyg/spots/forecasts/wind?spotId=${spotId}&days=3&intervalHours=3&units%5BwindSpeed%5D=MPH`,
-    `https://services.surfline.com/kbyg/spots/forecasts/tides?spotId=${spotId}&days=3`,
+    `https://services.surfline.com/kbyg/spots/forecasts/tides?spotId=${spotId}&days=3&units%5BtideHeight%5D=FT`,
   ];
   const responses=await Promise.all(urls.map(u=>fetch(u,{headers:HEADERS})));
   for(const r of responses){if(!r.ok)console.error('Surfline API error:',r.status,r.statusText,await r.text().catch(()=>''));}
@@ -75,7 +75,7 @@ function getConditions(forecast,date,tod){
   const c={};
   if(we){c.surf_height_min_ft=we.surf?.min;c.surf_height_max_ft=we.surf?.max;c.swells=(we.swells||[]).filter(s=>s.height>0).map(s=>({height_ft:Math.round(s.height*10)/10,period_s:s.period,direction_deg:Math.round(s.direction),direction_compass:degreesToCompass(s.direction),impact:Math.round(s.impact*100)}));}
   if(wi){c.wind_speed_mph=Math.round(wi.speed*10)/10;c.wind_direction_deg=Math.round(wi.direction);c.wind_type=wi.directionType;c.wind_gust_mph=Math.round((wi.gust||wi.speed)*10)/10;}
-  if(te)c.tide_height_ft=metersToFeet(te.height);
+  if(te)c.tide_height_ft=Math.round(te.height*10)/10;
   return c;
 }
 
