@@ -54,7 +54,7 @@
         <button class="nav-btn" data-view="surfers">Surfers</button>
         <button class="nav-btn" data-view="analysis">Analysis</button>
         <button class="nav-btn" data-view="search">Search</button>
-        <button class="nav-btn" data-view="findspot">+ Spot</button>
+        <button class="nav-btn" data-view="pipeline">Pipeline</button>
       </nav>
       <div class="auth-section">
         <div id="auth-buttons">
@@ -93,14 +93,14 @@
         </div>
         <div class="modal-divider"></div>
       </div>
-      <h2>Find Your Spot</h2>
+      <h2>Find Your Crew</h2>
       <p class="muted">Search for a surf break to start logging sessions.</p>
       <div class="field" style="margin:1rem 0">
-        <input type="text" id="spot-search-input" placeholder="Search surf spots..." autocomplete="off">
+        <input type="text" id="spot-search-input" placeholder="Search surf breaks..." autocomplete="off">
       </div>
       <div id="spot-search-results" class="spot-results"></div>
       <div id="my-spots-section" class="hidden" style="margin-top:1.5rem">
-        <div class="section-label">Your Spots</div>
+        <div class="section-label">Your Crews</div>
         <div id="my-spots-list" class="spot-results"></div>
       </div>
     </div>
@@ -111,7 +111,7 @@
     <div class="modal-backdrop"></div>
     <div class="modal-content modal-sm">
       <button class="modal-close">&times;</button>
-      <h2>Claim This Spot</h2>
+      <h2>Create a Crew</h2>
       <p class="modal-sub" id="create-spot-name"></p>
       <form id="create-spot-form">
         <div class="avatar-upload" id="cover-upload">
@@ -121,11 +121,13 @@
           </div>
           <input type="file" id="cover-file" accept="image/*" class="hidden">
         </div>
+        <div class="field"><label>Region <span class="muted">(visible to everyone)</span></label><input type="text" id="spot-region" placeholder="e.g. Southern Costa Rica"></div>
+        <div class="field"><label>Description <span class="muted">(optional)</span></label><textarea id="spot-description" rows="2" placeholder="What's this crew about?"></textarea></div>
         <div class="toggle-row">
-          <label class="toggle-label">Private (invite only)</label>
-          <input type="checkbox" id="spot-private" class="toggle-check">
+          <label class="toggle-label">Private (request to join)</label>
+          <input type="checkbox" id="spot-private" class="toggle-check" checked>
         </div>
-        <button type="submit" class="btn-solid btn-block">Create Spot</button>
+        <button type="submit" class="btn-solid btn-block">Create Crew</button>
       </form>
     </div>
   </div>
@@ -141,6 +143,20 @@
         <input type="text" id="invite-link-input" readonly class="invite-input">
         <button id="copy-invite" class="btn-solid btn-sm">Copy</button>
       </div>
+    </div>
+  </div>
+
+  <!-- JOIN REQUEST MODAL -->
+  <div id="join-request-modal" class="modal hidden">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content modal-sm">
+      <button class="modal-close">&times;</button>
+      <h2>Request to Join</h2>
+      <p class="modal-sub" id="join-request-crew-name"></p>
+      <form id="join-request-form">
+        <div class="field"><label>Message <span class="muted">(optional)</span></label><textarea id="join-request-message" rows="2" placeholder="Why do you want to join?"></textarea></div>
+        <button type="submit" class="btn-solid btn-block">Send Request</button>
+      </form>
     </div>
   </div>
 
@@ -276,7 +292,7 @@
         <div class="card-header">
           <h2>Log a Session</h2>
           <p class="muted">Conditions auto-fill from Surfline.</p>
-          <button id="spot-settings-btn" class="btn-outline btn-xs hidden" style="margin-top:0.5rem">Spot Settings</button>
+          <button id="spot-settings-btn" class="btn-outline btn-xs hidden" style="margin-top:0.5rem">Crew Settings</button>
         </div>
         <form id="session-form">
           <div class="row-2">
@@ -335,7 +351,7 @@
     <!-- FEED -->
     <section id="view-history" class="view">
       <div class="card">
-        <div class="feed-header"><h2>Feed</h2><button id="browse-spots-btn" class="btn-outline btn-sm">Browse Spots</button></div>
+        <div class="feed-header"><h2>Feed</h2><button id="browse-spots-btn" class="btn-outline btn-sm">Browse Crews</button></div>
         <div class="feed-filters">
           <select id="filter-direction"><option value="">All Directions</option><option value="N">N</option><option value="NNE">NNE</option><option value="NE">NE</option><option value="ENE">ENE</option><option value="E">E</option><option value="ESE">ESE</option><option value="SE">SE</option><option value="SSE">SSE</option><option value="S">S</option><option value="SSW">SSW</option><option value="SW">SW</option><option value="WSW">WSW</option><option value="W">W</option><option value="WNW">WNW</option><option value="NW">NW</option><option value="NNW">NNW</option></select>
           <select id="filter-month"><option value="">All Months</option></select>
@@ -344,8 +360,8 @@
       </div>
       <!-- Browse Spots Panel -->
       <div id="browse-spots-panel" class="card hidden">
-        <div class="feed-header"><h2>Browse Spots</h2><button id="close-browse" class="btn-outline btn-sm">Close</button></div>
-        <div class="field" style="margin:0.75rem 0"><input type="text" id="browse-search" placeholder="Search public spots..." autocomplete="off"></div>
+        <div class="feed-header"><h2>Browse Crews</h2><button id="close-browse" class="btn-outline btn-sm">Close</button></div>
+        <div class="field" style="margin:0.75rem 0"><input type="text" id="browse-search" placeholder="Search crews..." autocomplete="off"></div>
         <div id="browse-spot-list" class="browse-spot-list"></div>
       </div>
     </section>
@@ -356,6 +372,10 @@
         <div class="feed-header">
           <h2>Surfers</h2>
           <button id="invite-btn" class="btn-solid btn-sm hidden">Invite</button>
+        </div>
+        <div id="join-requests-panel" class="hidden" style="margin-bottom:1rem">
+          <div class="section-label">Pending Requests <span id="join-request-count" class="badge"></span></div>
+          <div id="join-requests-list"></div>
         </div>
         <p class="muted" style="margin-bottom:1rem">Follow surfers to see their reports in your feed & analysis.</p>
         <div id="surfers-list" class="surfers-grid"></div>
@@ -402,19 +422,18 @@
       </div>
     </section>
 
-    <!-- FIND SPOT -->
-    <section id="view-findspot" class="view">
-      <div class="card card-form">
-        <h2>Find a Spot</h2>
-        <p class="muted">Search any surf break worldwide and add it to your spots.</p>
-        <div class="field" style="margin:1rem 0">
-          <input type="text" id="findspot-search" placeholder="Search surf spots..." autocomplete="off">
+    <!-- PIPELINE (Discover Crews) -->
+    <section id="view-pipeline" class="view">
+      <div class="card">
+        <div class="feed-header">
+          <h2>Pipeline</h2>
+          <button id="create-crew-btn" class="btn-solid btn-sm">+ New Crew</button>
         </div>
-        <div id="findspot-results" class="spot-results"></div>
-        <div id="findspot-my-spots" style="margin-top:1.5rem">
-          <div class="section-label">Your Spots</div>
-          <div id="findspot-my-list" class="spot-results"></div>
+        <p class="muted">Discover surf crews around the world.</p>
+        <div class="field" style="margin:0.75rem 0">
+          <input type="text" id="pipeline-search" placeholder="Search crews..." autocomplete="off">
         </div>
+        <div id="pipeline-list" class="pipeline-list"></div>
       </div>
     </section>
   </main>

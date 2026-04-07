@@ -8,7 +8,7 @@ const IS_CAPACITOR=!!window.Capacitor;
 const API_BASE=IS_CAPACITOR?'https://swellnotes.com':'';
 
 // Nav
-$$('.nav-btn[data-view]').forEach(b=>{b.addEventListener('click',()=>{$$('.nav-btn').forEach(x=>x.classList.remove('active'));b.classList.add('active');$$('.view').forEach(v=>v.classList.remove('active'));$(`#view-${b.dataset.view}`).classList.add('active');if(b.dataset.view==='history')loadFeed();if(b.dataset.view==='surfers')loadSurfers();if(b.dataset.view==='analysis')loadAnalysis();if(b.dataset.view==='findspot')renderMySpotsList();});});
+$$('.nav-btn[data-view]').forEach(b=>{b.addEventListener('click',()=>{$$('.nav-btn').forEach(x=>x.classList.remove('active'));b.classList.add('active');$$('.view').forEach(v=>v.classList.remove('active'));$(`#view-${b.dataset.view}`).classList.add('active');if(b.dataset.view==='history')loadFeed();if(b.dataset.view==='surfers')loadSurfers();if(b.dataset.view==='analysis')loadAnalysis();if(b.dataset.view==='pipeline')loadPipeline();});});
 
 function toast(m,t='success'){const e=document.createElement('div');e.className=`toast toast-${t}`;e.textContent=m;document.body.appendChild(e);setTimeout(()=>e.remove(),3000);}
 function escapeHtml(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML;}
@@ -112,7 +112,7 @@ $('#create-spot-form').addEventListener('submit',async e=>{
   try{
     let coverUrl=null;
     if(coverFile)coverUrl=await uploadToBlossom(coverFile);
-    const body={...pendingSpotData,cover_image_url:coverUrl,is_private:$('#spot-private').checked};
+    const body={...pendingSpotData,cover_image_url:coverUrl,is_private:$('#spot-private').checked,region:$('#spot-region')?.value.trim()||null,description:$('#spot-description')?.value.trim()||null};
     const res=await fetch(API_BASE+'/api/spots',{method:'POST',headers:{'Content-Type':'application/json','X-Nostr-Pubkey':currentUser.pubkey},body:JSON.stringify(body)});
     const data=await res.json();
     if(data.ok){
@@ -121,9 +121,9 @@ $('#create-spot-form').addEventListener('submit',async e=>{
       selectSpot(spot);
       $('#create-spot-modal').classList.add('hidden');
       coverFile=null;pendingSpotData=null;
-      toast(`${spot.name} created!`);
+      toast(`${spot.name} crew created!`);
     }
-  }catch{toast('Failed to create spot','error');}
+  }catch{toast('Failed to create crew','error');}
 });
 
 $('#create-spot-modal .modal-backdrop').addEventListener('click',()=>$('#create-spot-modal').classList.add('hidden'));
@@ -417,8 +417,9 @@ async function toggleFollow(pk){if(!currentUser)return toast('Log in first','err
 window.toggleFollow=toggleFollow;
 
 async function loadSurfers(){
+  loadJoinRequests();
   const params=currentSpot?`?spot_id=${currentSpot.id}`:'';
-  try{const users=await(await fetch(API_BASE+'/api/users'+params)).json();const list=$('#surfers-list');if(!users.length){list.innerHTML='<div class="empty-state"><p>No surfers in this spot yet.</p></div>';return;}
+  try{const users=await(await fetch(API_BASE+'/api/users'+params)).json();const list=$('#surfers-list');if(!users.length){list.innerHTML='<div class="empty-state"><p>No surfers in this crew yet.</p></div>';return;}
   list.innerHTML=users.map(u=>{const me=currentUser?.pubkey===u.pubkey;const fol=followingSet.has(u.pubkey);let btn;if(me)btn='<button class="btn-follow is-you" disabled>You</button>';else if(!currentUser)btn='';else if(fol)btn=`<button class="btn-follow following" onclick="toggleFollow('${u.pubkey}')">Following</button>`;else btn=`<button class="btn-follow" onclick="toggleFollow('${u.pubkey}')">Follow</button>`;
   const isAdmin=currentSpot?.members?.some(m=>m.pubkey===currentUser?.pubkey&&m.role==='admin');
   const adminBtn=(!me&&isAdmin&&u.role!=='admin'&&currentSpot)?`<button class="btn-outline btn-xs" style="margin-left:0.3rem" onclick="event.stopPropagation();makeAdmin('${currentSpot.id}','${u.pubkey}')">Make Admin</button>`:'';
@@ -585,17 +586,21 @@ async function loadBrowseSpots(q=''){
     const spots=await(await fetch(`${API_BASE}/api/spots/browse?${params}`,{headers})).json();
     spotFollowingSet=new Set(spots.filter(s=>s.is_following).map(s=>s.id));
     const list=$('#browse-spot-list');
-    if(!spots.length){list.innerHTML='<p class="muted" style="padding:1rem;text-align:center">No public spots found</p>';return;}
+    if(!spots.length){list.innerHTML='<p class="muted" style="padding:1rem;text-align:center">No crews found</p>';return;}
     list.innerHTML=spots.map(s=>{
       const isMember=s.is_member;const isFollowing=spotFollowingSet.has(s.id);
+      const displayName=isMember||!s.is_private?escapeHtml(s.name||s.region||'Unknown'):escapeHtml(s.region||'Unknown Region');
       let btn;
       if(isMember)btn='<button class="btn-follow is-you" disabled>Member</button>';
+      else if(!s.is_private&&currentUser)btn=`<button class="btn-follow" onclick="joinPublicCrew('${s.id}')">Join</button>`;
+      else if(s.has_pending_request)btn='<button class="btn-follow" disabled>Requested</button>';
+      else if(s.is_private&&currentUser)btn=`<button class="btn-follow" onclick="openJoinRequest('${s.id}','${escapeHtml(s.region||'')}')">Request</button>`;
       else if(!currentUser)btn='';
       else if(isFollowing)btn=`<button class="btn-follow following" onclick="toggleSpotFollow('${s.id}')">Following</button>`;
       else btn=`<button class="btn-follow" onclick="toggleSpotFollow('${s.id}')">Follow</button>`;
       return`<div class="browse-spot-card">
         ${s.cover_image_url?`<img src="${s.cover_image_url}" class="browse-spot-img" alt="">`:`<div class="browse-spot-img-placeholder">🌊</div>`}
-        <div class="browse-spot-info"><div class="browse-spot-name">${escapeHtml(s.name)}</div><div class="browse-spot-meta">${escapeHtml(s.location_text||'')} · ${s.member_count} member${s.member_count!==1?'s':''}</div></div>
+        <div class="browse-spot-info"><div class="browse-spot-name">${displayName}</div><div class="browse-spot-meta">${s.member_count} member${s.member_count!==1?'s':''}${s.is_private?' · Private':' · Public'}${s.recent_sessions>0?' · Active':''}</div></div>
         ${btn}
       </div>`;
     }).join('');
@@ -710,42 +715,153 @@ async function checkInviteURL(){
   }catch{toast('Invalid invite','error');}
 }
 
-// ===== FIND SPOT TAB =====
-let findspotTimeout;
-$('#findspot-search')?.addEventListener('input',e=>{
-  clearTimeout(findspotTimeout);
-  const q=e.target.value.trim();
-  if(q.length<2){$('#findspot-results').innerHTML='';return;}
-  findspotTimeout=setTimeout(async()=>{
-    try{
-      const results=await(await fetch(`${API_BASE}/api/spots/search?q=${encodeURIComponent(q)}`)).json();
-      $('#findspot-results').innerHTML=results.map(r=>`
-        <div class="spot-result" data-surfline="${r.surfline_id}" data-name="${escapeHtml(r.name)}" data-loc="${escapeHtml(r.location)}" data-lat="${r.lat}" data-lng="${r.lng}">
-          <div class="spot-result-icon">🌊</div>
-          <div><div class="spot-result-name">${escapeHtml(r.name)}</div><div class="spot-result-loc">${escapeHtml(r.location)}</div></div>
-        </div>
-      `).join('')||'<p class="muted" style="padding:1rem;text-align:center">No spots found</p>';
-      $('#findspot-results').querySelectorAll('.spot-result').forEach(el=>el.addEventListener('click',()=>{
-        if(!currentUser)return toast('Create an account first','error');
-        pendingSpotData={surfline_spot_id:el.dataset.surfline,name:el.dataset.name,location_text:el.dataset.loc,lat:parseFloat(el.dataset.lat),lng:parseFloat(el.dataset.lng)};
-        $('#create-spot-name').textContent=`${el.dataset.name} · ${el.dataset.loc}`;
-        $('#create-spot-modal').classList.remove('hidden');
-      }));
-    }catch{}
-  },300);
+// ===== PIPELINE TAB =====
+let pipelineTimeout;
+$('#pipeline-search')?.addEventListener('input',e=>{
+  clearTimeout(pipelineTimeout);
+  pipelineTimeout=setTimeout(()=>loadPipeline(e.target.value.trim()),300);
 });
 
-function renderMySpotsList(){
-  const list=$('#findspot-my-list');
-  if(!list)return;
-  if(!mySpots.length){list.innerHTML='<p class="muted">No spots yet. Search above to add one.</p>';return;}
-  list.innerHTML=mySpots.map(s=>`
-    <div class="spot-result" onclick="joinExistingSpot('${s.id}')">
-      <div class="spot-result-icon">${s.cover_image_url?`<img src="${s.cover_image_url}" style="width:36px;height:36px;border-radius:8px;object-fit:cover">`:'🌊'}</div>
-      <div><div class="spot-result-name">${escapeHtml(s.name)}</div><div class="spot-result-loc">${s.member_count||'?'} members</div></div>
-    </div>
-  `).join('');
+async function loadPipeline(q=''){
+  const params=new URLSearchParams();if(q)params.set('q',q);
+  const headers=currentUser?{'X-Nostr-Pubkey':currentUser.pubkey}:{};
+  const list=$('#pipeline-list');
+  try{
+    const spots=await(await fetch(`${API_BASE}/api/spots/browse?${params}`,{headers})).json();
+    if(!spots.length){list.innerHTML='<div class="empty-state"><p>No crews found.</p></div>';return;}
+    list.innerHTML=spots.map(s=>renderPipelineCard(s)).join('');
+  }catch{list.innerHTML='<div class="empty-state"><p>Error loading crews.</p></div>';}
 }
+
+function renderPipelineCard(s){
+  const displayName=s.is_member||!s.is_private?escapeHtml(s.name||s.region||'Unknown'):escapeHtml(s.region||'Unknown Region');
+  const adminAvatars=(s.admins||[]).map(a=>
+    a.avatar_path?`<img src="${a.avatar_path}" class="pipeline-admin-av" title="${escapeHtml(a.display_name||'')}" alt="">`
+    :`<div class="pipeline-admin-av-placeholder" title="${escapeHtml(a.display_name||'')}">${(a.display_name||'?')[0].toUpperCase()}</div>`
+  ).join('');
+  const activity=s.recent_sessions>0?'<span class="pipeline-active">Active</span>':'';
+  let actionBtn='';
+  if(s.is_member)actionBtn='<button class="btn-follow is-you" disabled>Member</button>';
+  else if(!s.is_private&&currentUser)actionBtn=`<button class="btn-solid btn-sm" onclick="event.stopPropagation();joinPublicCrew('${s.id}')">Join</button>`;
+  else if(s.has_pending_request)actionBtn='<button class="btn-follow" disabled>Requested</button>';
+  else if(currentUser)actionBtn=`<button class="btn-solid btn-sm" onclick="event.stopPropagation();openJoinRequest('${s.id}','${escapeHtml(s.region||'')}')">Request to Join</button>`;
+  return`<div class="pipeline-card" onclick="${s.is_member?`joinExistingSpot('${s.id}')`:''}">
+    ${s.cover_image_url?`<img src="${s.cover_image_url}" class="pipeline-cover" alt="">`:`<div class="pipeline-cover-placeholder">🌊</div>`}
+    <div class="pipeline-info">
+      <div class="pipeline-name">${displayName} ${activity}</div>
+      ${s.description?`<div class="pipeline-desc">${escapeHtml(s.description)}</div>`:''}
+      <div class="pipeline-meta">${s.member_count} member${s.member_count!==1?'s':''}${s.is_private?' · Private':' · Public'}</div>
+      <div class="pipeline-admins">${adminAvatars}</div>
+    </div>
+    <div class="pipeline-action">${actionBtn}</div>
+  </div>`;
+}
+
+// ===== JOIN REQUESTS =====
+window.openJoinRequest=(spotId,regionName)=>{
+  if(!currentUser)return toast('Log in first','error');
+  $('#join-request-crew-name').textContent=regionName;
+  $('#join-request-message').value='';
+  $('#join-request-form').onsubmit=async e=>{
+    e.preventDefault();
+    const msg=$('#join-request-message').value.trim();
+    try{
+      const res=await fetch(`${API_BASE}/api/spots/${spotId}/join-request`,{
+        method:'POST',headers:{'Content-Type':'application/json','X-Nostr-Pubkey':currentUser.pubkey},
+        body:JSON.stringify({message:msg||null})
+      });
+      if(res.ok){toast('Request sent!');$('#join-request-modal').classList.add('hidden');loadPipeline($('#pipeline-search')?.value?.trim()||'');}
+      else{const err=await res.json();toast(err.error||'Failed','error');}
+    }catch{toast('Failed to send request','error');}
+  };
+  $('#join-request-modal').classList.remove('hidden');
+};
+$('#join-request-modal .modal-backdrop')?.addEventListener('click',()=>$('#join-request-modal').classList.add('hidden'));
+$('#join-request-modal .modal-close')?.addEventListener('click',()=>$('#join-request-modal').classList.add('hidden'));
+
+window.joinPublicCrew=async id=>{
+  if(!currentUser)return toast('Log in first','error');
+  try{
+    const res=await fetch(`${API_BASE}/api/spots/${id}/join`,{method:'POST',headers:{'X-Nostr-Pubkey':currentUser.pubkey}});
+    if(res.ok){toast('Joined!');await loadMySpots();const spot=await(await fetch(`${API_BASE}/api/spots/${id}`)).json();selectSpot(spot);}
+    else{const err=await res.json();toast(err.error||'Failed','error');}
+  }catch{toast('Failed to join','error');}
+};
+
+async function loadJoinRequests(){
+  if(!currentUser||!currentSpot)return;
+  const panel=$('#join-requests-panel');if(!panel)return;
+  const isAdmin=currentSpot.members?.some(m=>m.pubkey===currentUser.pubkey&&m.role==='admin');
+  if(!isAdmin){panel.classList.add('hidden');return;}
+  try{
+    const requests=await(await fetch(`${API_BASE}/api/spots/${currentSpot.id}/join-requests`,{headers:{'X-Nostr-Pubkey':currentUser.pubkey}})).json();
+    if(!requests.length){panel.classList.add('hidden');return;}
+    panel.classList.remove('hidden');
+    $('#join-request-count').textContent=requests.length;
+    $('#join-requests-list').innerHTML=requests.map(r=>`
+      <div class="join-request-card">
+        ${avatarHTML(r.avatar_path,r.display_name,'feed-avatar')}
+        <div class="join-request-info">
+          <div class="join-request-name">${escapeHtml(r.display_name||'Anon')}</div>
+          ${r.message?`<div class="join-request-msg">"${escapeHtml(r.message)}"</div>`:''}
+        </div>
+        <button class="btn-solid btn-xs" onclick="resolveJoinRequest('${currentSpot.id}','${r.id}','approved')">Approve</button>
+        <button class="btn-outline btn-xs" onclick="resolveJoinRequest('${currentSpot.id}','${r.id}','denied')">Deny</button>
+      </div>
+    `).join('');
+  }catch{panel.classList.add('hidden');}
+}
+
+window.resolveJoinRequest=async(spotId,reqId,status)=>{
+  try{
+    await fetch(`${API_BASE}/api/spots/${spotId}/join-requests/${reqId}`,{
+      method:'PUT',headers:{'Content-Type':'application/json','X-Nostr-Pubkey':currentUser.pubkey},
+      body:JSON.stringify({status})
+    });
+    toast(status==='approved'?'Approved!':'Denied');
+    loadJoinRequests();loadSurfers();
+  }catch{toast('Failed','error');}
+};
+
+// New crew button on Pipeline tab triggers the spot search flow
+$('#create-crew-btn')?.addEventListener('click',()=>{
+  if(!currentUser)return toast('Create an account first','error');
+  // Show the spot picker search for Surfline
+  const modal=document.createElement('div');modal.className='modal';modal.id='find-spot-for-crew-modal';
+  modal.innerHTML=`<div class="modal-backdrop"></div><div class="modal-content modal-sm">
+    <button class="modal-close">&times;</button>
+    <h2>Find a Surf Break</h2>
+    <p class="modal-sub">Search Surfline for your break, then set up your crew.</p>
+    <div class="field" style="margin:1rem 0"><input type="text" id="crew-spot-search" placeholder="Search surf breaks..." autocomplete="off"></div>
+    <div id="crew-spot-results" class="spot-results"></div>
+  </div>`;
+  document.body.appendChild(modal);
+  modal.querySelector('.modal-backdrop').addEventListener('click',()=>modal.remove());
+  modal.querySelector('.modal-close').addEventListener('click',()=>modal.remove());
+  let t;
+  modal.querySelector('#crew-spot-search').addEventListener('input',e=>{
+    clearTimeout(t);const q=e.target.value.trim();
+    if(q.length<2){modal.querySelector('#crew-spot-results').innerHTML='';return;}
+    t=setTimeout(async()=>{
+      try{
+        const results=await(await fetch(`${API_BASE}/api/spots/search?q=${encodeURIComponent(q)}`)).json();
+        modal.querySelector('#crew-spot-results').innerHTML=results.map(r=>`
+          <div class="spot-result" data-surfline="${r.surfline_id}" data-name="${escapeHtml(r.name)}" data-loc="${escapeHtml(r.location)}" data-lat="${r.lat}" data-lng="${r.lng}">
+            <div class="spot-result-icon">🌊</div>
+            <div><div class="spot-result-name">${escapeHtml(r.name)}</div><div class="spot-result-loc">${escapeHtml(r.location)}</div></div>
+          </div>
+        `).join('')||'<p class="muted" style="padding:1rem;text-align:center">No breaks found</p>';
+        modal.querySelectorAll('.spot-result').forEach(el=>el.addEventListener('click',()=>{
+          pendingSpotData={surfline_spot_id:el.dataset.surfline,name:el.dataset.name,location_text:el.dataset.loc,lat:parseFloat(el.dataset.lat),lng:parseFloat(el.dataset.lng)};
+          $('#create-spot-name').textContent=`${el.dataset.name} · ${el.dataset.loc}`;
+          modal.remove();
+          $('#create-spot-modal').classList.remove('hidden');
+        }));
+      }catch{}
+    },300);
+  });
+  modal.querySelector('#crew-spot-search').focus();
+});
 
 // ===== INIT =====
 const saved=localStorage.getItem('swellnotes_user');if(saved){try{currentUser=JSON.parse(saved);}catch{localStorage.removeItem('swellnotes_user');}}

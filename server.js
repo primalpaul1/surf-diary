@@ -30,7 +30,7 @@ async function initDB(){
   // Execute each CREATE TABLE separately so one failure doesn't roll back others
   const tables=[
     `CREATE TABLE IF NOT EXISTS users(pubkey TEXT PRIMARY KEY,display_name TEXT,avatar_path TEXT,created_at INTEGER DEFAULT ${ts})`,
-    `CREATE TABLE IF NOT EXISTS spots(id TEXT PRIMARY KEY,surfline_spot_id TEXT NOT NULL,name TEXT NOT NULL,location_text TEXT,lat REAL,lng REAL,cover_image_url TEXT,is_private INTEGER DEFAULT 0,created_by TEXT,created_at INTEGER DEFAULT ${ts})`,
+    `CREATE TABLE IF NOT EXISTS spots(id TEXT PRIMARY KEY,surfline_spot_id TEXT NOT NULL,name TEXT NOT NULL,location_text TEXT,lat REAL,lng REAL,cover_image_url TEXT,is_private INTEGER DEFAULT 1,description TEXT,region TEXT,created_by TEXT,created_at INTEGER DEFAULT ${ts})`,
     `CREATE TABLE IF NOT EXISTS spot_members(spot_id TEXT NOT NULL,pubkey TEXT NOT NULL,role TEXT DEFAULT 'member',invited_by TEXT,created_at INTEGER DEFAULT ${ts},PRIMARY KEY(spot_id,pubkey))`,
     `CREATE TABLE IF NOT EXISTS spot_invites(id TEXT PRIMARY KEY,spot_id TEXT NOT NULL,created_by TEXT NOT NULL,max_uses INTEGER,use_count INTEGER DEFAULT 0,expires_at INTEGER,created_at INTEGER DEFAULT ${ts})`,
     `CREATE TABLE IF NOT EXISTS sessions(id ${serial},pubkey TEXT NOT NULL,spot_id TEXT,session_date TEXT NOT NULL,time_of_day TEXT NOT NULL,swells_json TEXT,surf_height_min_ft REAL,surf_height_max_ft REAL,wind_speed_mph REAL,wind_direction_deg REAL,wind_type TEXT,wind_gust_mph REAL,tide_height_ft REAL,rating INTEGER,wave_shape TEXT,session_type TEXT DEFAULT 'surfed',notes TEXT,voice_memo_path TEXT,voice_transcript TEXT,video_path TEXT,barrels INTEGER DEFAULT 0,created_at INTEGER DEFAULT ${ts})`,
@@ -40,10 +40,13 @@ async function initDB(){
     `CREATE TABLE IF NOT EXISTS spot_follows(pubkey TEXT NOT NULL,spot_id TEXT NOT NULL,created_at INTEGER DEFAULT ${ts},PRIMARY KEY(pubkey,spot_id))`,
     `CREATE TABLE IF NOT EXISTS reports(id ${serial},reporter_pubkey TEXT NOT NULL,target_type TEXT NOT NULL,target_id TEXT NOT NULL,reason TEXT,created_at INTEGER DEFAULT ${ts})`,
     `CREATE TABLE IF NOT EXISTS blocks(blocker_pubkey TEXT NOT NULL,blocked_pubkey TEXT NOT NULL,created_at INTEGER DEFAULT ${ts},PRIMARY KEY(blocker_pubkey,blocked_pubkey))`,
+    `CREATE TABLE IF NOT EXISTS spot_join_requests(id TEXT PRIMARY KEY,spot_id TEXT NOT NULL,pubkey TEXT NOT NULL,message TEXT,status TEXT DEFAULT 'pending',created_at INTEGER DEFAULT ${ts},resolved_by TEXT,resolved_at INTEGER)`,
   ];
   for(const sql of tables){try{await db.exec(sql);console.log('✅',sql.slice(0,60));}catch(err){console.log('⚠️ Table:',err.message?.slice(0,100));}}
   // Migrations
   try{await db.exec('ALTER TABLE sessions ADD COLUMN barrels INTEGER DEFAULT 0');}catch{}
+  try{await db.exec('ALTER TABLE spots ADD COLUMN description TEXT');}catch{}
+  try{await db.exec('ALTER TABLE spots ADD COLUMN region TEXT');}catch{}
   // Check what's actually in the DB
   if(USE_PG){try{const r=await db.query("SELECT tablename FROM pg_tables WHERE schemaname='public'");console.log('📋 Tables:',r.map(t=>t.tablename).join(', '));for(const t of r){try{const c=await db.get(`SELECT COUNT(*) as n FROM ${t.tablename}`);console.log(`  ${t.tablename}: ${c?.n||0} rows`);}catch{}}}catch(e){console.log('Table check error:',e.message);}}
   console.log(`📦 Database: ${USE_PG?'PostgreSQL':'SQLite'}, URL: ${process.env.DATABASE_URL?.slice(0,30)}...`);
@@ -122,10 +125,35 @@ app.get('/api/spots',requireAuth,async(req,res)=>{
 app.get('/api/spots/browse',async(req,res)=>{
   const q=req.query.q;const pk=req.headers['x-nostr-pubkey']||null;
   let spots;
-  if(q){spots=await db.query('SELECT s.*,(SELECT COUNT(*)FROM spot_members WHERE spot_id=s.id) as member_count FROM spots s WHERE s.is_private=0 AND LOWER(s.name) LIKE LOWER($1) ORDER BY s.name',[`%${q}%`]);}
-  else{spots=await db.query('SELECT s.*,(SELECT COUNT(*)FROM spot_members WHERE spot_id=s.id) as member_count FROM spots s WHERE s.is_private=0 ORDER BY s.name');}
-  if(pk){const followed=await db.query('SELECT spot_id FROM spot_follows WHERE pubkey=$1',[pk]);const fset=new Set(followed.map(r=>r.spot_id));const membered=await db.query('SELECT spot_id FROM spot_members WHERE pubkey=$1',[pk]);const mset=new Set(membered.map(r=>r.spot_id));spots=spots.map(s=>({...s,is_following:fset.has(s.id)?1:0,is_member:mset.has(s.id)?1:0}));}
-  res.json(spots);
+  if(q){spots=await db.query('SELECT s.*,(SELECT COUNT(*)FROM spot_members WHERE spot_id=s.id) as member_count FROM spots s WHERE (LOWER(s.name) LIKE LOWER($1) OR LOWER(s.region) LIKE LOWER($1)) ORDER BY s.name',[`%${q}%`]);}
+  else{spots=await db.query('SELECT s.*,(SELECT COUNT(*)FROM spot_members WHERE spot_id=s.id) as member_count FROM spots s ORDER BY s.name');}
+  // Enrich each spot with admin profiles, activity, membership status
+  const now=Math.floor(Date.now()/1000);const weekAgo=now-7*86400;
+  let memberSet=new Set(),followSet=new Set(),pendingSet=new Set();
+  if(pk){
+    const membered=await db.query('SELECT spot_id FROM spot_members WHERE pubkey=$1',[pk]);memberSet=new Set(membered.map(r=>r.spot_id));
+    const followed=await db.query('SELECT spot_id FROM spot_follows WHERE pubkey=$1',[pk]);followSet=new Set(followed.map(r=>r.spot_id));
+    const pending=await db.query("SELECT spot_id FROM spot_join_requests WHERE pubkey=$1 AND status='pending'",[pk]);pendingSet=new Set(pending.map(r=>r.spot_id));
+  }
+  const result=[];
+  for(const s of spots){
+    const admins=await db.query("SELECT sm.pubkey,u.display_name,u.avatar_path FROM spot_members sm LEFT JOIN users u ON sm.pubkey=u.pubkey WHERE sm.spot_id=$1 AND sm.role='admin'",[s.id]);
+    const activity=await db.get('SELECT COUNT(*) as c FROM sessions WHERE spot_id=$1 AND created_at>$2',[s.id,weekAgo]);
+    const isMember=memberSet.has(s.id);
+    const out={
+      id:s.id,region:s.region||null,description:s.description||null,
+      cover_image_url:s.cover_image_url||null,member_count:s.member_count,
+      is_private:s.is_private,is_member:isMember?1:0,is_following:followSet.has(s.id)?1:0,
+      has_pending_request:pendingSet.has(s.id)?1:0,
+      recent_sessions:activity?.c||0,
+      admins:admins.map(a=>absUser(a,req))
+    };
+    // Only reveal name and surfline_spot_id to members or if public
+    if(!s.is_private||isMember){out.name=s.name;out.surfline_spot_id=s.surfline_spot_id;out.location_text=s.location_text;}
+    else{out.name=null;}
+    result.push(out);
+  }
+  res.json(result);
 });
 
 app.get('/api/spots/following',requireAuth,async(req,res)=>{
@@ -136,16 +164,23 @@ app.get('/api/spots/following',requireAuth,async(req,res)=>{
 app.get('/api/spots/:id',async(req,res)=>{
   const spot=await db.get('SELECT s.*,(SELECT COUNT(*)FROM spot_members WHERE spot_id=s.id) as member_count FROM spots s WHERE s.id=$1',[req.params.id]);
   if(!spot)return res.status(404).json({error:'Not found'});
+  const pk=req.headers['x-nostr-pubkey']||null;
+  const isMember=pk?!!(await db.get('SELECT 1 FROM spot_members WHERE spot_id=$1 AND pubkey=$2',[req.params.id,pk])):false;
+  if(spot.is_private&&!isMember){
+    // Non-members of private crews see limited info
+    const admins=await db.query("SELECT sm.pubkey,sm.role,u.display_name,u.avatar_path FROM spot_members sm LEFT JOIN users u ON sm.pubkey=u.pubkey WHERE sm.spot_id=$1 AND sm.role='admin'",[req.params.id]);
+    return res.json({id:spot.id,region:spot.region,description:spot.description,cover_image_url:spot.cover_image_url,member_count:spot.member_count,is_private:1,members:admins.map(a=>absUser(a,req))});
+  }
   const members=await db.query('SELECT sm.pubkey,sm.role,u.display_name,u.avatar_path FROM spot_members sm LEFT JOIN users u ON sm.pubkey=u.pubkey WHERE sm.spot_id=$1',[req.params.id]);
-  res.json({...spot,members});
+  res.json({...spot,members:members.map(m=>absUser(m,req))});
 });
 
 app.post('/api/spots',requireAuth,async(req,res)=>{
-  const{surfline_spot_id,name,location_text,lat,lng,cover_image_url,is_private}=req.body;
+  const{surfline_spot_id,name,location_text,lat,lng,cover_image_url,is_private,description,region}=req.body;
   if(!surfline_spot_id||!name)return res.status(400).json({error:'Missing fields'});
   const id=genId();
-  await db.run('INSERT INTO spots(id,surfline_spot_id,name,location_text,lat,lng,cover_image_url,is_private,created_by)VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)',
-    [id,surfline_spot_id,name,location_text||null,lat||null,lng||null,cover_image_url||null,is_private?1:0,req.pubkey]);
+  await db.run('INSERT INTO spots(id,surfline_spot_id,name,location_text,lat,lng,cover_image_url,is_private,description,region,created_by)VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)',
+    [id,surfline_spot_id,name,location_text||null,lat||null,lng||null,cover_image_url||null,is_private===false?0:1,description||null,region||null,req.pubkey]);
   await db.run('INSERT INTO spot_members(spot_id,pubkey,role)VALUES($1,$2,$3)',[id,req.pubkey,'admin']);
   res.json({ok:true,id});
 });
@@ -153,10 +188,12 @@ app.post('/api/spots',requireAuth,async(req,res)=>{
 app.put('/api/spots/:id',requireAuth,async(req,res)=>{
   const member=await db.get('SELECT role FROM spot_members WHERE spot_id=$1 AND pubkey=$2',[req.params.id,req.pubkey]);
   if(!member||member.role!=='admin')return res.status(403).json({error:'Admin only'});
-  const{cover_image_url,is_private,name}=req.body;
+  const{cover_image_url,is_private,name,description,region}=req.body;
   if(cover_image_url!==undefined)await db.run('UPDATE spots SET cover_image_url=$1 WHERE id=$2',[cover_image_url,req.params.id]);
   if(is_private!==undefined)await db.run('UPDATE spots SET is_private=$1 WHERE id=$2',[is_private?1:0,req.params.id]);
   if(name)await db.run('UPDATE spots SET name=$1 WHERE id=$2',[name,req.params.id]);
+  if(description!==undefined)await db.run('UPDATE spots SET description=$1 WHERE id=$2',[description,req.params.id]);
+  if(region!==undefined)await db.run('UPDATE spots SET region=$1 WHERE id=$2',[region,req.params.id]);
   res.json({ok:true});
 });
 
@@ -166,6 +203,39 @@ app.post('/api/spots/:id/join',requireAuth,async(req,res)=>{
   if(!spot)return res.status(404).json({error:'Not found'});
   if(spot.is_private)return res.status(403).json({error:'Private spot — need invite link'});
   await db.run('INSERT INTO spot_members(spot_id,pubkey,role)VALUES($1,$2,$3)ON CONFLICT DO NOTHING',[req.params.id,req.pubkey,'member']);
+  res.json({ok:true});
+});
+
+// ===== JOIN REQUESTS =====
+app.post('/api/spots/:id/join-request',requireAuth,async(req,res)=>{
+  const spot=await db.get('SELECT*FROM spots WHERE id=$1',[req.params.id]);
+  if(!spot)return res.status(404).json({error:'Not found'});
+  const member=await db.get('SELECT 1 FROM spot_members WHERE spot_id=$1 AND pubkey=$2',[req.params.id,req.pubkey]);
+  if(member)return res.status(400).json({error:'Already a member'});
+  const existing=await db.get("SELECT 1 FROM spot_join_requests WHERE spot_id=$1 AND pubkey=$2 AND status='pending'",[req.params.id,req.pubkey]);
+  if(existing)return res.status(400).json({error:'Request already pending'});
+  const id=genId();
+  await db.run('INSERT INTO spot_join_requests(id,spot_id,pubkey,message)VALUES($1,$2,$3,$4)',[id,req.params.id,req.pubkey,req.body.message||null]);
+  res.json({ok:true,id});
+});
+
+app.get('/api/spots/:id/join-requests',requireAuth,async(req,res)=>{
+  const member=await db.get('SELECT role FROM spot_members WHERE spot_id=$1 AND pubkey=$2',[req.params.id,req.pubkey]);
+  if(!member||member.role!=='admin')return res.status(403).json({error:'Admin only'});
+  const requests=await db.query("SELECT jr.*,u.display_name,u.avatar_path FROM spot_join_requests jr LEFT JOIN users u ON jr.pubkey=u.pubkey WHERE jr.spot_id=$1 AND jr.status='pending' ORDER BY jr.created_at DESC",[req.params.id]);
+  res.json(requests.map(r=>absUser(r,req)));
+});
+
+app.put('/api/spots/:id/join-requests/:requestId',requireAuth,async(req,res)=>{
+  const member=await db.get('SELECT role FROM spot_members WHERE spot_id=$1 AND pubkey=$2',[req.params.id,req.pubkey]);
+  if(!member||member.role!=='admin')return res.status(403).json({error:'Admin only'});
+  const jr=await db.get('SELECT*FROM spot_join_requests WHERE id=$1 AND spot_id=$2',[req.params.requestId,req.params.id]);
+  if(!jr)return res.status(404).json({error:'Not found'});
+  const{status}=req.body;
+  if(!['approved','denied'].includes(status))return res.status(400).json({error:'Invalid status'});
+  const now=Math.floor(Date.now()/1000);
+  await db.run('UPDATE spot_join_requests SET status=$1,resolved_by=$2,resolved_at=$3 WHERE id=$4',[status,req.pubkey,now,jr.id]);
+  if(status==='approved')await db.run('INSERT INTO spot_members(spot_id,pubkey,role)VALUES($1,$2,$3)ON CONFLICT DO NOTHING',[req.params.id,jr.pubkey,'member']);
   res.json({ok:true});
 });
 
@@ -240,7 +310,19 @@ app.get('/api/conditions',async(req,res)=>{
   try{
     const spotId=req.query.spot_id;
     let surflineSpotId='5842041f4e65fad6a7708b9c'; // default Dominical
-    if(spotId){const spot=await db.get('SELECT surfline_spot_id FROM spots WHERE id=$1',[spotId]);if(spot)surflineSpotId=spot.surfline_spot_id;}
+    if(spotId){
+      const spot=await db.get('SELECT surfline_spot_id,is_private FROM spots WHERE id=$1',[spotId]);
+      if(spot){
+        // Privacy: don't serve conditions for private spots to non-members
+        if(spot.is_private){
+          const pk=req.headers['x-nostr-pubkey']||null;
+          if(!pk)return res.status(403).json({error:'Private crew'});
+          const mem=await db.get('SELECT 1 FROM spot_members WHERE spot_id=$1 AND pubkey=$2',[spotId,pk]);
+          if(!mem)return res.status(403).json({error:'Private crew'});
+        }
+        surflineSpotId=spot.surfline_spot_id;
+      }
+    }
     else if(req.query.surfline_spot_id)surflineSpotId=req.query.surfline_spot_id;
     const forecast=await getForecast(surflineSpotId);
     res.json(getConditions(forecast,req.query.date||new Date().toISOString().split('T')[0],req.query.time_of_day||'morning'));
@@ -302,7 +384,27 @@ async function getFeedPubkeys(pk){const rows=await db.query('SELECT followed_pub
 // ===== SESSIONS (spot-aware) =====
 app.get('/api/sessions',async(req,res)=>{
   const{limit=50,offset=0,month,swell_dir,feed_for,pubkey:fp,spot_id}=req.query;let w=[],p=[],n=1;
-  if(spot_id){w.push(`s.spot_id=$${n++}`);p.push(spot_id);}
+  const pk=req.headers['x-nostr-pubkey']||null;
+  // Privacy: if requesting a specific private spot, verify membership
+  if(spot_id){
+    const spot=await db.get('SELECT is_private FROM spots WHERE id=$1',[spot_id]);
+    if(spot&&spot.is_private){
+      if(!pk)return res.json({sessions:[],total:0});
+      const mem=await db.get('SELECT 1 FROM spot_members WHERE spot_id=$1 AND pubkey=$2',[spot_id,pk]);
+      if(!mem)return res.json({sessions:[],total:0});
+    }
+    w.push(`s.spot_id=$${n++}`);p.push(spot_id);
+  }else{
+    // Filter out sessions from private spots the user isn't a member of
+    if(pk){
+      const memberSpotIds=await db.query('SELECT spot_id FROM spot_members WHERE pubkey=$1',[pk]);
+      const mset=memberSpotIds.map(r=>r.spot_id);
+      if(mset.length){w.push(`(s.spot_id IS NULL OR s.spot_id IN(${mset.map(()=>`$${n++}`).join(',')}) OR s.spot_id IN(SELECT id FROM spots WHERE is_private=0))`);p.push(...mset);}
+      else{w.push(`(s.spot_id IS NULL OR s.spot_id IN(SELECT id FROM spots WHERE is_private=0))`);}
+    }else{
+      w.push(`(s.spot_id IS NULL OR s.spot_id IN(SELECT id FROM spots WHERE is_private=0))`);
+    }
+  }
   if(feed_for){const pks=await getFeedPubkeys(feed_for);w.push(`s.pubkey IN(${pks.map(()=>`$${n++}`).join(',')})`);p.push(...pks);}
   if(fp){w.push(`s.pubkey=$${n++}`);p.push(fp);}
   if(month){w.push(`substring(session_date,1,7)=$${n++}`);p.push(month);}
