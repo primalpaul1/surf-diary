@@ -346,6 +346,7 @@ textarea { resize: vertical; }
 .tag-video { background: #ede9fe; color: #7c3aed; }
 .tag-voice { background: #ffe4e6; color: #be123c; }
 .tag-shape { background: #e0e7ff; color: #4338ca; }
+.tag-barrel { background: #cffafe; color: #0e7490; }
 .tag-observed { background: #fef3c7; color: #92400e; }
 
 .feed-video-thumb { margin-top: 0.5rem; border-radius: 10px; overflow: hidden; max-height: 180px; }
@@ -595,6 +596,30 @@ textarea { resize: vertical; }
 .btn-whatsapp { background: #25D366; }
 .btn-messages { background: #34C759; }
 .btn-native { background: var(--ocean-mid); }
+.barrel-input-row {
+  display: flex; align-items: center; justify-content: center; gap: 1rem; margin-bottom: 1rem;
+}
+.barrel-btn {
+  width: 40px; height: 40px; border-radius: 50%; border: 2px solid var(--ocean-mid);
+  background: white; color: var(--ocean-dark); font-size: 1.3rem; font-weight: 700;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+}
+.barrel-btn:active { background: var(--ocean-mid); color: white; }
+.barrel-count-input {
+  width: 56px; text-align: center; font: 800 1.5rem var(--font-body);
+  border: none; background: none; color: var(--text-main); -moz-appearance: textfield;
+}
+.barrel-count-input::-webkit-inner-spin-button,
+.barrel-count-input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.feed-avatar-wrap { position: relative; flex-shrink: 0; }
+.barrel-badge {
+  position: absolute; bottom: -3px; right: -5px;
+  min-width: 16px; height: 16px; border-radius: 8px;
+  background: var(--ocean-dark); color: white;
+  font: 700 0.55rem var(--font-body); display: flex; align-items: center;
+  justify-content: center; padding: 0 3px; border: 1.5px solid white;
+}
+.surfer-barrels { color: var(--ocean-mid); font-weight: 600; }
 
 /* ---- SEARCH ---- */
 .search-card { margin-bottom: 1rem; }

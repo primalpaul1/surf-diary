@@ -33,7 +33,7 @@ async function initDB(){
     `CREATE TABLE IF NOT EXISTS spots(id TEXT PRIMARY KEY,surfline_spot_id TEXT NOT NULL,name TEXT NOT NULL,location_text TEXT,lat REAL,lng REAL,cover_image_url TEXT,is_private INTEGER DEFAULT 0,created_by TEXT,created_at INTEGER DEFAULT ${ts})`,
     `CREATE TABLE IF NOT EXISTS spot_members(spot_id TEXT NOT NULL,pubkey TEXT NOT NULL,role TEXT DEFAULT 'member',invited_by TEXT,created_at INTEGER DEFAULT ${ts},PRIMARY KEY(spot_id,pubkey))`,
     `CREATE TABLE IF NOT EXISTS spot_invites(id TEXT PRIMARY KEY,spot_id TEXT NOT NULL,created_by TEXT NOT NULL,max_uses INTEGER,use_count INTEGER DEFAULT 0,expires_at INTEGER,created_at INTEGER DEFAULT ${ts})`,
-    `CREATE TABLE IF NOT EXISTS sessions(id ${serial},pubkey TEXT NOT NULL,spot_id TEXT,session_date TEXT NOT NULL,time_of_day TEXT NOT NULL,swells_json TEXT,surf_height_min_ft REAL,surf_height_max_ft REAL,wind_speed_mph REAL,wind_direction_deg REAL,wind_type TEXT,wind_gust_mph REAL,tide_height_ft REAL,rating INTEGER,wave_shape TEXT,session_type TEXT DEFAULT 'surfed',notes TEXT,voice_memo_path TEXT,voice_transcript TEXT,video_path TEXT,created_at INTEGER DEFAULT ${ts})`,
+    `CREATE TABLE IF NOT EXISTS sessions(id ${serial},pubkey TEXT NOT NULL,spot_id TEXT,session_date TEXT NOT NULL,time_of_day TEXT NOT NULL,swells_json TEXT,surf_height_min_ft REAL,surf_height_max_ft REAL,wind_speed_mph REAL,wind_direction_deg REAL,wind_type TEXT,wind_gust_mph REAL,tide_height_ft REAL,rating INTEGER,wave_shape TEXT,session_type TEXT DEFAULT 'surfed',notes TEXT,voice_memo_path TEXT,voice_transcript TEXT,video_path TEXT,barrels INTEGER DEFAULT 0,created_at INTEGER DEFAULT ${ts})`,
     `CREATE TABLE IF NOT EXISTS comments(id ${serial},session_id INTEGER NOT NULL,pubkey TEXT NOT NULL,body TEXT NOT NULL,created_at INTEGER DEFAULT ${ts})`,
     `CREATE TABLE IF NOT EXISTS follows(follower_pubkey TEXT NOT NULL,followed_pubkey TEXT NOT NULL,created_at INTEGER DEFAULT ${ts},PRIMARY KEY(follower_pubkey,followed_pubkey))`,
     `CREATE TABLE IF NOT EXISTS forecast_cache(id ${serial},spot_id TEXT,fetched_at INTEGER DEFAULT ${ts},data_json TEXT NOT NULL)`,
@@ -42,6 +42,8 @@ async function initDB(){
     `CREATE TABLE IF NOT EXISTS blocks(blocker_pubkey TEXT NOT NULL,blocked_pubkey TEXT NOT NULL,created_at INTEGER DEFAULT ${ts},PRIMARY KEY(blocker_pubkey,blocked_pubkey))`,
   ];
   for(const sql of tables){try{await db.exec(sql);console.log('✅',sql.slice(0,60));}catch(err){console.log('⚠️ Table:',err.message?.slice(0,100));}}
+  // Migrations
+  try{await db.exec('ALTER TABLE sessions ADD COLUMN barrels INTEGER DEFAULT 0');}catch{}
   // Check what's actually in the DB
   if(USE_PG){try{const r=await db.query("SELECT tablename FROM pg_tables WHERE schemaname='public'");console.log('📋 Tables:',r.map(t=>t.tablename).join(', '));for(const t of r){try{const c=await db.get(`SELECT COUNT(*) as n FROM ${t.tablename}`);console.log(`  ${t.tablename}: ${c?.n||0} rows`);}catch{}}}catch(e){console.log('Table check error:',e.message);}}
   console.log(`📦 Database: ${USE_PG?'PostgreSQL':'SQLite'}, URL: ${process.env.DATABASE_URL?.slice(0,30)}...`);
@@ -272,11 +274,11 @@ app.post('/api/auth/login',async(req,res)=>{
 app.get('/api/users',async(req,res)=>{
   const spotId=req.query.spot_id;
   let users;
-  if(spotId)users=await db.query('SELECT u.pubkey,u.display_name,u.avatar_path,sm.role,(SELECT COUNT(*)FROM sessions WHERE pubkey=u.pubkey AND spot_id=$1) as session_count FROM spot_members sm LEFT JOIN users u ON sm.pubkey=u.pubkey WHERE sm.spot_id=$1 ORDER BY session_count DESC',[spotId]);
-  else users=await db.query('SELECT u.pubkey,u.display_name,u.avatar_path,(SELECT COUNT(*)FROM sessions WHERE pubkey=u.pubkey) as session_count FROM users u ORDER BY session_count DESC');
+  if(spotId)users=await db.query('SELECT u.pubkey,u.display_name,u.avatar_path,sm.role,(SELECT COUNT(*)FROM sessions WHERE pubkey=u.pubkey AND spot_id=$1) as session_count,(SELECT COALESCE(SUM(barrels),0)FROM sessions WHERE pubkey=u.pubkey) as total_barrels FROM spot_members sm LEFT JOIN users u ON sm.pubkey=u.pubkey WHERE sm.spot_id=$1 ORDER BY session_count DESC',[spotId]);
+  else users=await db.query('SELECT u.pubkey,u.display_name,u.avatar_path,(SELECT COUNT(*)FROM sessions WHERE pubkey=u.pubkey) as session_count,(SELECT COALESCE(SUM(barrels),0)FROM sessions WHERE pubkey=u.pubkey) as total_barrels FROM users u ORDER BY session_count DESC');
   res.json(users.map(u=>absUser(u,req)));
 });
-app.get('/api/users/:pubkey',async(req,res)=>{const u=await db.get('SELECT*FROM users WHERE pubkey=$1',[req.params.pubkey]);if(!u)return res.status(404).json({error:'Not found'});const c=await db.get('SELECT COUNT(*) as c FROM sessions WHERE pubkey=$1',[req.params.pubkey]);res.json(absUser({...u,session_count:c?.c||0},req));});
+app.get('/api/users/:pubkey',async(req,res)=>{const u=await db.get('SELECT*FROM users WHERE pubkey=$1',[req.params.pubkey]);if(!u)return res.status(404).json({error:'Not found'});const c=await db.get('SELECT COUNT(*) as c,COALESCE(SUM(barrels),0) as b FROM sessions WHERE pubkey=$1',[req.params.pubkey]);res.json(absUser({...u,session_count:c?.c||0,total_barrels:c?.b||0},req));});
 
 // ===== FOLLOWS =====
 app.get('/api/follows',requireAuth,async(req,res)=>{
@@ -327,8 +329,8 @@ app.post('/api/sessions',requireAuth,async(req,res)=>{
   let voicePath=b.voice_url||null,videoPath=b.video_url||null;
   if(!voicePath&&b.voice_memo_base64)voicePath=saveFile(b.voice_memo_base64,'audio',b.voice_ext||'webm');
   if(!videoPath&&b.video_base64)videoPath=saveFile(b.video_base64,'videos','mp4');
-  const r=await db.run('INSERT INTO sessions(pubkey,spot_id,session_date,time_of_day,swells_json,surf_height_min_ft,surf_height_max_ft,wind_speed_mph,wind_direction_deg,wind_type,wind_gust_mph,tide_height_ft,rating,wave_shape,session_type,notes,voice_memo_path,voice_transcript,video_path)VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)',
-    [req.pubkey,b.spot_id||null,b.session_date,b.time_of_day,JSON.stringify(c.swells||[]),c.surf_height_min_ft??null,c.surf_height_max_ft??null,c.wind_speed_mph??null,c.wind_direction_deg??null,c.wind_type??null,c.wind_gust_mph??null,c.tide_height_ft??null,b.rating,b.wave_shape||null,b.session_type||'surfed',b.notes||null,voicePath,b.voice_transcript||null,videoPath]);
+  const r=await db.run('INSERT INTO sessions(pubkey,spot_id,session_date,time_of_day,swells_json,surf_height_min_ft,surf_height_max_ft,wind_speed_mph,wind_direction_deg,wind_type,wind_gust_mph,tide_height_ft,rating,wave_shape,session_type,notes,voice_memo_path,voice_transcript,video_path,barrels)VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)',
+    [req.pubkey,b.spot_id||null,b.session_date,b.time_of_day,JSON.stringify(c.swells||[]),c.surf_height_min_ft??null,c.surf_height_max_ft??null,c.wind_speed_mph??null,c.wind_direction_deg??null,c.wind_type??null,c.wind_gust_mph??null,c.tide_height_ft??null,b.rating,b.wave_shape||null,b.session_type||'surfed',b.notes||null,voicePath,b.voice_transcript||null,videoPath,b.barrels||0]);
   res.json({ok:true,id:r.lastID,conditions:c});
 });
 
