@@ -229,7 +229,7 @@ app.get('/api/feed',requireAuth,async(req,res)=>{
     if(month){w.push(`substring(session_date,1,7)=$${n++}`);p.push(month);}
     if(swell_dir){w.push(`swells_json LIKE $${n++}`);p.push(`%"direction_compass":"${swell_dir}"%`);}
     const wc='WHERE '+w.join(' AND ');
-    const sessions=await db.query(`SELECT s.*,u.display_name,u.avatar_path FROM sessions s LEFT JOIN users u ON s.pubkey=u.pubkey ${wc} ORDER BY s.session_date DESC,s.created_at DESC LIMIT $${n++}`,[...p,+limit]);
+    const sessions=await db.query(`SELECT s.*,u.display_name,u.avatar_path,(SELECT COALESCE(SUM(barrels),0)FROM sessions WHERE pubkey=s.pubkey) as total_barrels FROM sessions s LEFT JOIN users u ON s.pubkey=u.pubkey ${wc} ORDER BY s.session_date DESC,s.created_at DESC LIMIT $${n++}`,[...p,+limit]);
     if(sessions.length)result.push({spot:{id:spot.id,name:spot.name,location_text:spot.location_text,cover_image_url:spot.cover_image_url,member_count:spot.member_count},sessions:sessions.map(s=>absSession(s,req))});
   }
   res.json(result);
@@ -308,7 +308,7 @@ app.get('/api/sessions',async(req,res)=>{
   if(month){w.push(`substring(session_date,1,7)=$${n++}`);p.push(month);}
   if(swell_dir){w.push(`swells_json LIKE $${n++}`);p.push(`%"direction_compass":"${swell_dir}"%`);}
   const wc=w.length?'WHERE '+w.join(' AND '):'';
-  const sessions=await db.query(`SELECT s.*,u.display_name,u.avatar_path FROM sessions s LEFT JOIN users u ON s.pubkey=u.pubkey ${wc} ORDER BY s.session_date DESC,s.created_at DESC LIMIT $${n++} OFFSET $${n++}`,[...p,+limit,+offset]);
+  const sessions=await db.query(`SELECT s.*,u.display_name,u.avatar_path,(SELECT COALESCE(SUM(barrels),0)FROM sessions WHERE pubkey=s.pubkey) as total_barrels FROM sessions s LEFT JOIN users u ON s.pubkey=u.pubkey ${wc} ORDER BY s.session_date DESC,s.created_at DESC LIMIT $${n++} OFFSET $${n++}`,[...p,+limit,+offset]);
   const total=await db.get(`SELECT COUNT(*) as count FROM sessions s ${wc}`,p);
   res.json({sessions:sessions.map(s=>absSession(s,req)),total:total?.count||0});
 });

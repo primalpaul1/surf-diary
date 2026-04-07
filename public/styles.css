@@ -620,6 +620,11 @@ textarea { resize: vertical; }
   justify-content: center; padding: 0 3px; border: 1.5px solid white;
 }
 .surfer-barrels { color: var(--ocean-mid); font-weight: 600; }
+.barrel-count {
+  font-size: 0.75rem; font-weight: 700; color: #0e7490;
+  background: #cffafe; padding: 0.1rem 0.35rem; border-radius: 6px;
+  margin-left: 0.15rem; white-space: nowrap;
+}
 
 /* ---- SEARCH ---- */
 .search-card { margin-bottom: 1rem; }

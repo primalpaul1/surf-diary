@@ -561,7 +561,8 @@ function renderSessionCard(s){
   if(s.video_path)tags.push('<span class="tag tag-video">📹</span>');
   if(s.voice_memo_path)tags.push('<span class="tag tag-voice">🎙</span>');
   const vt=s.video_path?`<div class="feed-video-thumb"><video src="${s.video_path}" preload="metadata" muted></video></div>`:'';
-  return`<div class="feed-card" data-id="${s.id}"><div class="feed-date"><div class="day">${d.getDate()}</div><div class="mo">${d.toLocaleString('en',{month:'short'})}</div></div><div class="feed-body"><div class="feed-user">${userLinkHTML(s.pubkey,s.display_name,s.avatar_path)}<span class="feed-tod">· ${formatTOD(s.time_of_day)}</span></div><div class="feed-tags">${tags.join('')}</div>${vt}</div><div class="feed-rating">${s.rating?`<div class="rbadge ${getRatingClass(s.rating)}">${s.rating}</div>`:'<div class="rbadge">—</div>'}</div></div>`;
+  const bb=s.total_barrels>0?`<span class="barrel-count" title="${s.total_barrels} tubes">🤿${s.total_barrels}</span>`:'';
+  return`<div class="feed-card" data-id="${s.id}"><div class="feed-date"><div class="day">${d.getDate()}</div><div class="mo">${d.toLocaleString('en',{month:'short'})}</div></div><div class="feed-body"><div class="feed-user">${userLinkHTML(s.pubkey,s.display_name,s.avatar_path)}${bb}<span class="feed-tod">· ${formatTOD(s.time_of_day)}</span></div><div class="feed-tags">${tags.join('')}</div>${vt}</div><div class="feed-rating">${s.rating?`<div class="rbadge ${getRatingClass(s.rating)}">${s.rating}</div>`:'<div class="rbadge">—</div>'}</div></div>`;
 }
 
 window.switchToSpot=async id=>{
