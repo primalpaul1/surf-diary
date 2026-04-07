@@ -937,7 +937,7 @@ function openNewCrewFlow(){
   modal.querySelector('#crew-spot-search').focus();
 }
 $('#create-crew-btn')?.addEventListener('click',openNewCrewFlow);
-$('#header-add-crew-btn')?.addEventListener('click',openNewCrewFlow);
+$('#nav-add-crew')?.addEventListener('click',openNewCrewFlow);
 
 // ===== INIT =====
 const saved=localStorage.getItem('swellnotes_user');if(saved){try{currentUser=JSON.parse(saved);}catch{localStorage.removeItem('swellnotes_user');}}
