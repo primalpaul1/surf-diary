@@ -6,6 +6,7 @@ const crypto = require('crypto');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+app.use((req,res,next)=>{const origin=req.headers.origin;if(origin==='capacitor://localhost'||origin==='ionic://localhost'){res.header('Access-Control-Allow-Origin',origin);res.header('Access-Control-Allow-Headers','Content-Type,X-Nostr-Pubkey');res.header('Access-Control-Allow-Methods','GET,POST,PUT,DELETE,OPTIONS');if(req.method==='OPTIONS')return res.sendStatus(204);}next();});
 app.use(express.json({ limit: '100mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 ['audio','videos','avatars'].forEach(d=>{const p=path.join(__dirname,d);if(!fs.existsSync(p))fs.mkdirSync(p);app.use(`/${d}`,express.static(p));});

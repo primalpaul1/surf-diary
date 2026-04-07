@@ -1,3 +1,5 @@
+import{generateSecretKey,getPublicKey,nip19,finalizeEvent,Relay,getConversationKey,decrypt as nip44Decrypt,encrypt as nip44Encrypt,BunkerSigner,bytesToHex,hexToBytes,sha256}from'/nostr-bundle.js';
+console.log('[SWELLNOTES] Bundle loaded OK, generateSecretKey=',typeof generateSecretKey);
 let currentUser=null,currentSpot=null,mySpots=[],followingSet=new Set(),voiceBlob=null,voiceTranscript='',mediaRecorder=null,recordingChunks=[],recordingTimer=null,recordingSeconds=0,nip46Data=null,speechRecognition=null,videoFile=null,avatarFile=null,coverFile=null,pendingSpotData=null;
 const $=s=>document.querySelector(s),$$=s=>document.querySelectorAll(s);
 const BLOSSOM='https://blossom.primal.net';
@@ -148,9 +150,9 @@ $('#spot-settings-btn').addEventListener('click',()=>{$$('.nav-btn').forEach(x=>
 async function uploadToBlossom(file){
   if(!currentUser?.secretKey)return null;
   try{
-    const{finalizeEvent}=await import('https://esm.sh/nostr-tools@2.10.0/pure');
-    const{hexToBytes,bytesToHex}=await import('https://esm.sh/@noble/hashes@1.8.0/utils');
-    const{sha256}=await import('https://esm.sh/@noble/hashes@1.8.0/sha256');
+    /* finalizeEvent from bundle */
+    /* hexToBytes,bytesToHex from bundle */
+    /* sha256 from bundle */
     const buf=await file.arrayBuffer();const hash=bytesToHex(sha256(new Uint8Array(buf)));const now=Math.floor(Date.now()/1000);
     const ev=finalizeEvent({kind:24242,created_at:now,tags:[['t','upload'],['x',hash],['expiration',String(now+300)]],content:'Upload file'},hexToBytes(currentUser.secretKey));
     const res=await fetch(`${BLOSSOM}/upload`,{method:'PUT',headers:{'Authorization':'Nostr '+btoa(JSON.stringify(ev)),'Content-Type':file.type||'application/octet-stream'},body:buf});
@@ -166,11 +168,11 @@ async function fetchProfile(pk){
     if(r.ok){const data=await r.json();const profile=data?.find(e=>e.kind===0&&e.pubkey===pk);if(profile)return JSON.parse(profile.content);}
   }catch(e){console.log('Primal cache fetch failed:',e);}
   // Fallback: fetch from relay directly
-  try{const{Relay}=await import('https://esm.sh/nostr-tools@2.10.0/relay');const relay=await Relay.connect(RELAYS[0]);return new Promise(r=>{let ev=null;relay.subscribe([{kinds:[0],authors:[pk],limit:1}],{onevent:e=>{if(!ev||e.created_at>ev.created_at)ev=e;},oneose:()=>{relay.close();try{r(ev?JSON.parse(ev.content):null);}catch{r(null);}}});setTimeout(()=>{try{relay.close();}catch{}r(null);},5000);});}catch{return null;}
+  try{/* Relay from bundle */const relay=await Relay.connect(RELAYS[0]);return new Promise(r=>{let ev=null;relay.subscribe([{kinds:[0],authors:[pk],limit:1}],{onevent:e=>{if(!ev||e.created_at>ev.created_at)ev=e;},oneose:()=>{relay.close();try{r(ev?JSON.parse(ev.content):null);}catch{r(null);}}});setTimeout(()=>{try{relay.close();}catch{}r(null);},5000);});}catch{return null;}
 }
-async function publishProfile(name,pic){if(!currentUser?.secretKey)return;try{const{finalizeEvent}=await import('https://esm.sh/nostr-tools@2.10.0/pure');const{Relay}=await import('https://esm.sh/nostr-tools@2.10.0/relay');const{hexToBytes}=await import('https://esm.sh/@noble/hashes@1.8.0/utils');const ex=await fetchProfile(currentUser.pubkey)||{};const p={...ex,name};if(pic)p.picture=pic;const ev=finalizeEvent({kind:0,created_at:Math.floor(Date.now()/1000),tags:[],content:JSON.stringify(p)},hexToBytes(currentUser.secretKey));for(const u of RELAYS){try{const r=await Relay.connect(u);await r.publish(ev);r.close();}catch{}}}catch{}}
-async function fetchKind3(pk){try{const{Relay}=await import('https://esm.sh/nostr-tools@2.10.0/relay');const relay=await Relay.connect(RELAYS[0]);return new Promise(r=>{let ev=null;relay.subscribe([{kinds:[3],authors:[pk],limit:1}],{onevent:e=>{if(!ev||e.created_at>ev.created_at)ev=e;},oneose:()=>{relay.close();r(ev);}});setTimeout(()=>{try{relay.close();}catch{}r(ev);},5000);});}catch{return null;}}
-async function publishKind3(pks){if(!currentUser?.secretKey)return;try{const{finalizeEvent}=await import('https://esm.sh/nostr-tools@2.10.0/pure');const{Relay}=await import('https://esm.sh/nostr-tools@2.10.0/relay');const{hexToBytes}=await import('https://esm.sh/@noble/hashes@1.8.0/utils');const ev=finalizeEvent({kind:3,created_at:Math.floor(Date.now()/1000),tags:pks.map(p=>['p',p]),content:''},hexToBytes(currentUser.secretKey));for(const u of RELAYS){try{const r=await Relay.connect(u);await r.publish(ev);r.close();}catch{}}}catch{}}
+async function publishProfile(name,pic){if(!currentUser?.secretKey)return;try{/* finalizeEvent from bundle *//* Relay from bundle *//* hexToBytes from bundle */const ex=await fetchProfile(currentUser.pubkey)||{};const p={...ex,name};if(pic)p.picture=pic;const ev=finalizeEvent({kind:0,created_at:Math.floor(Date.now()/1000),tags:[],content:JSON.stringify(p)},hexToBytes(currentUser.secretKey));for(const u of RELAYS){try{const r=await Relay.connect(u);await r.publish(ev);r.close();}catch{}}}catch{}}
+async function fetchKind3(pk){try{/* Relay from bundle */const relay=await Relay.connect(RELAYS[0]);return new Promise(r=>{let ev=null;relay.subscribe([{kinds:[3],authors:[pk],limit:1}],{onevent:e=>{if(!ev||e.created_at>ev.created_at)ev=e;},oneose:()=>{relay.close();r(ev);}});setTimeout(()=>{try{relay.close();}catch{}r(ev);},5000);});}catch{return null;}}
+async function publishKind3(pks){if(!currentUser?.secretKey)return;try{/* finalizeEvent from bundle *//* Relay from bundle *//* hexToBytes from bundle */const ev=finalizeEvent({kind:3,created_at:Math.floor(Date.now()/1000),tags:pks.map(p=>['p',p]),content:''},hexToBytes(currentUser.secretKey));for(const u of RELAYS){try{const r=await Relay.connect(u);await r.publish(ev);r.close();}catch{}}}catch{}}
 async function syncFollowsFromRelay(){if(!currentUser)return;const ev=await fetchKind3(currentUser.pubkey);if(!ev)return;const pks=ev.tags.filter(t=>t[0]==='p').map(t=>t[1]);followingSet=new Set(pks);for(const pk of pks){try{await fetch(`${API_BASE}/api/follows/${pk}`,{method:'POST',headers:{'X-Nostr-Pubkey':currentUser.pubkey}});}catch{}}}
 
 // ===== LANDING PAGE AUTH =====
@@ -182,7 +184,7 @@ $('#landing-primal-btn').addEventListener('click',openLoginModal);
 $('#landing-create-form').addEventListener('submit',async e=>{
   e.preventDefault();const name=$('#landing-create-name').value.trim();if(!name)return;
   $('#landing-submit-btn').disabled=true;$('#landing-submit-btn').classList.add('hidden');$('#landing-loading').classList.remove('hidden');
-  try{const{generateSecretKey,getPublicKey}=await import('https://esm.sh/nostr-tools@2.10.0');const{bytesToHex}=await import('https://esm.sh/@noble/hashes@1.8.0/utils');
+  try{/* generateSecretKey,getPublicKey,bytesToHex from bundle */
   const sk=generateSecretKey(),secretKey=bytesToHex(sk),pubkey=getPublicKey(sk);
   currentUser={pubkey,secretKey,display_name:name,avatar_path:null};
   let avatarUrl=null;if(landingAvatarFile)avatarUrl=await uploadToBlossom(landingAvatarFile);
@@ -193,7 +195,7 @@ $('#landing-create-form').addEventListener('submit',async e=>{
   localStorage.setItem('swellnotes_user',JSON.stringify(currentUser));
   await publishProfile(name,avatarUrl);
   updateAuthUI();landingAvatarFile=null;toast(`Welcome, ${name}!`);
-  }catch{toast('Failed','error');}
+  }catch(err){toast('Failed: '+err.message,'error');console.error('Account create error:',err);}
   finally{$('#landing-submit-btn').disabled=false;$('#landing-submit-btn').classList.remove('hidden');$('#landing-loading').classList.add('hidden');}
 });
 
@@ -209,7 +211,7 @@ $('#avatar-file').addEventListener('change',e=>{avatarFile=e.target.files[0];if(
 $('#create-form').addEventListener('submit',async e=>{
   e.preventDefault();const name=$('#create-name').value.trim();if(!name)return;
   $('#create-submit-btn').disabled=true;$('#create-submit-btn').classList.add('hidden');$('#create-loading').classList.remove('hidden');
-  try{const{generateSecretKey,getPublicKey}=await import('https://esm.sh/nostr-tools@2.10.0');const{bytesToHex}=await import('https://esm.sh/@noble/hashes@1.8.0/utils');
+  try{/* generateSecretKey,getPublicKey,bytesToHex from bundle */
   const sk=generateSecretKey(),secretKey=bytesToHex(sk),pubkey=getPublicKey(sk);
   currentUser={pubkey,secretKey,display_name:name,avatar_path:null};
   let avatarUrl=null;if(avatarFile)avatarUrl=await uploadToBlossom(avatarFile);
@@ -249,7 +251,7 @@ async function openLoginModal(){
       // Small delay to let listener start, then redirect to Primal
       setTimeout(async()=>{
         const st=$('#landing-primal-status');if(st){$('#landing-primal-status-text').textContent='Waiting for Primal...';}
-        if(IS_CAPACITOR){try{const{Browser}=await import('https://esm.sh/@capacitor/browser');await Browser.open({url:nip46Data.mobileURI});}catch{window.location.href=nip46Data.mobileURI;}}
+        if(IS_CAPACITOR){try{const Browser=window.Capacitor.Plugins.Browser;await Browser.open({url:nip46Data.mobileURI});}catch{window.location.href=nip46Data.mobileURI;}}
         else{window.location.href=nip46Data.mobileURI;}
       },300);
     }else{
@@ -263,15 +265,15 @@ async function openLoginModal(){
     else{$('#landing-primal-btn').disabled=false;$('#landing-primal-btn').style.opacity='';const st=$('#landing-primal-status');if(st){st.classList.add('hidden');st.style.display='';}}
   }
 }
-$('#mobile-login-btn')?.addEventListener('click',async()=>{if(!nip46Data)return;localStorage.setItem('nip46_pending',JSON.stringify({localSecretKey:nip46Data.secretKey,localPublicKey:nip46Data.publicKey,secret:nip46Data.secret,timestamp:Date.now()}));if(IS_CAPACITOR){try{const{Browser}=await import('https://esm.sh/@capacitor/browser');await Browser.open({url:nip46Data.mobileURI});}catch{location.href=nip46Data.mobileURI;}}else{location.href=nip46Data.mobileURI;}});
+$('#mobile-login-btn')?.addEventListener('click',async()=>{if(!nip46Data)return;localStorage.setItem('nip46_pending',JSON.stringify({localSecretKey:nip46Data.secretKey,localPublicKey:nip46Data.publicKey,secret:nip46Data.secret,timestamp:Date.now()}));if(IS_CAPACITOR){try{const Browser=window.Capacitor.Plugins.Browser;await Browser.open({url:nip46Data.mobileURI});}catch{location.href=nip46Data.mobileURI;}}else{location.href=nip46Data.mobileURI;}});
 async function waitForNIP46(){
   if(!nip46Data)return;
   try{
     console.log('[NIP46] Starting waitForNIP46, importing modules...');
-    const{Relay}=await import('https://esm.sh/nostr-tools@2.10.0/relay');
-    const{getConversationKey,decrypt:dec}=await import('https://esm.sh/nostr-tools@2.10.0/nip44');
-    const{hexToBytes}=await import('https://esm.sh/@noble/hashes@1.8.0/utils');
-    const{BunkerSigner}=await import('https://esm.sh/nostr-tools@2.10.0/nip46');
+    /* Relay from bundle */
+    const dec=nip44Decrypt;
+    /* hexToBytes from bundle */
+    /* BunkerSigner from bundle */
     console.log('[NIP46] Modules loaded, connecting to relay...');
     const skb=hexToBytes(nip46Data.secretKey);
     const relay=await Relay.connect('wss://relay.primal.net');
@@ -290,8 +292,8 @@ async function waitForNIP46(){
             const bunkerPubkey=ev.pubkey;
             console.log('[NIP46] ACK received! Bunker:', bunkerPubkey.slice(0,12)+'... Fetching real pubkey via RPC...');
             try{
-              const{encrypt:nip44Enc}=await import('https://esm.sh/nostr-tools@2.10.0/nip44');
-              const{finalizeEvent}=await import('https://esm.sh/nostr-tools@2.10.0/pure');
+              const nip44Enc=nip44Encrypt;
+              /* finalizeEvent from bundle */
               const rpcId=crypto.randomUUID();
               const rpcPayload=JSON.stringify({id:rpcId,method:'get_public_key',params:[]});
               const encPayload=nip44Enc(rpcPayload,getConversationKey(skb,bunkerPubkey));
@@ -360,8 +362,8 @@ $('#settings-btn').addEventListener('click',async()=>{
     $('#settings-nip46-section').classList.add('hidden');
     // Convert hex secret key to nsec
     try{
-      const{nip19}=await import('https://esm.sh/nostr-tools@2.10.0');
-      const{hexToBytes}=await import('https://esm.sh/@noble/hashes@1.8.0/utils');
+      /* nip19 from bundle */
+      /* hexToBytes from bundle */
       const nsec=nip19.nsecEncode(hexToBytes(currentUser.secretKey));
       $('#nsec-display').textContent=nsec;
     }catch{$('#nsec-display').textContent=currentUser.secretKey;}
@@ -480,7 +482,7 @@ const rb=$('#record-btn'),rl=$('#record-label');
 function setupSR(){const S=window.SpeechRecognition||window.webkitSpeechRecognition;if(!S)return null;const r=new S();r.continuous=true;r.interimResults=true;r.lang='en-US';let ft='';r.onresult=e=>{let i='';for(let x=e.resultIndex;x<e.results.length;x++){if(e.results[x].isFinal)ft+=e.results[x][0].transcript+' ';else i+=e.results[x][0].transcript;}voiceTranscript=ft.trim();$('#transcript-text').textContent=ft+i;$('#transcript-section').classList.remove('hidden');};r.onerror=()=>{};r.onend=()=>$('#transcript-text')?.classList.remove('listening');return{recognition:r,reset:()=>{ft='';}};}
 rb.addEventListener('mousedown',startRec);rb.addEventListener('mouseup',stopRec);rb.addEventListener('mouseleave',stopRec);
 rb.addEventListener('touchstart',e=>{e.preventDefault();startRec();});rb.addEventListener('touchend',e=>{e.preventDefault();stopRec();});
-async function startRec(){if(mediaRecorder?.state==='recording')return;try{if(IS_CAPACITOR){try{const{Microphone}=await import('https://esm.sh/@capacitor/microphone');const perm=await Microphone.requestPermissions();if(perm.microphone!=='granted'){toast('Mic permission denied','error');return;}}catch{}}const s=await navigator.mediaDevices.getUserMedia({audio:true});recordingChunks=[];const recMime=MediaRecorder.isTypeSupported('audio/webm;codecs=opus')?'audio/webm;codecs=opus':'audio/mp4';mediaRecorder=new MediaRecorder(s,{mimeType:recMime});mediaRecorder.ondataavailable=e=>{if(e.data.size>0)recordingChunks.push(e.data);};mediaRecorder.onstop=()=>{s.getTracks().forEach(t=>t.stop());voiceBlob=new Blob(recordingChunks,{type:recMime});voiceBlob._ext=recMime.includes('mp4')?'m4a':'webm';$('#voice-audio').src=URL.createObjectURL(voiceBlob);$('#voice-playback').classList.remove('hidden');};mediaRecorder.start(100);const sr=setupSR();if(sr){speechRecognition=sr.recognition;sr.reset();voiceTranscript='';$('#transcript-text').textContent='';$('#transcript-text').classList.add('listening');$('#transcript-section').classList.remove('hidden');speechRecognition.start();}rb.classList.add('recording');rl.textContent='Release to stop';$('#recording-status').classList.remove('hidden');recordingSeconds=0;updTimer();recordingTimer=setInterval(()=>{recordingSeconds++;updTimer();},1000);}catch{toast('Mic denied','error');}}
+async function startRec(){if(mediaRecorder?.state==='recording')return;try{if(IS_CAPACITOR){try{const Microphone=window.Capacitor.Plugins.Microphone;if(Microphone){const perm=await Microphone.requestPermissions();if(perm.microphone!=='granted'){toast('Mic permission denied','error');return;}}}catch{}}const s=await navigator.mediaDevices.getUserMedia({audio:true});recordingChunks=[];const recMime=MediaRecorder.isTypeSupported('audio/webm;codecs=opus')?'audio/webm;codecs=opus':'audio/mp4';mediaRecorder=new MediaRecorder(s,{mimeType:recMime});mediaRecorder.ondataavailable=e=>{if(e.data.size>0)recordingChunks.push(e.data);};mediaRecorder.onstop=()=>{s.getTracks().forEach(t=>t.stop());voiceBlob=new Blob(recordingChunks,{type:recMime});voiceBlob._ext=recMime.includes('mp4')?'m4a':'webm';$('#voice-audio').src=URL.createObjectURL(voiceBlob);$('#voice-playback').classList.remove('hidden');};mediaRecorder.start(100);const sr=setupSR();if(sr){speechRecognition=sr.recognition;sr.reset();voiceTranscript='';$('#transcript-text').textContent='';$('#transcript-text').classList.add('listening');$('#transcript-section').classList.remove('hidden');speechRecognition.start();}rb.classList.add('recording');rl.textContent='Release to stop';$('#recording-status').classList.remove('hidden');recordingSeconds=0;updTimer();recordingTimer=setInterval(()=>{recordingSeconds++;updTimer();},1000);}catch{toast('Mic denied','error');}}
 function stopRec(){if(!mediaRecorder||mediaRecorder.state!=='recording')return;mediaRecorder.stop();if(speechRecognition){speechRecognition.stop();speechRecognition=null;}clearInterval(recordingTimer);rb.classList.remove('recording');rl.textContent='Voice Note';$('#recording-status').classList.add('hidden');}
 function updTimer(){$('#record-timer').textContent=`${Math.floor(recordingSeconds/60)}:${(recordingSeconds%60).toString().padStart(2,'0')}`;}
 $('#delete-voice').addEventListener('click',()=>{voiceBlob=null;voiceTranscript='';$('#voice-audio').src='';$('#voice-playback').classList.add('hidden');$('#transcript-section').classList.add('hidden');});
@@ -512,7 +514,7 @@ $('#share-preview').innerHTML=html;$('#share-text').value=sd.notes||`${sd.spot_n
 $('#share-skip-btn').addEventListener('click',()=>$('#share-modal').classList.add('hidden'));
 $('#share-modal .modal-backdrop').addEventListener('click',()=>$('#share-modal').classList.add('hidden'));
 $('#share-modal .modal-close').addEventListener('click',()=>$('#share-modal').classList.add('hidden'));
-$('#share-post-btn').addEventListener('click',async()=>{if(!currentUser?.secretKey||!pendingShareData)return;try{$('#share-post-btn').disabled=true;$('#share-post-btn').textContent='Posting...';const{finalizeEvent}=await import('https://esm.sh/nostr-tools@2.10.0/pure');const{Relay}=await import('https://esm.sh/nostr-tools@2.10.0/relay');const{hexToBytes}=await import('https://esm.sh/@noble/hashes@1.8.0/utils');const sd=pendingShareData;const c=sd.conditions;const sw=(c.swells||[]).map(s=>`${s.height_ft}ft ${s.period_s}s ${s.direction_compass} ${s.direction_deg}°`).join(', ');const sh=c.surf_height_min_ft&&c.surf_height_max_ft?`${c.surf_height_min_ft}-${c.surf_height_max_ft}ft`:'';let content=$('#share-text').value.trim();if(!content.includes(sd.spot_name))content=`🌊 ${sd.spot_name} · ${sh} · ${sd.rating}/10\n\n${content}`;if(sw&&!content.includes(sw))content+=`\n\nSwell: ${sw}`;if(c.wind_type)content+=`\nWind: ${c.wind_speed_mph}mph ${c.wind_type}`;if(sd.video_url)content+=`\n\n${sd.video_url}`;const tags=[['t','surf'],['t',sd.spot_name.toLowerCase().replace(/\s+/g,'')],['t','surfing']];if(sd.video_url)tags.push(['imeta',`url ${sd.video_url}`,`m video/mp4`]);const ev=finalizeEvent({kind:1,created_at:Math.floor(Date.now()/1000),tags,content},hexToBytes(currentUser.secretKey));for(const u of RELAYS){try{const r=await Relay.connect(u);await r.publish(ev);r.close();}catch{}}toast('Shared!');$('#share-modal').classList.add('hidden');}catch{toast('Share failed','error');}finally{$('#share-post-btn').disabled=false;$('#share-post-btn').textContent='Share';}});
+$('#share-post-btn').addEventListener('click',async()=>{if(!currentUser?.secretKey||!pendingShareData)return;try{$('#share-post-btn').disabled=true;$('#share-post-btn').textContent='Posting...';/* finalizeEvent from bundle *//* Relay from bundle *//* hexToBytes from bundle */const sd=pendingShareData;const c=sd.conditions;const sw=(c.swells||[]).map(s=>`${s.height_ft}ft ${s.period_s}s ${s.direction_compass} ${s.direction_deg}°`).join(', ');const sh=c.surf_height_min_ft&&c.surf_height_max_ft?`${c.surf_height_min_ft}-${c.surf_height_max_ft}ft`:'';let content=$('#share-text').value.trim();if(!content.includes(sd.spot_name))content=`🌊 ${sd.spot_name} · ${sh} · ${sd.rating}/10\n\n${content}`;if(sw&&!content.includes(sw))content+=`\n\nSwell: ${sw}`;if(c.wind_type)content+=`\nWind: ${c.wind_speed_mph}mph ${c.wind_type}`;if(sd.video_url)content+=`\n\n${sd.video_url}`;const tags=[['t','surf'],['t',sd.spot_name.toLowerCase().replace(/\s+/g,'')],['t','surfing']];if(sd.video_url)tags.push(['imeta',`url ${sd.video_url}`,`m video/mp4`]);const ev=finalizeEvent({kind:1,created_at:Math.floor(Date.now()/1000),tags,content},hexToBytes(currentUser.secretKey));for(const u of RELAYS){try{const r=await Relay.connect(u);await r.publish(ev);r.close();}catch{}}toast('Shared!');$('#share-modal').classList.add('hidden');}catch{toast('Share failed','error');}finally{$('#share-post-btn').disabled=false;$('#share-post-btn').textContent='Share';}});
 
 // ===== MULTI-SPOT FEED =====
 let spotFollowingSet=new Set();
@@ -742,4 +744,4 @@ if(!currentSpot)fetchConditions();
 // Register service worker for PWA
 if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
 // Capacitor: listen for deep link returns (NIP-46 callback)
-if(IS_CAPACITOR){import('https://esm.sh/@capacitor/app').then(({App})=>{App.addListener('appUrlOpen',data=>{if(data.url&&data.url.includes('login-callback'))checkCallback();});}).catch(()=>{});}
+if(IS_CAPACITOR){try{const CapApp=window.Capacitor.Plugins.App;if(CapApp)CapApp.addListener('appUrlOpen',data=>{if(data.url&&data.url.includes('login-callback'))checkCallback();});}catch{}}
