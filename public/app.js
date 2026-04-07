@@ -898,7 +898,7 @@ window.resolveJoinRequest=async(spotId,reqId,status)=>{
 };
 
 // New crew button on Pipeline tab triggers the spot search flow
-$('#create-crew-btn')?.addEventListener('click',()=>{
+function openNewCrewFlow(){
   if(!currentUser)return toast('Create an account first','error');
   // Show the spot picker search for Surfline
   const modal=document.createElement('div');modal.className='modal';modal.id='find-spot-for-crew-modal';
@@ -935,7 +935,9 @@ $('#create-crew-btn')?.addEventListener('click',()=>{
     },300);
   });
   modal.querySelector('#crew-spot-search').focus();
-});
+}
+$('#create-crew-btn')?.addEventListener('click',openNewCrewFlow);
+$('#header-add-crew-btn')?.addEventListener('click',openNewCrewFlow);
 
 // ===== INIT =====
 const saved=localStorage.getItem('swellnotes_user');if(saved){try{currentUser=JSON.parse(saved);}catch{localStorage.removeItem('swellnotes_user');}}
