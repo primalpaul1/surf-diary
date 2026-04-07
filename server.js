@@ -3,6 +3,8 @@ const path = require('path');
 const fs = require('fs');
 const QRCode = require('qrcode');
 const crypto = require('crypto');
+if(!globalThis.crypto)globalThis.crypto={};
+if(!globalThis.crypto.getRandomValues)globalThis.crypto.getRandomValues=b=>{const r=crypto.randomBytes(b.length);b.set(r);return b;};
 
 const app = express();
 const PORT = process.env.PORT || 3000;
