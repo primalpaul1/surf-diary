@@ -8,7 +8,36 @@ if(!globalThis.crypto.getRandomValues)globalThis.crypto.getRandomValues=b=>{cons
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// Rate limiting: 100 requests per minute per IP
+const rateLimits=new Map();
+setInterval(()=>rateLimits.clear(),60000);
+app.use((req,res,next)=>{
+  if(req.path.startsWith('/api/')){
+    const ip=req.ip||req.connection.remoteAddress;
+    const count=(rateLimits.get(ip)||0)+1;
+    rateLimits.set(ip,count);
+    res.setHeader('X-RateLimit-Remaining',Math.max(0,100-count));
+    if(count>100){return res.status(429).json({error:'Too many requests. Try again in a minute.'});}
+  }
+  next();
+});
+
 app.use((req,res,next)=>{const origin=req.headers.origin;if(origin==='capacitor://localhost'||origin==='ionic://localhost'){res.header('Access-Control-Allow-Origin',origin);res.header('Access-Control-Allow-Headers','Content-Type,X-Nostr-Pubkey');res.header('Access-Control-Allow-Methods','GET,POST,PUT,DELETE,OPTIONS');if(req.method==='OPTIONS')return res.sendStatus(204);}next();});
+// Request logging
+const logFile=path.join(__dirname,'error.log');
+function logError(msg){const line=`[${new Date().toISOString()}] ${msg}\n`;fs.appendFileSync(logFile,line);console.error(msg);}
+app.use((req,res,next)=>{
+  const start=Date.now();
+  res.on('finish',()=>{
+    const ms=Date.now()-start;
+    if(res.statusCode>=400||ms>2000){
+      logError(`${req.method} ${req.path} ${res.statusCode} ${ms}ms ${req.ip||''}`);
+    }
+  });
+  next();
+});
+
 app.use(express.json({ limit: '100mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 ['audio','videos','avatars'].forEach(d=>{const p=path.join(__dirname,d);if(!fs.existsSync(p))fs.mkdirSync(p);app.use(`/${d}`,express.static(p));});
@@ -47,6 +76,20 @@ async function initDB(){
   try{await db.exec('ALTER TABLE sessions ADD COLUMN barrels INTEGER DEFAULT 0');}catch{}
   try{await db.exec('ALTER TABLE spots ADD COLUMN description TEXT');}catch{}
   try{await db.exec('ALTER TABLE spots ADD COLUMN region TEXT');}catch{}
+  // Indexes for query performance
+  const indexes=[
+    'CREATE INDEX IF NOT EXISTS idx_sessions_pubkey ON sessions(pubkey)',
+    'CREATE INDEX IF NOT EXISTS idx_sessions_spot_id ON sessions(spot_id)',
+    'CREATE INDEX IF NOT EXISTS idx_sessions_date ON sessions(session_date DESC)',
+    'CREATE INDEX IF NOT EXISTS idx_sessions_spot_date ON sessions(spot_id,session_date DESC)',
+    'CREATE INDEX IF NOT EXISTS idx_comments_session ON comments(session_id)',
+    'CREATE INDEX IF NOT EXISTS idx_follows_follower ON follows(follower_pubkey)',
+    'CREATE INDEX IF NOT EXISTS idx_follows_followed ON follows(followed_pubkey)',
+    'CREATE INDEX IF NOT EXISTS idx_spot_members_spot ON spot_members(spot_id)',
+    'CREATE INDEX IF NOT EXISTS idx_spot_members_pubkey ON spot_members(pubkey)',
+    'CREATE INDEX IF NOT EXISTS idx_forecast_cache_spot ON forecast_cache(spot_id,fetched_at DESC)',
+  ];
+  for(const sql of indexes){try{await db.exec(sql);}catch{}}
   // Check what's actually in the DB
   if(USE_PG){try{const r=await db.query("SELECT tablename FROM pg_tables WHERE schemaname='public'");console.log('📋 Tables:',r.map(t=>t.tablename).join(', '));for(const t of r){try{const c=await db.get(`SELECT COUNT(*) as n FROM ${t.tablename}`);console.log(`  ${t.tablename}: ${c?.n||0} rows`);}catch{}}}catch(e){console.log('Table check error:',e.message);}}
   console.log(`📦 Database: ${USE_PG?'PostgreSQL':'SQLite'}, URL: ${process.env.DATABASE_URL?.slice(0,30)}...`);
