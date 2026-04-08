@@ -129,10 +129,15 @@ function getConditions(forecast,date,tod){
   return c;
 }
 
+// Dedup concurrent Surfline fetches — if a fetch is already in-flight for a spot, reuse it
+const inFlightFetches=new Map();
 async function getForecast(spotId){
   const c=await db.get('SELECT data_json,fetched_at FROM forecast_cache WHERE spot_id=$1 ORDER BY fetched_at DESC LIMIT 1',[spotId]);
   if(c&&c.fetched_at>Math.floor(Date.now()/1000)-7200)return JSON.parse(c.data_json);
-  return await fetchSurflineData(spotId);
+  if(inFlightFetches.has(spotId))return inFlightFetches.get(spotId);
+  const p=fetchSurflineData(spotId).finally(()=>inFlightFetches.delete(spotId));
+  inFlightFetches.set(spotId,p);
+  return p;
 }
 
 function saveFile(base64,dir,ext){const fn=`${Date.now()}_${Math.random().toString(36).slice(2,8)}.${ext}`;fs.writeFileSync(path.join(__dirname,dir,fn),Buffer.from(base64,'base64'));return`/${dir}/${fn}`;}
@@ -342,7 +347,7 @@ app.get('/api/feed',requireAuth,async(req,res)=>{
     if(month){w.push(`substring(session_date,1,7)=$${n++}`);p.push(month);}
     if(swell_dir){w.push(`swells_json LIKE $${n++}`);p.push(`%"direction_compass":"${swell_dir}"%`);}
     const wc='WHERE '+w.join(' AND ');
-    const sessions=await db.query(`SELECT s.*,u.display_name,u.avatar_path,(SELECT COALESCE(SUM(barrels),0)FROM sessions WHERE pubkey=s.pubkey) as total_barrels FROM sessions s LEFT JOIN users u ON s.pubkey=u.pubkey ${wc} ORDER BY s.session_date DESC,s.created_at DESC LIMIT $${n++}`,[...p,+limit]);
+    const sessions=await db.query(`SELECT s.*,u.display_name,u.avatar_path,COALESCE(bst.tb,0) as total_barrels FROM sessions s LEFT JOIN users u ON s.pubkey=u.pubkey LEFT JOIN (SELECT pubkey,SUM(barrels) as tb FROM sessions GROUP BY pubkey) bst ON bst.pubkey=s.pubkey ${wc} ORDER BY s.session_date DESC,s.created_at DESC LIMIT $${n++}`,[...p,+limit]);
     if(sessions.length)result.push({spot:{id:spot.id,name:spot.name,location_text:spot.location_text,cover_image_url:spot.cover_image_url,member_count:spot.member_count},sessions:sessions.map(s=>absSession(s,req))});
   }
   res.json(result);
@@ -399,10 +404,18 @@ app.post('/api/auth/login',async(req,res)=>{
 app.get('/api/users',async(req,res)=>{
   const{spot_id:spotId,sort,crew_id}=req.query;
   let users;
-  if(spotId)users=await db.query('SELECT u.pubkey,u.display_name,u.avatar_path,sm.role,(SELECT COUNT(*)FROM sessions WHERE pubkey=u.pubkey AND spot_id=$1) as session_count,(SELECT COALESCE(SUM(barrels),0)FROM sessions WHERE pubkey=u.pubkey) as total_barrels FROM spot_members sm LEFT JOIN users u ON sm.pubkey=u.pubkey WHERE sm.spot_id=$1 ORDER BY session_count DESC',[spotId]);
-  else if(crew_id)users=await db.query('SELECT u.pubkey,u.display_name,u.avatar_path,sm.role,(SELECT COUNT(*)FROM sessions WHERE pubkey=u.pubkey) as session_count,(SELECT COALESCE(SUM(barrels),0)FROM sessions WHERE pubkey=u.pubkey) as total_barrels,(SELECT MAX(created_at)FROM sessions WHERE pubkey=u.pubkey) as last_active FROM spot_members sm LEFT JOIN users u ON sm.pubkey=u.pubkey WHERE sm.spot_id=$1 ORDER BY last_active DESC NULLS LAST',[crew_id]);
-  else if(sort==='recent')users=await db.query('SELECT u.pubkey,u.display_name,u.avatar_path,(SELECT COUNT(*)FROM sessions WHERE pubkey=u.pubkey) as session_count,(SELECT COALESCE(SUM(barrels),0)FROM sessions WHERE pubkey=u.pubkey) as total_barrels,(SELECT MAX(created_at)FROM sessions WHERE pubkey=u.pubkey) as last_active FROM users u WHERE (SELECT COUNT(*)FROM sessions WHERE pubkey=u.pubkey)>0 ORDER BY last_active DESC NULLS LAST');
-  else users=await db.query('SELECT u.pubkey,u.display_name,u.avatar_path,(SELECT COUNT(*)FROM sessions WHERE pubkey=u.pubkey) as session_count,(SELECT COALESCE(SUM(barrels),0)FROM sessions WHERE pubkey=u.pubkey) as total_barrels FROM users u ORDER BY session_count DESC');
+  // Use JOIN with pre-aggregated stats instead of correlated subqueries
+  const statsQ='(SELECT pubkey,COUNT(*) as session_count,COALESCE(SUM(barrels),0) as total_barrels,MAX(created_at) as last_active FROM sessions GROUP BY pubkey) st';
+  if(spotId){
+    const spotStatsQ='(SELECT pubkey,COUNT(*) as spot_sessions FROM sessions WHERE spot_id=$1 GROUP BY pubkey) ss';
+    users=await db.query(`SELECT u.pubkey,u.display_name,u.avatar_path,sm.role,COALESCE(ss.spot_sessions,0) as session_count,COALESCE(st.total_barrels,0) as total_barrels FROM spot_members sm LEFT JOIN users u ON sm.pubkey=u.pubkey LEFT JOIN ${statsQ} ON st.pubkey=u.pubkey LEFT JOIN ${spotStatsQ} ON ss.pubkey=u.pubkey ORDER BY session_count DESC`,[spotId]);
+  } else if(crew_id){
+    users=await db.query(`SELECT u.pubkey,u.display_name,u.avatar_path,sm.role,COALESCE(st.session_count,0) as session_count,COALESCE(st.total_barrels,0) as total_barrels,st.last_active FROM spot_members sm LEFT JOIN users u ON sm.pubkey=u.pubkey LEFT JOIN ${statsQ} ON st.pubkey=u.pubkey WHERE sm.spot_id=$1 ORDER BY st.last_active DESC NULLS LAST`,[crew_id]);
+  } else if(sort==='recent'){
+    users=await db.query(`SELECT u.pubkey,u.display_name,u.avatar_path,COALESCE(st.session_count,0) as session_count,COALESCE(st.total_barrels,0) as total_barrels,st.last_active FROM users u INNER JOIN ${statsQ} ON st.pubkey=u.pubkey ORDER BY st.last_active DESC NULLS LAST`);
+  } else {
+    users=await db.query(`SELECT u.pubkey,u.display_name,u.avatar_path,COALESCE(st.session_count,0) as session_count,COALESCE(st.total_barrels,0) as total_barrels FROM users u LEFT JOIN ${statsQ} ON st.pubkey=u.pubkey ORDER BY session_count DESC`);
+  }
   res.json(users.map(u=>absUser(u,req)));
 });
 app.get('/api/users/:pubkey',async(req,res)=>{const u=await db.get('SELECT*FROM users WHERE pubkey=$1',[req.params.pubkey]);if(!u)return res.status(404).json({error:'Not found'});const c=await db.get('SELECT COUNT(*) as c,COALESCE(SUM(barrels),0) as b FROM sessions WHERE pubkey=$1',[req.params.pubkey]);res.json(absUser({...u,session_count:c?.c||0,total_barrels:c?.b||0},req));});
@@ -455,7 +468,7 @@ app.get('/api/sessions',async(req,res)=>{
   if(month){w.push(`substring(session_date,1,7)=$${n++}`);p.push(month);}
   if(swell_dir){w.push(`swells_json LIKE $${n++}`);p.push(`%"direction_compass":"${swell_dir}"%`);}
   const wc=w.length?'WHERE '+w.join(' AND '):'';
-  const sessions=await db.query(`SELECT s.*,u.display_name,u.avatar_path,(SELECT COALESCE(SUM(barrels),0)FROM sessions WHERE pubkey=s.pubkey) as total_barrels FROM sessions s LEFT JOIN users u ON s.pubkey=u.pubkey ${wc} ORDER BY s.session_date DESC,s.created_at DESC LIMIT $${n++} OFFSET $${n++}`,[...p,+limit,+offset]);
+  const sessions=await db.query(`SELECT s.*,u.display_name,u.avatar_path,COALESCE(bst.tb,0) as total_barrels FROM sessions s LEFT JOIN users u ON s.pubkey=u.pubkey LEFT JOIN (SELECT pubkey,SUM(barrels) as tb FROM sessions GROUP BY pubkey) bst ON bst.pubkey=s.pubkey ${wc} ORDER BY s.session_date DESC,s.created_at DESC LIMIT $${n++} OFFSET $${n++}`,[...p,+limit,+offset]);
   const total=await db.get(`SELECT COUNT(*) as count FROM sessions s ${wc}`,p);
   res.json({sessions:sessions.map(s=>absSession(s,req)),total:total?.count||0});
 });
