@@ -46,6 +46,11 @@ function selectSpot(spot){
   }
   fetchConditions();
   updateSpotSwitcher();
+  // Reload the active view for the new spot
+  const activeView=$('.nav-btn.active')?.dataset?.view;
+  if(activeView==='analysis')loadAnalysis();
+  if(activeView==='history')loadFeed();
+  if(activeView==='surfers')loadSurfers();
 }
 
 async function loadMySpots(){
