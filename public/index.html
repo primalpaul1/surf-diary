@@ -378,12 +378,12 @@
     <!-- FEED -->
     <section id="view-history" class="view">
       <div class="card">
-        <div class="feed-header"><h2>Feed</h2><button id="browse-spots-btn" class="btn-outline btn-sm">Browse Crews</button></div>
-        <div class="feed-filters">
-          <select id="filter-direction"><option value="">All Directions</option><option value="N">N</option><option value="NNE">NNE</option><option value="NE">NE</option><option value="ENE">ENE</option><option value="E">E</option><option value="ESE">ESE</option><option value="SE">SE</option><option value="SSE">SSE</option><option value="S">S</option><option value="SSW">SSW</option><option value="SW">SW</option><option value="WSW">WSW</option><option value="W">W</option><option value="WNW">WNW</option><option value="NW">NW</option><option value="NNW">NNW</option></select>
-          <select id="filter-month"><option value="">All Months</option></select>
+        <div class="feed-header"><h2>My Crews</h2><button id="browse-spots-btn" class="btn-outline btn-sm">Browse Crews</button></div>
+        <div id="crew-list" class="crew-list"></div>
+        <div id="crew-feed" class="hidden">
+          <div class="feed-header"><button id="back-to-crews" class="btn-outline btn-sm">← Back</button><h2 id="crew-feed-title"></h2></div>
+          <div id="session-list" class="feed-list"></div>
         </div>
-        <div id="session-list" class="feed-list"></div>
       </div>
       <!-- Browse Spots Panel -->
       <div id="browse-spots-panel" class="card hidden">

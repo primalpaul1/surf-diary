@@ -605,25 +605,36 @@ $('#share-post-btn').addEventListener('click',async()=>{if(!currentUser?.secretK
 let spotFollowingSet=new Set();
 
 async function loadFeed(){
-  if(!currentUser){loadSessions();return;}
-  const dir=$('#filter-direction').value,mo=$('#filter-month').value,p=new URLSearchParams();
-  if(dir)p.set('swell_dir',dir);if(mo)p.set('month',mo);
+  if(!currentUser){$('#crew-list').innerHTML='<div class="empty-state"><p>Log in to see your crews.</p></div>';return;}
+  $('#crew-feed').classList.add('hidden');$('#crew-list').classList.remove('hidden');
   try{
-    const groups=await(await fetch(`${API_BASE}/api/feed?${p}`,{headers:{'X-Nostr-Pubkey':currentUser.pubkey}})).json();
-    const list=$('#session-list');
-    if(!groups.length){list.innerHTML='<div class="empty-state"><p>No reports yet.</p><p class="muted">Join a crew and log sessions to see reports here.</p></div>';return;}
-    list.innerHTML=groups.map(g=>{
-      const spotHeader=`<div class="feed-spot-header" onclick="switchToSpot('${g.spot.id}')">
-        ${g.spot.cover_image_url?`<img src="${g.spot.cover_image_url}" class="feed-spot-cover" alt="">`:`<div class="feed-spot-cover-placeholder">🌊</div>`}
-        <div><h3 class="feed-spot-name">${escapeHtml(g.spot.name)}</h3>${g.spot.location_text?`<span class="feed-spot-loc">${escapeHtml(g.spot.location_text)}</span>`:''}</div>
-        <span class="feed-spot-count">${g.spot.member_count} member${g.spot.member_count!==1?'s':''}</span>
-      </div>`;
-      const cards=g.sessions.map(s=>renderSessionCard(s)).join('');
-      return`<div class="feed-spot-group">${spotHeader}${cards}</div>`;
-    }).join('');
-    list.querySelectorAll('.feed-card').forEach(c=>c.addEventListener('click',()=>openSession(c.dataset.id)));
-  }catch{$('#session-list').innerHTML='<div class="empty-state">Error loading feed</div>';}
+    await loadMySpots();
+    const list=$('#crew-list');
+    if(!mySpots.length){list.innerHTML='<div class="empty-state"><p>No crews yet.</p><p class="muted">Browse and join a crew to get started.</p></div>';return;}
+    list.innerHTML=mySpots.map(s=>`<div class="crew-card" data-id="${s.id}">
+      ${s.cover_image_url?`<img src="${s.cover_image_url}" class="crew-card-cover" alt="">`:`<div class="crew-card-cover-placeholder">🌊</div>`}
+      <div class="crew-card-info"><h3>${escapeHtml(s.name)}</h3><span class="muted">${s.location_text||''}</span></div>
+      <span class="crew-card-count">${s.member_count||'?'} members</span>
+    </div>`).join('');
+    list.querySelectorAll('.crew-card').forEach(c=>c.addEventListener('click',()=>openCrewFeed(c.dataset.id)));
+  }catch{$('#crew-list').innerHTML='<div class="empty-state">Error loading crews</div>';}
 }
+
+async function openCrewFeed(spotId){
+  const spot=mySpots.find(s=>s.id===spotId);
+  if(!spot)return;
+  $('#crew-list').classList.add('hidden');$('#crew-feed').classList.remove('hidden');
+  $('#crew-feed-title').textContent=spot.name;
+  const list=$('#session-list');list.innerHTML='<div class="cond-loading">Loading...</div>';
+  try{
+    const groups=await(await fetch(`${API_BASE}/api/feed?limit=50`,{headers:{'X-Nostr-Pubkey':currentUser.pubkey}})).json();
+    const group=groups.find(g=>g.spot.id===spotId);
+    if(!group||!group.sessions.length){list.innerHTML='<div class="empty-state"><p>No sessions logged yet.</p></div>';return;}
+    list.innerHTML=group.sessions.map(s=>renderSessionCard(s)).join('');
+    list.querySelectorAll('.feed-card').forEach(c=>c.addEventListener('click',()=>openSession(c.dataset.id)));
+  }catch{list.innerHTML='<div class="empty-state">Error loading sessions</div>';}
+}
+$('#back-to-crews').addEventListener('click',()=>{$('#crew-feed').classList.add('hidden');$('#crew-list').classList.remove('hidden');});
 
 function renderSessionCard(s){
   const d=new Date(s.session_date+'T12:00:00'),tags=[];
@@ -694,15 +705,14 @@ window.toggleSpotFollow=async id=>{
 async function loadSessions(){
   const list=$('#session-list');
   if(!currentSpot){list.innerHTML='<div class="empty-state"><p>Select a spot first to see the feed.</p></div>';return;}
-  const dir=$('#filter-direction').value,mo=$('#filter-month').value,p=new URLSearchParams();
-  p.set('spot_id',currentSpot.id);if(currentUser)p.set('feed_for',currentUser.pubkey);if(dir)p.set('swell_dir',dir);if(mo)p.set('month',mo);
+  const p=new URLSearchParams();
+  p.set('spot_id',currentSpot.id);if(currentUser)p.set('feed_for',currentUser.pubkey);
   try{const{sessions}=await(await fetch(`${API_BASE}/api/sessions?${p}`)).json();
   if(!sessions.length){list.innerHTML='<div class="empty-state"><p>No sessions yet. Be the first to log one!</p></div>';return;}
   list.innerHTML=sessions.map(s=>renderSessionCard(s)).join('');
   list.querySelectorAll('.feed-card').forEach(c=>c.addEventListener('click',()=>openSession(c.dataset.id)));
   }catch{list.innerHTML='<div class="empty-state">Error</div>';}
 }
-$('#filter-direction').addEventListener('change',()=>{if(currentUser)loadFeed();else loadSessions();});$('#filter-month').addEventListener('change',()=>{if(currentUser)loadFeed();else loadSessions();});
 
 // ===== DETAIL =====
 async function openSession(id){try{const{session:s,comments}=await(await fetch(`${API_BASE}/api/sessions/${id}`)).json();const d=new Date(s.session_date+'T12:00:00');const ds=d.toLocaleDateString('en',{weekday:'long',year:'numeric',month:'long',day:'numeric'});const sw=JSON.parse(s.swells_json||'[]');const swH=sw.map((x,i)=>`<div class="detail-block"><h4>${i?'Secondary':'Primary'} Swell</h4><p>${x.height_ft}ft ${x.period_s}s ${x.direction_compass} ${x.direction_deg}° <small style="opacity:.5">(${x.impact}%)</small></p></div>`).join('');
@@ -857,7 +867,7 @@ window.joinPublicCrew=async id=>{
   if(!currentUser)return toast('Log in first','error');
   try{
     const res=await fetch(`${API_BASE}/api/spots/${id}/join`,{method:'POST',headers:{'X-Nostr-Pubkey':currentUser.pubkey}});
-    if(res.ok){toast('Joined!');await loadMySpots();const spot=await(await fetch(`${API_BASE}/api/spots/${id}`)).json();selectSpot(spot);}
+    if(res.ok){toast('Joined!');await loadMySpots();loadBrowseSpots();const spot=await(await fetch(`${API_BASE}/api/spots/${id}`)).json();selectSpot(spot);}
     else{const err=await res.json();toast(err.error||'Failed','error');}
   }catch{toast('Failed to join','error');}
 };
