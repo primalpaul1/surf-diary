@@ -9,7 +9,7 @@ if(!globalThis.crypto.getRandomValues)globalThis.crypto.getRandomValues=b=>{cons
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Rate limiting: 100 requests per minute per IP
+// Rate limiting: 500 requests per minute per IP
 const rateLimits=new Map();
 setInterval(()=>rateLimits.clear(),60000);
 app.use((req,res,next)=>{
@@ -17,8 +17,8 @@ app.use((req,res,next)=>{
     const ip=req.ip||req.connection.remoteAddress;
     const count=(rateLimits.get(ip)||0)+1;
     rateLimits.set(ip,count);
-    res.setHeader('X-RateLimit-Remaining',Math.max(0,100-count));
-    if(count>100){return res.status(429).json({error:'Too many requests. Try again in a minute.'});}
+    res.setHeader('X-RateLimit-Remaining',Math.max(0,500-count));
+    if(count>500){return res.status(429).json({error:'Too many requests. Try again in a minute.'});}
   }
   next();
 });
