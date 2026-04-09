@@ -218,6 +218,7 @@ async function nip46Sign(unsignedEvent){
   const n=currentUser?.nip46;
   if(!n?.localSecretKey||!n?.bunkerPubkey)throw new Error('No NIP-46 connection');
   const skb=hexToBytes(n.localSecretKey);
+  const localPubkey=getPublicKey(skb);
   const relay=await Relay.connect('wss://relay.primal.net');
   try{
     const rpcId=crypto.randomUUID();
@@ -228,7 +229,7 @@ async function nip46Sign(unsignedEvent){
     await relay.publish(rpcEvent);
     return new Promise((resolve,reject)=>{
       const timeout=setTimeout(()=>{relay.close();reject(new Error('Sign timeout'));},15000);
-      relay.subscribe([{kinds:[24133],'#p':[bytesToHex(getPublicKey(skb))],limit:0}],{
+      relay.subscribe([{kinds:[24133],'#p':[localPubkey],limit:0}],{
         onevent:ev=>{
           try{
             const dec=nip44Decrypt(ev.content,getConversationKey(skb,ev.pubkey));
@@ -238,7 +239,7 @@ async function nip46Sign(unsignedEvent){
         }
       });
     });
-  }catch(e){relay.close();throw e;}
+  }catch(e){try{relay.close();}catch{}throw e;}
 }
 
 // ===== PROFILE (kind 0) + FOLLOWS (kind 3) =====
@@ -418,9 +419,11 @@ async function completeLogin(pk){
   await fetch(API_BASE+'/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pubkey:pk,display_name:name,avatar_url:picture})});
   // Save NIP-46 connection data for remote signing
   const pending=JSON.parse(localStorage.getItem('nip46_pending')||'null');
-  const bunkerPk=nip46Data?._bunkerPubkey||pending?.bunkerPubkey||pk;
+  const connected=JSON.parse(localStorage.getItem('nip46_connected')||'null');
   const localSk=nip46Data?.secretKey||pending?.localSecretKey||null;
-  currentUser={pubkey:pk,display_name:name,avatar_path:picture,nip46:{localSecretKey:localSk,bunkerPubkey:bunkerPk}};
+  const bunkerPk=nip46Data?._bunkerPubkey||connected?.bunkerPubkey||null;
+  currentUser={pubkey:pk,display_name:name,avatar_path:picture};
+  if(localSk&&bunkerPk)currentUser.nip46={localSecretKey:localSk,bunkerPubkey:bunkerPk};
   localStorage.setItem('swellnotes_user',JSON.stringify(currentUser));
   // Reset mobile login UI
   $('#landing-primal-btn').disabled=false;$('#landing-primal-btn').style.opacity='';
@@ -432,7 +435,7 @@ async function completeLogin(pk){
   setTimeout(()=>{$('#login-modal').classList.add('hidden');toast(`Welcome, ${name}!`);},1000);
 }
 
-async function checkCallback(){const c=localStorage.getItem('nip46_connected');if(!c)return;try{const d=JSON.parse(c);if(Date.now()-d.timestamp>300000){localStorage.removeItem('nip46_connected');return;}localStorage.removeItem('nip46_connected');await completeLogin(d.bunkerPubkey);}catch{localStorage.removeItem('nip46_connected');}}
+async function checkCallback(){const c=localStorage.getItem('nip46_connected');if(!c)return;try{const d=JSON.parse(c);if(Date.now()-d.timestamp>300000){localStorage.removeItem('nip46_connected');return;}await completeLogin(d.bunkerPubkey);localStorage.removeItem('nip46_connected');}catch{localStorage.removeItem('nip46_connected');}}
 
 $('#login-modal .modal-backdrop').addEventListener('click',()=>$('#login-modal').classList.add('hidden'));
 $('#login-modal .modal-close').addEventListener('click',()=>$('#login-modal').classList.add('hidden'));
