@@ -453,7 +453,23 @@ $('#settings-avatar-file').addEventListener('change',async e=>{
 $('#settings-modal .modal-backdrop').addEventListener('click',()=>$('#settings-modal').classList.add('hidden'));
 $('#settings-modal .modal-close').addEventListener('click',()=>$('#settings-modal').classList.add('hidden'));
 
-$('#logout-btn').addEventListener('click',()=>{currentUser=null;currentSpot=null;mySpots=[];followingSet.clear();localStorage.removeItem('swellnotes_user');localStorage.removeItem('swellnotes_spot');updateAuthUI();location.reload();});
+$('#logout-btn').addEventListener('click',async()=>{
+  // Step 1: Show key and first warning
+  let keyDisplay='';
+  if(currentUser?.secretKey){
+    try{const nsec=nip19.nsecEncode(hexToBytes(currentUser.secretKey));keyDisplay=nsec;}
+    catch{keyDisplay=currentUser.secretKey;}
+  }
+  const msg=keyDisplay
+    ?`⚠️ Save your secret key before logging out!\n\nYour key:\n${keyDisplay}\n\nCopy it somewhere safe — you cannot recover your account without it.\n\nAre you sure you want to log out?`
+    :'⚠️ Are you sure you want to log out?';
+  if(!confirm(msg))return;
+  // Copy key to clipboard if available
+  if(keyDisplay)try{await navigator.clipboard?.writeText(keyDisplay);toast('Key copied to clipboard');}catch{}
+  // Step 2: Final confirmation
+  if(!confirm('Last chance — are you really sure? You will lose access to this account if you haven\'t saved your key.'))return;
+  currentUser=null;currentSpot=null;mySpots=[];followingSet.clear();localStorage.removeItem('swellnotes_user');localStorage.removeItem('swellnotes_spot');updateAuthUI();location.reload();
+});
 
 function updateAuthUI(){
   if(currentUser){
