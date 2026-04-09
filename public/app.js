@@ -1,5 +1,5 @@
 import{generateSecretKey,getPublicKey,nip19,finalizeEvent,Relay,getConversationKey,decrypt as nip44Decrypt,encrypt as nip44Encrypt,BunkerSigner,bytesToHex,hexToBytes,sha256}from'/nostr-bundle.js';
-let currentUser=null,currentSpot=null,mySpots=[],followingSet=new Set(),voiceBlob=null,voiceTranscript='',mediaRecorder=null,recordingChunks=[],recordingTimer=null,recordingSeconds=0,nip46Data=null,speechRecognition=null,videoFile=null,avatarFile=null,coverFile=null,pendingSpotData=null;
+let currentUser=null,currentSpot=null,mySpots=[],followingSet=new Set(),voiceBlob=null,voiceTranscript='',mediaRecorder=null,recordingChunks=[],recordingTimer=null,recordingSeconds=0,nip46Data=null,speechRecognition=null,videoFile=null,avatarFile=null,coverFile=null,pendingSpotData=null,isPro=false;
 const $=s=>document.querySelector(s),$$=s=>document.querySelectorAll(s);
 const BLOSSOM='https://blossom.primal.net';
 const RELAYS=['wss://relay.primal.net','wss://relay.damus.io','wss://nos.lol'];
@@ -882,6 +882,7 @@ sr.innerHTML=`<div class="search-summary"><div class="search-stat"><span class="
 async function loadAnalysis(){
   const el=$('#forecast-match');
   if(!currentSpot){el.innerHTML='<p class="empty-state">Select a crew to see forecast matches.</p>';return;}
+  if(!isPro){el.innerHTML='<div class="empty-state" style="text-align:center"><div style="font-size:1.5rem;margin-bottom:0.5rem">🔮</div><p><strong>Forecast Match</strong> is a Pro feature.</p><p class="muted">See how incoming swells compare to past sessions.</p><button class="btn-solid" style="margin-top:1rem" onclick="showProModal()">Upgrade to Pro</button></div>';return;}
   el.innerHTML='<div class="cond-loading">Matching forecast to past sessions...</div>';
   try{
     const slots=await(await fetch(`${API_BASE}/api/analysis/forecast-match?spot_id=${currentSpot.id}`)).json();
@@ -909,6 +910,58 @@ async function loadAnalysis(){
     }).join('');
   }catch(e){console.error(e);el.innerHTML='<p class="empty-state">Error loading forecast match.</p>';}
 }
+
+// ===== PRO SUBSCRIPTION =====
+async function checkProStatus(){
+  if(!currentUser)return;
+  // Check native StoreKit first (iOS)
+  if(IS_CAPACITOR&&window.Capacitor?.Plugins?.StoreKit){
+    try{const r=await window.Capacitor.Plugins.StoreKit.getStatus();isPro=r.isPro;
+      if(isPro)await fetch(API_BASE+'/api/pro/activate',{method:'POST',headers:{'X-Nostr-Pubkey':currentUser.pubkey}});
+    }catch{}
+  }
+  // Fall back to server
+  if(!isPro){try{const r=await(await fetch(API_BASE+'/api/pro/status',{headers:{'X-Nostr-Pubkey':currentUser.pubkey}})).json();isPro=r.isPro;}catch{}}
+  currentUser.is_pro=isPro?1:0;
+}
+
+function showProModal(){$('#pro-modal').classList.remove('hidden');}
+function requirePro(feature){if(isPro)return true;showProModal();return false;}
+
+$('#pro-modal .modal-backdrop').addEventListener('click',()=>$('#pro-modal').classList.add('hidden'));
+$('#pro-modal .modal-close').addEventListener('click',()=>$('#pro-modal').classList.add('hidden'));
+
+$('#pro-purchase-btn').addEventListener('click',async()=>{
+  if(IS_CAPACITOR&&window.Capacitor?.Plugins?.StoreKit){
+    try{
+      $('#pro-purchase-btn').disabled=true;$('#pro-purchase-btn').textContent='Processing...';
+      const r=await window.Capacitor.Plugins.StoreKit.purchase();
+      if(r.success){
+        await fetch(API_BASE+'/api/pro/activate',{method:'POST',headers:{'X-Nostr-Pubkey':currentUser.pubkey}});
+        isPro=true;currentUser.is_pro=1;localStorage.setItem('swellnotes_user',JSON.stringify(currentUser));
+        toast('Welcome to Pro!');$('#pro-modal').classList.add('hidden');
+      }else if(r.cancelled){toast('Purchase cancelled','error');}
+      else if(r.pending){toast('Purchase pending — check back soon');}
+    }catch(e){toast('Purchase failed: '+e.message,'error');}
+    finally{$('#pro-purchase-btn').disabled=false;$('#pro-purchase-btn').textContent='Upgrade — $2.99/mo';}
+  }else{
+    // Web: no IAP, show message
+    toast('In-app purchases are only available in the iOS app','error');
+  }
+});
+
+$('#pro-restore-btn').addEventListener('click',async()=>{
+  if(IS_CAPACITOR&&window.Capacitor?.Plugins?.StoreKit){
+    try{
+      const r=await window.Capacitor.Plugins.StoreKit.restorePurchases();
+      if(r.isPro){
+        await fetch(API_BASE+'/api/pro/activate',{method:'POST',headers:{'X-Nostr-Pubkey':currentUser.pubkey}});
+        isPro=true;currentUser.is_pro=1;localStorage.setItem('swellnotes_user',JSON.stringify(currentUser));
+        toast('Pro restored!');$('#pro-modal').classList.add('hidden');
+      }else{toast('No active subscription found','error');}
+    }catch(e){toast('Restore failed','error');}
+  }else{toast('Restore is only available in the iOS app','error');}
+});
 
 // ===== INVITE CLAIM (check URL) =====
 async function checkInviteURL(){
@@ -954,6 +1007,8 @@ $('#pipeline-spot-search')?.addEventListener('input',e=>{
       `).join('')||'<p class="muted" style="padding:1rem;text-align:center">No spots found</p>';
       $$('#pipeline-spot-results .spot-result').forEach(el=>el.addEventListener('click',()=>{
         if(!currentUser)return toast('Create an account first','error');
+        // Free users: 1 crew max. Check if they already admin one.
+        if(!isPro){const adminCrews=mySpots.filter(s=>s.role==='admin'||s.created_by===currentUser.pubkey);if(adminCrews.length>=1){showProModal();return;}}
         pendingSpotData={surfline_spot_id:el.dataset.surfline,name:el.dataset.name,location_text:el.dataset.loc,lat:parseFloat(el.dataset.lat),lng:parseFloat(el.dataset.lng)};
         $('#create-spot-name').textContent=`${el.dataset.name} · ${el.dataset.loc}`;
         $('#create-spot-modal').classList.remove('hidden');
@@ -1109,7 +1164,7 @@ $('#nav-add-crew')?.addEventListener('click',openNewCrewFlow);
 const saved=localStorage.getItem('swellnotes_user');if(saved){try{currentUser=JSON.parse(saved);}catch{localStorage.removeItem('swellnotes_user');}}
 const savedSpot=localStorage.getItem('swellnotes_spot');if(savedSpot){try{currentSpot=JSON.parse(savedSpot);selectSpot(currentSpot);}catch{localStorage.removeItem('swellnotes_spot');}}
 console.log('[Init] user:',currentUser?.display_name||'none','spot:',currentSpot?.name||'none');
-updateAuthUI();checkCallback();checkInviteURL();
+updateAuthUI();checkProStatus();checkCallback();checkInviteURL();
 if(currentSpot)fetchConditions();
 // Register service worker for PWA
 if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});

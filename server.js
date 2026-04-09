@@ -74,6 +74,7 @@ async function initDB(){
   for(const sql of tables){try{await db.exec(sql);console.log('✅',sql.slice(0,60));}catch(err){console.log('⚠️ Table:',err.message?.slice(0,100));}}
   // Migrations
   try{await db.exec('ALTER TABLE sessions ADD COLUMN barrels INTEGER DEFAULT 0');}catch{}
+  try{await db.exec('ALTER TABLE users ADD COLUMN is_pro INTEGER DEFAULT 0');}catch{}
   try{await db.exec('ALTER TABLE spots ADD COLUMN description TEXT');}catch{}
   try{await db.exec('ALTER TABLE spots ADD COLUMN region TEXT');}catch{}
   // Indexes for query performance
@@ -236,6 +237,9 @@ app.get('/api/spots/:id',async(req,res)=>{
 app.post('/api/spots',requireAuth,async(req,res)=>{
   const{surfline_spot_id,name,location_text,lat,lng,cover_image_url,is_private,description,region}=req.body;
   if(!surfline_spot_id||!name)return res.status(400).json({error:'Missing fields'});
+  // Free users limited to 1 crew (as admin)
+  const user=await db.get('SELECT is_pro FROM users WHERE pubkey=$1',[req.pubkey]);
+  if(!user?.is_pro){const crews=await db.get("SELECT COUNT(*) as c FROM spot_members WHERE pubkey=$1 AND role='admin'",[req.pubkey]);if(crews?.c>=1)return res.status(403).json({error:'pro_required',message:'Upgrade to Pro to create more crews'});}
   const id=genId();
   await db.run('INSERT INTO spots(id,surfline_spot_id,name,location_text,lat,lng,cover_image_url,is_private,description,region,created_by)VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)',
     [id,surfline_spot_id,name,location_text||null,lat||null,lng||null,cover_image_url||null,is_private===false?0:1,description||null,region||null,req.pubkey]);
@@ -391,6 +395,21 @@ app.get('/api/conditions',async(req,res)=>{
 app.get('/api/nip46/init',async(req,res)=>{try{const{generateSecretKey,getPublicKey}=await import('nostr-tools');const sk=generateSecretKey();const secretKey=Buffer.from(sk).toString('hex');const publicKey=getPublicKey(sk);const rh=crypto.randomBytes(16).toString('hex');const secret=`sec-${rh.slice(0,8)}-${rh.slice(8,12)}-${rh.slice(12,16)}-${rh.slice(16,20)}-${rh.slice(20,32)}`;const relay='wss://relay.primal.net';const p=new URLSearchParams();p.append('relay',relay);p.append('secret',secret);p.append('name','Swellnotes');p.append('url',req.query.origin||`http://localhost:${PORT}`);p.append('image','https://swellnotes.com/sn-logo.png');const qrURI=`nostrconnect://${publicKey}?${p.toString()}`;const cp=new URLSearchParams(p);const callbackBase=req.query.platform==='ios'?'swellnotes://login-callback':`${req.query.origin||`http://localhost:${PORT}`}/login-callback`;cp.append('callback',callbackBase);res.json({secretKey,publicKey,secret,relay,qrDataUrl:await QRCode.toDataURL(qrURI,{width:280,margin:2}),qrURI,mobileURI:`nostrconnect://${publicKey}?${cp.toString()}`});}catch(err){console.error('NIP-46 init error:',err);res.status(500).json({error:'NIP-46 init failed: '+(err.message||'unknown')});}});
 
 // ===== AUTH =====
+// Pro subscription
+app.get('/api/pro/status',requireAuth,async(req,res)=>{
+  const user=await db.get('SELECT is_pro FROM users WHERE pubkey=$1',[req.pubkey]);
+  res.json({isPro:!!(user?.is_pro)});
+});
+app.post('/api/pro/activate',requireAuth,async(req,res)=>{
+  // Called from client after StoreKit verifies the purchase
+  await db.run('UPDATE users SET is_pro=1 WHERE pubkey=$1',[req.pubkey]);
+  res.json({ok:true,isPro:true});
+});
+app.post('/api/pro/deactivate',requireAuth,async(req,res)=>{
+  await db.run('UPDATE users SET is_pro=0 WHERE pubkey=$1',[req.pubkey]);
+  res.json({ok:true,isPro:false});
+});
+
 app.post('/api/auth/login',async(req,res)=>{
   try{
     const{pubkey,display_name,avatar_base64,avatar_url}=req.body;

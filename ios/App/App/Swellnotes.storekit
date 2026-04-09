@@ -1,0 +1,44 @@
+{
+  "identifier" : "swellnotes-products",
+  "nonRenewingSubscriptions" : [],
+  "products" : [],
+  "settings" : {
+    "_applicationInternalID" : "swellnotes",
+    "_developerTeamID" : "FZ4774954N"
+  },
+  "subscriptionGroups" : [
+    {
+      "id" : "swellnotes_pro",
+      "localizations" : [],
+      "name" : "Swellnotes Pro",
+      "subscriptions" : [
+        {
+          "adHocOffers" : [],
+          "codeOffers" : [],
+          "displayPrice" : "2.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "com.swellnotes.pro.monthly",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "Unlimited crews, forecast match, video uploads, swell search",
+              "displayName" : "Swellnotes Pro",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "com.swellnotes.pro.monthly",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "Monthly Pro",
+          "subscriptionGroupID" : "swellnotes_pro",
+          "type" : "RecurringSubscription",
+          "winbackOffers" : []
+        }
+      ]
+    }
+  ],
+  "version" : {
+    "major" : 4,
+    "minor" : 0
+  }
+}
