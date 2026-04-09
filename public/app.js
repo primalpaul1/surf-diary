@@ -6,6 +6,12 @@ const BLOSSOM='https://blossom.primal.net';
 const RELAYS=['wss://relay.primal.net','wss://relay.damus.io','wss://nos.lol'];
 const IS_CAPACITOR=!!window.Capacitor;
 const API_BASE=IS_CAPACITOR?'https://swellnotes.com':'';
+const DEFAULT_COVERS=[
+  'https://images.unsplash.com/photo-1502680390548-bdbac40a5296?w=800&q=80',
+  'https://images.unsplash.com/photo-1455729552457-5c322b29ceac?w=800&q=80',
+  'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=800&q=80',
+];
+function defaultCover(id){return DEFAULT_COVERS[Math.abs([...((id||'')+'x')].reduce((h,c)=>((h<<5)-h)+c.charCodeAt(0),0))%DEFAULT_COVERS.length];}
 
 // Nav
 $$('.nav-btn[data-view]').forEach(b=>{b.addEventListener('click',()=>{$$('.nav-btn').forEach(x=>x.classList.remove('active'));b.classList.add('active');$$('.view').forEach(v=>v.classList.remove('active'));$(`#view-${b.dataset.view}`).classList.add('active');if(b.dataset.view==='history')loadFeed();if(b.dataset.view==='surfers')loadSurfers();if(b.dataset.view==='analysis')loadAnalysis();if(b.dataset.view==='pipeline')loadPipeline();});});
@@ -36,7 +42,7 @@ function selectSpot(spot){
   $('#hero-title').textContent=spot.name;
   $('#hero-sub').textContent=spot.location_text||'Track the swell. Rate your sessions.';
   if(spot.cover_image_url){$('#hero-img').src=spot.cover_image_url;$('#hero-img').style.display='';}
-  else{$('#hero-img').src='/dominical-hero.jpg';$('#hero-img').style.display='';}
+  else{$('#hero-img').src=defaultCover(spot.id);$('#hero-img').style.display='';}
   document.title=`${spot.name} · Swellnotes`;
   // Show spot settings if admin
   if(currentUser){
@@ -101,7 +107,7 @@ async function showMySpots(){
   $('#my-spots-section').classList.remove('hidden');
   $('#my-spots-list').innerHTML=mySpots.map(s=>`
     <div class="spot-result" onclick="joinExistingSpot('${s.id}')">
-      <div class="spot-result-icon">${s.cover_image_url?`<img src="${s.cover_image_url}" style="width:36px;height:36px;border-radius:8px;object-fit:cover">`:'🌊'}</div>
+      <div class="spot-result-icon">${`<img src="${s.cover_image_url||defaultCover(s.id)}" style="width:36px;height:36px;border-radius:8px;object-fit:cover">`}</div>
       <div><div class="spot-result-name">${escapeHtml(s.name)}</div><div class="spot-result-loc">${s.member_count||'?'} members</div></div>
     </div>
   `).join('');
@@ -461,7 +467,7 @@ $('#surfer-crew-select')?.addEventListener('input',e=>{
     results.innerHTML=spots.map(s=>{
       const name=s.is_member||!s.is_private?escapeHtml(s.name||s.region||'Unknown'):escapeHtml(s.region||'Unknown Region');
       return`<div class="spot-result" data-crew-id="${s.id}">
-        <div class="spot-result-icon">${s.cover_image_url?`<img src="${s.cover_image_url}" style="width:36px;height:36px;border-radius:8px;object-fit:cover">`:'🌊'}</div>
+        <div class="spot-result-icon">${`<img src="${s.cover_image_url||defaultCover(s.id)}" style="width:36px;height:36px;border-radius:8px;object-fit:cover">`}</div>
         <div><div class="spot-result-name">${name}</div><div class="spot-result-loc">${s.member_count} member${s.member_count!==1?'s':''}</div></div>
       </div>`;
     }).join('');
@@ -617,7 +623,7 @@ async function loadFeed(){
     const list=$('#crew-list');
     if(!mySpots.length){list.innerHTML='<div class="empty-state"><p>No crews yet.</p><p class="muted">Browse and join a crew to get started.</p></div>';return;}
     list.innerHTML=mySpots.map(s=>`<div class="crew-card" data-id="${s.id}">
-      ${s.cover_image_url?`<img src="${s.cover_image_url}" class="crew-card-cover" alt="">`:`<div class="crew-card-cover-placeholder">🌊</div>`}
+      ${s.cover_image_url?`<img src="${s.cover_image_url}" class="crew-card-cover" alt="">`:`<img src="${defaultCover(s.id)}" class="crew-card-cover" alt="">`}
       <div class="crew-card-info"><h3>${escapeHtml(s.name)}</h3><span class="muted">${s.location_text||''}</span></div>
       <span class="crew-card-count">${s.member_count||'?'} members</span>
     </div>`).join('');
@@ -689,7 +695,7 @@ async function loadBrowseSpots(q=''){
       else if(isFollowing)btn=`<button class="btn-follow following" onclick="toggleSpotFollow('${s.id}')">Following</button>`;
       else btn=`<button class="btn-follow" onclick="toggleSpotFollow('${s.id}')">Follow</button>`;
       return`<div class="browse-spot-card">
-        ${s.cover_image_url?`<img src="${s.cover_image_url}" class="browse-spot-img" alt="">`:`<div class="browse-spot-img-placeholder">🌊</div>`}
+        ${s.cover_image_url?`<img src="${s.cover_image_url}" class="browse-spot-img" alt="">`:`<img src="${defaultCover(s.id)}" class="browse-spot-img" alt="">`}
         <div class="browse-spot-info"><div class="browse-spot-name">${displayName}</div><div class="browse-spot-meta">${s.member_count} member${s.member_count!==1?'s':''}${s.is_private?' · Private':' · Public'}${s.recent_sessions>0?' · Active':''}</div></div>
         ${btn}
       </div>`;
@@ -861,7 +867,7 @@ function renderPipelineCard(s){
   else if(s.has_pending_request)actionBtn='<button class="btn-follow" disabled>Requested</button>';
   else if(currentUser)actionBtn=`<button class="btn-solid btn-sm" onclick="event.stopPropagation();openJoinRequest('${s.id}','${escapeHtml(s.region||'')}')">Request to Join</button>`;
   return`<div class="pipeline-card" onclick="${s.is_member?`joinExistingSpot('${s.id}')`:''}">
-    ${s.cover_image_url?`<img src="${s.cover_image_url}" class="pipeline-cover" alt="">`:`<div class="pipeline-cover-placeholder">🌊</div>`}
+    ${s.cover_image_url?`<img src="${s.cover_image_url}" class="pipeline-cover" alt="">`:`<img src="${defaultCover(s.id)}" class="pipeline-cover" alt="">`}
     <div class="pipeline-info">
       <div class="pipeline-name">${displayName} ${activity}</div>
       ${s.description?`<div class="pipeline-desc">${escapeHtml(s.description)}</div>`:''}
