@@ -48,6 +48,8 @@
 	<string>Swellnotes lets you capture photos for your profile and surf spots</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Swellnotes lets you attach videos and photos to your sessions</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>

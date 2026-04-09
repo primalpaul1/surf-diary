@@ -11,3 +11,6 @@ avatars/
 ios/App/App/public/
 ios/App/Pods/
 *.xcuserdatad
+error.log
+*.db-shm
+*.db-wal
