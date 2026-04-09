@@ -461,8 +461,14 @@ function updateAuthUI(){
     document.body.style.overflow='';
     $('#app-header').classList.remove('hidden');
     $('#auth-buttons').classList.add('hidden');$('#user-info').classList.remove('hidden');$('#spot-picker-auth')?.classList.add('hidden');$('#user-name').textContent=currentUser.display_name;const av=$('#user-avatar');if(currentUser.avatar_path){av.src=currentUser.avatar_path;av.style.display='';}else av.style.display='none';$('#submit-btn').disabled=false;$('#submit-btn').textContent='Log Session';$('#comment-form')?.classList.remove('hidden');
-    if(!currentSpot){$('#spot-picker')?.classList.remove('hidden');$('#main-content')?.classList.add('hidden');$('#hero').classList.add('hidden');$('#app-header').classList.add('hidden');document.body.style.overflow='hidden';}
-    else{$('#hero').classList.remove('hidden');$('#app-header').classList.remove('hidden');}
+    if(!currentSpot){
+      // No crew selected — show main app with Search tab active
+      $('#spot-picker')?.classList.add('hidden');$('#main-content')?.classList.remove('hidden');
+      $('#hero').classList.add('hidden');$('#app-header').classList.remove('hidden');
+      $$('.nav-btn').forEach(x=>x.classList.remove('active'));$$('.nav-btn[data-view="pipeline"]').forEach(x=>x.classList.add('active'));
+      $$('.view').forEach(v=>v.classList.remove('active'));$('#view-pipeline').classList.add('active');
+      loadPipeline();
+    } else{$('#hero').classList.remove('hidden');$('#app-header').classList.remove('hidden');}
     loadFollowing();loadMySpots().then(showMySpots);
   } else {
     $('#landing-page').classList.remove('hidden');
@@ -867,6 +873,31 @@ let pipelineTimeout;
 $('#pipeline-search')?.addEventListener('input',e=>{
   clearTimeout(pipelineTimeout);
   pipelineTimeout=setTimeout(()=>loadPipeline(e.target.value.trim()),300);
+});
+
+// Surfline spot search in pipeline view (for creating new crews)
+let pipelineSpotTimeout;
+$('#pipeline-spot-search')?.addEventListener('input',e=>{
+  clearTimeout(pipelineSpotTimeout);
+  const q=e.target.value.trim();
+  if(q.length<2){$('#pipeline-spot-results').innerHTML='';return;}
+  pipelineSpotTimeout=setTimeout(async()=>{
+    try{
+      const results=await(await fetch(`${API_BASE}/api/spots/search?q=${encodeURIComponent(q)}`)).json();
+      $('#pipeline-spot-results').innerHTML=results.map(r=>`
+        <div class="spot-result" data-surfline="${r.surfline_id}" data-name="${escapeHtml(r.name)}" data-loc="${escapeHtml(r.location)}" data-lat="${r.lat}" data-lng="${r.lng}">
+          <div class="spot-result-icon">🌊</div>
+          <div><div class="spot-result-name">${escapeHtml(r.name)}</div><div class="spot-result-loc">${escapeHtml(r.location)}</div></div>
+        </div>
+      `).join('')||'<p class="muted" style="padding:1rem;text-align:center">No spots found</p>';
+      $$('#pipeline-spot-results .spot-result').forEach(el=>el.addEventListener('click',()=>{
+        if(!currentUser)return toast('Create an account first','error');
+        pendingSpotData={surfline_spot_id:el.dataset.surfline,name:el.dataset.name,location_text:el.dataset.loc,lat:parseFloat(el.dataset.lat),lng:parseFloat(el.dataset.lng)};
+        $('#create-spot-name').textContent=`${el.dataset.name} · ${el.dataset.loc}`;
+        $('#create-spot-modal').classList.remove('hidden');
+      }));
+    }catch{}
+  },300);
 });
 
 async function loadPipeline(q=''){
