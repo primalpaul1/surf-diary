@@ -213,6 +213,34 @@ async function uploadToServer(file){
   }catch{return null;}
 }
 
+// ===== NIP-46 REMOTE SIGNING =====
+async function nip46Sign(unsignedEvent){
+  const n=currentUser?.nip46;
+  if(!n?.localSecretKey||!n?.bunkerPubkey)throw new Error('No NIP-46 connection');
+  const skb=hexToBytes(n.localSecretKey);
+  const relay=await Relay.connect('wss://relay.primal.net');
+  try{
+    const rpcId=crypto.randomUUID();
+    const payload=JSON.stringify({id:rpcId,method:'sign_event',params:[JSON.stringify(unsignedEvent)]});
+    const convKey=getConversationKey(skb,n.bunkerPubkey);
+    const enc=nip44Encrypt(payload,convKey);
+    const rpcEvent=finalizeEvent({kind:24133,created_at:Math.floor(Date.now()/1000),tags:[['p',n.bunkerPubkey]],content:enc},skb);
+    await relay.publish(rpcEvent);
+    return new Promise((resolve,reject)=>{
+      const timeout=setTimeout(()=>{relay.close();reject(new Error('Sign timeout'));},15000);
+      relay.subscribe([{kinds:[24133],'#p':[bytesToHex(getPublicKey(skb))],limit:0}],{
+        onevent:ev=>{
+          try{
+            const dec=nip44Decrypt(ev.content,getConversationKey(skb,ev.pubkey));
+            const r=JSON.parse(dec);
+            if(r.id===rpcId&&r.result){clearTimeout(timeout);relay.close();resolve(JSON.parse(r.result));}
+          }catch{}
+        }
+      });
+    });
+  }catch(e){relay.close();throw e;}
+}
+
 // ===== PROFILE (kind 0) + FOLLOWS (kind 3) =====
 async function fetchProfile(pk){
   // Try Primal's cache API first (fast, reliable)
@@ -388,7 +416,12 @@ document.addEventListener('visibilitychange',()=>{if(!document.hidden&&!currentU
 async function completeLogin(pk){
   const profile=await fetchProfile(pk);const name=profile?.name||profile?.display_name||pk.slice(0,8)+'...';const picture=profile?.picture||null;
   await fetch(API_BASE+'/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pubkey:pk,display_name:name,avatar_url:picture})});
-  currentUser={pubkey:pk,display_name:name,avatar_path:picture};localStorage.setItem('swellnotes_user',JSON.stringify(currentUser));
+  // Save NIP-46 connection data for remote signing
+  const pending=JSON.parse(localStorage.getItem('nip46_pending')||'null');
+  const bunkerPk=nip46Data?._bunkerPubkey||pending?.bunkerPubkey||pk;
+  const localSk=nip46Data?.secretKey||pending?.localSecretKey||null;
+  currentUser={pubkey:pk,display_name:name,avatar_path:picture,nip46:{localSecretKey:localSk,bunkerPubkey:bunkerPk}};
+  localStorage.setItem('swellnotes_user',JSON.stringify(currentUser));
   // Reset mobile login UI
   $('#landing-primal-btn').disabled=false;$('#landing-primal-btn').style.opacity='';
   const st=$('#landing-primal-status');if(st){st.classList.add('hidden');st.style.display='';}
@@ -663,7 +696,12 @@ $('#share-modal .modal-close').addEventListener('click',closeShareAndGoToFeed);
 $('#share-whatsapp-btn').addEventListener('click',()=>{const t=getShareText()+'\n'+getShareUrl();window.open('https://wa.me/?text='+encodeURIComponent(t),'_blank');closeShareAndGoToFeed();});
 $('#share-messages-btn').addEventListener('click',()=>{const t=getShareText()+'\n'+getShareUrl();window.open('sms:&body='+encodeURIComponent(t));closeShareAndGoToFeed();});
 $('#share-native-btn').addEventListener('click',async()=>{const t=getShareText();try{await navigator.share({title:pendingShareData?.spot_name+' session',text:t,url:getShareUrl()});}catch{}closeShareAndGoToFeed();});
-$('#share-post-btn').addEventListener('click',async()=>{if(!currentUser?.secretKey){toast('Posting to Primal requires a local account (not remote login)','error');return;}if(!pendingShareData)return;try{$('#share-post-btn').disabled=true;$('#share-post-btn').textContent='Posting...';const sd=pendingShareData;const c=sd.conditions;const sw=(c.swells||[]).map(s=>`${s.height_ft}ft ${s.period_s}s ${s.direction_compass} ${s.direction_deg}°`).join(', ');const sh=c.surf_height_min_ft&&c.surf_height_max_ft?`${c.surf_height_min_ft}-${c.surf_height_max_ft}ft`:'';let content=$('#share-text').value.trim();if(!content.includes(sd.spot_name))content=`🌊 ${sd.spot_name} · ${sh} · ${sd.rating}/10\n\n${content}`;if(sw&&!content.includes(sw))content+=`\n\nSwell: ${sw}`;if(c.wind_type)content+=`\nWind: ${c.wind_speed_mph}mph ${c.wind_type}`;if(sd.video_url)content+=`\n\n${sd.video_url}`;const tags=[['t','surf'],['t',sd.spot_name.toLowerCase().replace(/\s+/g,'')],['t','surfing']];if(sd.video_url)tags.push(['imeta',`url ${sd.video_url}`,`m video/mp4`]);const ev=finalizeEvent({kind:1,created_at:Math.floor(Date.now()/1000),tags,content},hexToBytes(currentUser.secretKey));for(const u of RELAYS){try{const r=await Relay.connect(u);await r.publish(ev);r.close();}catch{}}toast('Shared!');closeShareAndGoToFeed();}catch{toast('Share failed','error');}finally{$('#share-post-btn').disabled=false;$('#share-post-btn').textContent='Share';}});
+$('#share-post-btn').addEventListener('click',async()=>{if(!pendingShareData)return;try{$('#share-post-btn').disabled=true;$('#share-post-btn').textContent='Posting...';const sd=pendingShareData;const c=sd.conditions;const sw=(c.swells||[]).map(s=>`${s.height_ft}ft ${s.period_s}s ${s.direction_compass} ${s.direction_deg}°`).join(', ');const sh=c.surf_height_min_ft&&c.surf_height_max_ft?`${c.surf_height_min_ft}-${c.surf_height_max_ft}ft`:'';let content=$('#share-text').value.trim();if(!content.includes(sd.spot_name))content=`🌊 ${sd.spot_name} · ${sh} · ${sd.rating}/10\n\n${content}`;if(sw&&!content.includes(sw))content+=`\n\nSwell: ${sw}`;if(c.wind_type)content+=`\nWind: ${c.wind_speed_mph}mph ${c.wind_type}`;if(sd.video_url)content+=`\n\n${sd.video_url}`;const tags=[['t','surf'],['t',sd.spot_name.toLowerCase().replace(/\s+/g,'')],['t','surfing']];if(sd.video_url)tags.push(['imeta',`url ${sd.video_url}`,`m video/mp4`]);
+  let ev;
+  if(currentUser?.secretKey){ev=finalizeEvent({kind:1,created_at:Math.floor(Date.now()/1000),tags,content},hexToBytes(currentUser.secretKey));}
+  else if(currentUser?.nip46){ev=await nip46Sign({kind:1,created_at:Math.floor(Date.now()/1000),tags,content,pubkey:currentUser.pubkey});}
+  else{toast('Cannot sign — log in first','error');return;}
+  for(const u of RELAYS){try{const r=await Relay.connect(u);await r.publish(ev);r.close();}catch{}}toast('Shared!');closeShareAndGoToFeed();}catch(err){console.error('Share error:',err);toast('Share failed','error');}finally{$('#share-post-btn').disabled=false;$('#share-post-btn').textContent='Share';}});
 
 // ===== MULTI-SPOT FEED =====
 let spotFollowingSet=new Set();
