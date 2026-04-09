@@ -532,7 +532,9 @@ async function loadSurfers(){
     if(!$('#surfer-crew-select').dataset.crewId){$('#surfers-list').innerHTML='<div class="empty-state"><p>Search for a crew above to see its members.</p></div>';return;}
     params=`?crew_id=${$('#surfer-crew-select').dataset.crewId}`;
   }else{
-    params=currentSpot?`?spot_id=${currentSpot.id}`:'';crewSearch.classList.add('hidden');
+    crewSearch.classList.add('hidden');
+    if(!currentSpot){$('#surfers-list').innerHTML='<div class="empty-state"><p>Join a crew to see its members.</p></div>';desc.textContent='';return;}
+    params=`?spot_id=${currentSpot.id}`;
     desc.textContent='Members of this crew. Follow to see their reports & analysis.';
   }
   try{const users=await(await fetch(API_BASE+'/api/users'+params)).json();const list=$('#surfers-list');if(!users.length){list.innerHTML='<div class="empty-state"><p>No surfers found.</p></div>';return;}
@@ -543,7 +545,9 @@ async function loadSurfers(){
 
 // ===== CONDITIONS =====
 $('#session_date').value=new Date().toISOString().split('T')[0];
-async function fetchConditions(){const d=$('#session_date').value,t=$('#time_of_day').value,p=$('#conditions-preview');p.innerHTML='<div class="cond-loading">Fetching conditions...</div>';
+async function fetchConditions(){const d=$('#session_date').value,t=$('#time_of_day').value,p=$('#conditions-preview');
+  if(!currentSpot){p.innerHTML='<div class="empty-state"><p>Join or create a crew first to log sessions.</p><p class="muted">Go to the Search tab to find a crew.</p></div>';$('#submit-btn').disabled=true;$('#submit-btn').textContent='Join a Crew First';return;}
+  p.innerHTML='<div class="cond-loading">Fetching conditions...</div>';
   const spotParam=currentSpot?`&spot_id=${currentSpot.id}`:'';
   const condHeaders=currentUser?{'X-Nostr-Pubkey':currentUser.pubkey}:{};
   try{const c=await(await fetch(`${API_BASE}/api/conditions?date=${d}&time_of_day=${t}${spotParam}`,{headers:condHeaders})).json();if(!c.surf_height_min_ft&&!c.swells?.length){p.innerHTML='<div class="cond-loading">No forecast data.</div>';return;}
@@ -1048,7 +1052,7 @@ const saved=localStorage.getItem('swellnotes_user');if(saved){try{currentUser=JS
 const savedSpot=localStorage.getItem('swellnotes_spot');if(savedSpot){try{currentSpot=JSON.parse(savedSpot);selectSpot(currentSpot);}catch{localStorage.removeItem('swellnotes_spot');}}
 console.log('[Init] user:',currentUser?.display_name||'none','spot:',currentSpot?.name||'none');
 updateAuthUI();checkCallback();checkInviteURL();
-if(!currentSpot)fetchConditions();
+if(currentSpot)fetchConditions();
 // Register service worker for PWA
 if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
 // Capacitor: listen for deep link returns (NIP-46 callback)
