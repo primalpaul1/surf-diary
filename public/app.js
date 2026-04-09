@@ -42,6 +42,7 @@ function selectSpot(spot){
   // Show spot settings + cover edit if admin
   if(currentUser){
     const mem=spot.members?.find(m=>m.pubkey===currentUser.pubkey);
+    $('#log-members-btn').classList.remove('hidden');
     if(mem?.role==='admin'){$('#spot-settings-btn').classList.remove('hidden');$('#invite-btn').classList.remove('hidden');$('#hero-cover-btn').classList.remove('hidden');}
     else{$('#spot-settings-btn').classList.add('hidden');$('#invite-btn').classList.add('hidden');$('#hero-cover-btn').classList.add('hidden');}
   }
@@ -145,7 +146,8 @@ $('#create-spot-form').addEventListener('submit',async e=>{
 $('#create-spot-modal .modal-backdrop').addEventListener('click',()=>$('#create-spot-modal').classList.add('hidden'));
 $('#create-spot-modal .modal-close').addEventListener('click',()=>$('#create-spot-modal').classList.add('hidden'));
 
-// ===== INVITES =====
+// ===== LOG MEMBERS + INVITES =====
+$('#log-members-btn').addEventListener('click',()=>{if(currentSpot)showMembers(currentSpot.id,currentSpot.name);});
 $('#invite-btn').addEventListener('click',async()=>{
   if(!currentSpot||!currentUser)return;
   try{
@@ -569,7 +571,7 @@ $('#surfer-crew-select')?.addEventListener('input',e=>{
   },300);
 });
 
-let currentSurferTab='active';
+let currentSurferTab='spot';
 // Surfer sub-tabs
 $$('.sub-tab[data-surfer-tab]').forEach(btn=>{btn.addEventListener('click',()=>{
   $$('.sub-tab[data-surfer-tab]').forEach(b=>b.classList.remove('active'));btn.classList.add('active');

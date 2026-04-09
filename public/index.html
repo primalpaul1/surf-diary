@@ -345,7 +345,11 @@
         <div class="card-header">
           <h2>Log a Session</h2>
           <p class="muted">Conditions auto-fill from Surfline.</p>
-          <button id="spot-settings-btn" class="btn-outline btn-xs hidden" style="margin-top:0.5rem">Crew Settings</button>
+          <div class="log-crew-actions">
+            <button id="spot-settings-btn" class="btn-outline btn-xs hidden">Crew Settings</button>
+            <button id="invite-btn" class="btn-outline btn-xs hidden">Invite Friends</button>
+            <button id="log-members-btn" class="btn-outline btn-xs hidden">Members</button>
+          </div>
         </div>
         <form id="session-form">
           <div class="row-2">
@@ -431,9 +435,9 @@
           <div id="join-requests-list"></div>
         </div>
         <div class="sub-tabs" style="margin-bottom:1rem">
-          <button class="sub-tab active" data-surfer-tab="active">Active</button>
+          <button class="sub-tab" data-surfer-tab="active">Active</button>
           <button class="sub-tab" data-surfer-tab="crew">By Crew</button>
-          <button class="sub-tab" data-surfer-tab="spot">This Crew</button>
+          <button class="sub-tab active" data-surfer-tab="spot">This Crew</button>
         </div>
         <p class="muted" id="surfers-desc" style="margin-bottom:1rem">Latest active surfers. Follow to see their reports & analysis.</p>
         <div id="surfer-crew-search" class="hidden" style="margin-bottom:1rem">

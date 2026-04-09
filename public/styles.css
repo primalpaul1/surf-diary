@@ -609,6 +609,7 @@ textarea { resize: vertical; }
 .btn-whatsapp { background: #25D366; }
 .btn-messages { background: #34C759; }
 .btn-native { background: var(--ocean-mid); }
+.log-crew-actions { display: flex; gap: 0.4rem; margin-top: 0.5rem; flex-wrap: wrap; }
 .barrel-input-row {
   display: flex; align-items: center; justify-content: center; gap: 1rem; margin-bottom: 1rem;
 }
