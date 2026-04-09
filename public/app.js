@@ -561,21 +561,15 @@ document.querySelector('.shape-tab[data-val="surfed"]')?.classList.add('active')
 
 // ===== RATING =====
 const rs=$('#rating'),rd=$('#rating-display');
-// Audio tick for rating
-let audioCtx=null;
-function playTick(rating){
+
+function hapticTick(style){
   try{
-    if(!audioCtx)audioCtx=new(window.AudioContext||window.webkitAudioContext)();
-    const osc=audioCtx.createOscillator();const gain=audioCtx.createGain();
-    osc.connect(gain);gain.connect(audioCtx.destination);
-    // Higher pitch + longer for higher ratings
-    osc.frequency.value=200+rating*80;
-    osc.type=rating>=8?'sine':'triangle';
-    gain.gain.setValueAtTime(0.08+rating*0.02,audioCtx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001,audioCtx.currentTime+(rating>=8?0.15:0.06));
-    osc.start();osc.stop(audioCtx.currentTime+(rating>=8?0.15:0.06));
-    // Extra sparkle for 8+
-    if(rating>=8){const o2=audioCtx.createOscillator();const g2=audioCtx.createGain();o2.connect(g2);g2.connect(audioCtx.destination);o2.frequency.value=600+rating*60;o2.type='sine';g2.gain.setValueAtTime(0.05,audioCtx.currentTime+0.03);g2.gain.exponentialRampToValueAtTime(0.001,audioCtx.currentTime+0.2);o2.start(audioCtx.currentTime+0.03);o2.stop(audioCtx.currentTime+0.2);}
+    // iOS Capacitor: use native haptics via the bridge
+    if(IS_CAPACITOR&&window.Capacitor?.Plugins?.Haptics){
+      window.Capacitor.Plugins.Haptics.impact({style:style||'LIGHT'});return;
+    }
+    // Android/web fallback
+    if(navigator.vibrate)navigator.vibrate(style==='HEAVY'?[30,20,30]:style==='MEDIUM'?[15]:[8]);
   }catch{}
 }
 
@@ -584,15 +578,13 @@ function updateRating(){
   const v=+rs.value;
   const bc=v<=3?'#f87171':v<=5?'#facc15':v<=7?'#22d3ee':'#818cf8';
   rd.style.background='#fff';rd.style.color='#000';rd.style.borderColor=bc;
-  // Scale badge size based on rating
   const scale=0.9+v*0.04;rd.style.transform=`scale(${scale})`;
   if(v>=8)rd.style.boxShadow='0 0 20px rgba(129,140,248,0.4)';
   else if(v>=6)rd.style.boxShadow='0 0 12px rgba(56,189,248,0.25)';
   else rd.style.boxShadow='none';
-  // Pulse + haptic on change
   if(v!==lastRatingVal){
     rd.classList.remove('pulse');void rd.offsetWidth;rd.classList.add('pulse');
-    if(v>lastRatingVal){if(navigator.vibrate)navigator.vibrate(v>=8?[30,20,30]:v>=5?[15]:[8]);playTick(v);}
+    hapticTick(v>=8?'HEAVY':v>=5?'MEDIUM':'LIGHT');
     lastRatingVal=v;
   }
   rd.textContent=v;
