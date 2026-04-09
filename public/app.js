@@ -882,7 +882,6 @@ sr.innerHTML=`<div class="search-summary"><div class="search-stat"><span class="
 async function loadAnalysis(){
   const el=$('#forecast-match');
   if(!currentSpot){el.innerHTML='<p class="empty-state">Select a crew to see forecast matches.</p>';return;}
-  if(!isPro){el.innerHTML='<div class="empty-state" style="text-align:center"><div style="font-size:1.5rem;margin-bottom:0.5rem">🔮</div><p><strong>Forecast Match</strong> is a Pro feature.</p><p class="muted">See how incoming swells compare to past sessions.</p><button class="btn-solid" style="margin-top:1rem" onclick="showProModal()">Upgrade to Pro</button></div>';return;}
   el.innerHTML='<div class="cond-loading">Matching forecast to past sessions...</div>';
   try{
     const slots=await(await fetch(`${API_BASE}/api/analysis/forecast-match?spot_id=${currentSpot.id}`)).json();
