@@ -6,11 +6,7 @@ const BLOSSOM='https://blossom.primal.net';
 const RELAYS=['wss://relay.primal.net','wss://relay.damus.io','wss://nos.lol'];
 const IS_CAPACITOR=!!window.Capacitor;
 const API_BASE=IS_CAPACITOR?'https://swellnotes.com':'';
-const DEFAULT_COVERS=[
-  'https://images.unsplash.com/photo-1530870110042-98b2cb110834?w=800&q=80',
-  'https://images.unsplash.com/photo-1488116593952-937c38246bbe?w=800&q=80',
-  'https://images.unsplash.com/photo-1505459668311-8dfac7952bf0?w=800&q=80',
-];
+const DEFAULT_COVERS=['/covers/cover1.jpg','/covers/cover2.jpg','/covers/cover3.jpg','/covers/cover4.jpg'];
 function defaultCover(id){return DEFAULT_COVERS[Math.abs([...((id||'')+'x')].reduce((h,c)=>((h<<5)-h)+c.charCodeAt(0),0))%DEFAULT_COVERS.length];}
 
 // Nav
