@@ -565,6 +565,32 @@ app.get('/api/blocks',requireAuth,async(req,res)=>{
   res.json(blocks.map(b=>b.blocked_pubkey));
 });
 
+// Temporary: randomize swell data for testing analysis
+app.post('/api/admin/randomize-swells',async(req,res)=>{
+  const{spot_id,secret}=req.body;
+  if(secret!=='swellnotes-seed-2026')return res.status(403).json({error:'nope'});
+  const sessions=await db.query('SELECT id FROM sessions WHERE spot_id=$1',[spot_id]);
+  const dirs=['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
+  const winds=['Offshore','Onshore','Cross-shore'];
+  let updated=0;
+  for(const s of sessions){
+    const dir=Math.floor(Math.random()*360);
+    const compass=dirs[Math.round(dir/22.5)%16];
+    const h=Math.round((2+Math.random()*10)*10)/10;
+    const p=Math.floor(8+Math.random()*12);
+    const swells=JSON.stringify([{height_ft:h,period_s:p,direction_deg:dir,direction_compass:compass,impact:Math.floor(50+Math.random()*45)}]);
+    const surfMin=Math.round((1+Math.random()*h)*10)/10;
+    const surfMax=Math.round((surfMin+1+Math.random()*3)*10)/10;
+    const ws=Math.round((2+Math.random()*20)*10)/10;
+    const wd=Math.floor(Math.random()*360);
+    const wt=winds[Math.floor(Math.random()*3)];
+    const tide=Math.round((1+Math.random()*7)*10)/10;
+    await db.run('UPDATE sessions SET swells_json=$1,surf_height_min_ft=$2,surf_height_max_ft=$3,wind_speed_mph=$4,wind_direction_deg=$5,wind_type=$6,tide_height_ft=$7 WHERE id=$8',
+      [swells,surfMin,surfMax,ws,wd,wt,tide,s.id]);
+    updated++;
+  }
+  res.json({ok:true,updated});
+});
 app.get('/api/debug',async(req,res)=>{try{if(USE_PG){const tables=await db.query("SELECT tablename FROM pg_tables WHERE schemaname='public'");const counts={};for(const t of tables){try{const c=await db.get(`SELECT COUNT(*) as n FROM ${t.tablename}`);counts[t.tablename]=+(c?.n||0);}catch{counts[t.tablename]='error';}}res.json({use_pg:true,db_url:process.env.DATABASE_URL?.slice(0,40)+'...',tables:counts});}else{res.json({use_pg:false});}}catch(err){res.json({error:err.message});}});
 app.get('/login-callback',(req,res)=>res.sendFile(path.join(__dirname,'public','login-callback.html')));
 app.get('/join/:code',(req,res)=>res.sendFile(path.join(__dirname,'public','index.html')));
