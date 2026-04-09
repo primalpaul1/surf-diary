@@ -205,6 +205,13 @@ nav { display: flex; gap: 2px; flex: 1; }
 .hero-content { position: absolute; bottom: 2.5rem; left: 0; right: 0; text-align: center; }
 .hero-title { font: 3rem var(--font-display); color: var(--ocean-deep); letter-spacing: -0.02em; line-height: 1; }
 .hero-sub { font: 400 1rem var(--font-body); color: var(--text-soft); margin-top: 0.4rem; }
+.hero-cover-btn {
+  position: absolute; top: 0.75rem; right: 0.75rem;
+  background: rgba(0,0,0,0.55); color: white; border: none; border-radius: 8px;
+  padding: 0.4rem 0.7rem; font: 600 0.8rem var(--font-body); cursor: pointer;
+  backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+}
+.hero-cover-btn:active { background: rgba(0,0,0,0.75); }
 
 /* ---- MAIN ---- */
 main { max-width: 1200px; margin: 0 auto; padding: 1.5rem; }

@@ -44,11 +44,11 @@ function selectSpot(spot){
   if(spot.cover_image_url){$('#hero-img').src=spot.cover_image_url;$('#hero-img').style.display='';}
   else{$('#hero-img').src=defaultCover(spot.id);$('#hero-img').style.display='';}
   document.title=`${spot.name} · Swellnotes`;
-  // Show spot settings if admin
+  // Show spot settings + cover edit if admin
   if(currentUser){
     const mem=spot.members?.find(m=>m.pubkey===currentUser.pubkey);
-    if(mem?.role==='admin'){$('#spot-settings-btn').classList.remove('hidden');$('#invite-btn').classList.remove('hidden');}
-    else{$('#spot-settings-btn').classList.add('hidden');$('#invite-btn').classList.add('hidden');}
+    if(mem?.role==='admin'){$('#spot-settings-btn').classList.remove('hidden');$('#invite-btn').classList.remove('hidden');$('#hero-cover-btn').classList.remove('hidden');}
+    else{$('#spot-settings-btn').classList.add('hidden');$('#invite-btn').classList.add('hidden');$('#hero-cover-btn').classList.add('hidden');}
   }
   fetchConditions();
   updateSpotSwitcher();
@@ -115,15 +115,28 @@ async function showMySpots(){
 window.joinExistingSpot=async id=>{const spot=await(await fetch(`${API_BASE}/api/spots/${id}`,{headers:currentUser?{'X-Nostr-Pubkey':currentUser.pubkey}:{}})).json();selectSpot(spot);};
 
 // ===== CREATE SPOT =====
-$('#cover-upload').addEventListener('click',()=>$('#cover-file').click());
-$('#cover-file').addEventListener('change',e=>{coverFile=e.target.files[0];if(!coverFile)return;const r=new FileReader();r.onload=ev=>{$('#cover-preview').innerHTML=`<img src="${ev.target.result}">`};r.readAsDataURL(coverFile);});
+// Hero cover photo (admin only)
+$('#hero-cover-btn').addEventListener('click',()=>$('#hero-cover-file').click());
+$('#hero-cover-file').addEventListener('change',async e=>{
+  const file=e.target.files[0];if(!file||!currentUser||!currentSpot)return;
+  try{
+    $('#hero-cover-btn').textContent='Uploading...';$('#hero-cover-btn').disabled=true;
+    let url=await uploadToBlossom(file);
+    if(!url){const r=new FileReader();const b64=await new Promise(res=>{r.onloadend=()=>res(r.result.split(',')[1]);r.readAsDataURL(file);});
+      // No blossom fallback — just skip for now
+      toast('Upload failed','error');return;
+    }
+    await fetch(`${API_BASE}/api/spots/${currentSpot.id}`,{method:'PUT',headers:{'Content-Type':'application/json','X-Nostr-Pubkey':currentUser.pubkey},body:JSON.stringify({cover_image_url:url})});
+    $('#hero-img').src=url;currentSpot.cover_image_url=url;
+    toast('Cover updated!');
+  }catch{toast('Failed','error');}
+  finally{$('#hero-cover-btn').textContent='📷 Change Cover';$('#hero-cover-btn').disabled=false;}
+});
 
 $('#create-spot-form').addEventListener('submit',async e=>{
   e.preventDefault();if(!currentUser||!pendingSpotData)return;
   try{
-    let coverUrl=null;
-    if(coverFile)coverUrl=await uploadToBlossom(coverFile);
-    const body={...pendingSpotData,cover_image_url:coverUrl,is_private:$('#spot-private').checked,region:$('#spot-region')?.value.trim()||null,description:$('#spot-description')?.value.trim()||null};
+    const body={...pendingSpotData,is_private:$('#spot-private').checked,region:$('#spot-region')?.value.trim()||null,description:$('#spot-description')?.value.trim()||null};
     const res=await fetch(API_BASE+'/api/spots',{method:'POST',headers:{'Content-Type':'application/json','X-Nostr-Pubkey':currentUser.pubkey},body:JSON.stringify(body)});
     const data=await res.json();
     if(data.ok){
