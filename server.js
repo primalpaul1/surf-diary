@@ -531,16 +531,56 @@ async function getAnalysisSessions(pk,spotId){
   return await db.query(`SELECT*FROM sessions WHERE pubkey IN(${ph})AND swells_json IS NOT NULL AND rating IS NOT NULL${extra}`,pks);
 }
 
-app.get('/api/analysis/by-direction',async(req,res)=>{const ss=await getAnalysisSessions(req.query.pubkey,req.query.spot_id);const m={};for(const s of ss){const sw=JSON.parse(s.swells_json||'[]');if(!sw.length)continue;const d=sw[0].direction_compass;if(!m[d])m[d]={r:[],sh:[],sp:[]};m[d].r.push(s.rating);m[d].sh.push(sw[0].height_ft);m[d].sp.push(sw[0].period_s);}res.json(Object.entries(m).map(([d,v])=>({direction:d,session_count:v.r.length,avg_rating:Math.round(v.r.reduce((a,b)=>a+b,0)/v.r.length*10)/10,avg_swell_height:Math.round(v.sh.reduce((a,b)=>a+b,0)/v.sh.length*10)/10,avg_swell_period:Math.round(v.sp.reduce((a,b)=>a+b,0)/v.sp.length*10)/10})).sort((a,b)=>b.avg_rating-a.avg_rating));});
-
-app.get('/api/analysis/best-conditions',async(req,res)=>{const ss=await getAnalysisSessions(req.query.pubkey,req.query.spot_id);const c={};for(const s of ss){const sw=JSON.parse(s.swells_json||'[]');if(!sw.length)continue;const w=sw[0];const k=`${w.direction_compass}|${Math.round(w.height_ft)}|${w.period_s<10?'s':w.period_s<15?'m':'l'}|${s.wind_type||'-'}`;if(!c[k])c[k]={r:[],dir:w.direction_compass,swell:Math.round(w.height_ft)+'ft',period:w.period_s<10?'short (<10s)':w.period_s<15?'medium (10-15s)':'long (15s+)',wind:s.wind_type||'-'};c[k].r.push(s.rating);}res.json(Object.values(c).filter(x=>x.r.length>=2).map(x=>({direction:x.dir,swell_bucket:x.swell,period_bucket:x.period,wind_type:x.wind,count:x.r.length,avg_rating:Math.round(x.r.reduce((a,b)=>a+b,0)/x.r.length*10)/10})).sort((a,b)=>b.avg_rating-a.avg_rating).slice(0,20));});
-
-app.get('/api/analysis/timeline',async(req,res)=>{
-  const{pubkey:pk,spot_id}=req.query;let ss;const safeSpotTl=spot_id?.replace(/[^a-zA-Z0-9_-]/g,'')||null;const extra=safeSpotTl?` AND spot_id='${safeSpotTl}'`:'';
-  if(pk){const pks=await getFeedPubkeys(pk);const ph=pks.map((_,i)=>`$${i+1}`).join(',');ss=await db.query(`SELECT session_date,ROUND(AVG(rating),1) as avg_rating,ROUND(AVG(surf_height_min_ft),1) as avg_min,ROUND(AVG(surf_height_max_ft),1) as avg_max,COUNT(*) as entries FROM sessions WHERE pubkey IN(${ph})${extra} GROUP BY session_date ORDER BY session_date DESC LIMIT 90`,pks);}
-  else ss=await db.query(`SELECT session_date,ROUND(AVG(rating),1) as avg_rating,ROUND(AVG(surf_height_min_ft),1) as avg_min,ROUND(AVG(surf_height_max_ft),1) as avg_max,COUNT(*) as entries FROM sessions WHERE 1=1${extra} GROUP BY session_date ORDER BY session_date DESC LIMIT 90`);
-  for(const r of ss){const s=await db.get('SELECT swells_json FROM sessions WHERE session_date=$1 AND swells_json IS NOT NULL LIMIT 1',[r.session_date]);if(s?.swells_json)r.directions=JSON.parse(s.swells_json).filter(w=>w.height_ft>0).map(w=>w.direction_compass).join(',');}
-  res.json(ss);
+app.get('/api/analysis/forecast-match',async(req,res)=>{
+  const{spot_id}=req.query;
+  if(!spot_id)return res.status(400).json({error:'spot_id required'});
+  const spot=await db.get('SELECT surfline_spot_id FROM spots WHERE id=$1',[spot_id]);
+  if(!spot)return res.status(404).json({error:'Spot not found'});
+  try{
+    const forecast=await getForecast(spot.surfline_spot_id);
+    const off=forecast.utcOffset||-6;
+    // Get all sessions at this spot with swell data
+    const sessions=await db.query('SELECT id,session_date,time_of_day,rating,swells_json,wind_type,surf_height_min_ft,surf_height_max_ft,barrels,pubkey FROM sessions WHERE spot_id=$1 AND swells_json IS NOT NULL AND rating IS NOT NULL',[spot_id]);
+    // Build forecast time slots for next 3 days, every 3 hours during daylight
+    const now=new Date();const slots=[];
+    for(let d=0;d<3;d++){
+      const day=new Date(now);day.setDate(day.getDate()+d);
+      const dateStr=day.toISOString().split('T')[0];
+      const dayLabel=d===0?'Today':d===1?'Tomorrow':day.toLocaleDateString('en',{weekday:'long'});
+      for(const tod of['6am','9am','12pm','3pm']){
+        const c=getConditions(forecast,dateStr,tod);
+        if(!c.swells?.length)continue;
+        const primary=c.swells[0];
+        // Find matching sessions: ±10° direction, ±1ft height
+        const matches=[];
+        for(const s of sessions){
+          const sw=JSON.parse(s.swells_json);if(!sw.length)continue;
+          const dir=sw[0].direction_deg,ht=sw[0].height_ft;
+          let dirDiff=Math.abs(dir-primary.direction_deg);
+          if(dirDiff>180)dirDiff=360-dirDiff;
+          if(dirDiff<=10&&Math.abs(ht-primary.height_ft)<=1){
+            matches.push({id:s.id,rating:s.rating,date:s.session_date,time:s.time_of_day,
+              swell_height:sw[0].height_ft,swell_dir:sw[0].direction_deg,swell_compass:sw[0].direction_compass,
+              wind_type:s.wind_type,barrels:s.barrels||0,pubkey:s.pubkey});
+          }
+        }
+        const ratings=matches.map(m=>m.rating);
+        const avg=ratings.length?Math.round(ratings.reduce((a,b)=>a+b,0)/ratings.length*10)/10:null;
+        slots.push({
+          day:dayLabel,date:dateStr,time:tod,
+          swell:{height_ft:primary.height_ft,period_s:primary.period_s,direction_deg:primary.direction_deg,direction_compass:primary.direction_compass},
+          wind:{speed_mph:c.wind_speed_mph,type:c.wind_type},
+          surf:{min_ft:c.surf_height_min_ft,max_ft:c.surf_height_max_ft},
+          match_count:matches.length,
+          avg_rating:avg,
+          best_rating:ratings.length?Math.max(...ratings):null,
+          worst_rating:ratings.length?Math.min(...ratings):null,
+          sessions:matches.sort((a,b)=>b.rating-a.rating).slice(0,10)
+        });
+      }
+    }
+    res.json(slots);
+  }catch(err){console.error('Forecast match error:',err);res.status(500).json({error:'Failed'});}
 });
 
 // ===== REPORT & BLOCK =====

@@ -778,11 +778,37 @@ async function runSearch(){const p=new URLSearchParams();if(currentUser)p.set('p
 try{const{sessions,summary}=await(await fetch(`${API_BASE}/api/search?${p}`)).json();const sr=$('#search-results');if(!sessions.length){sr.innerHTML='<div class="empty-state"><p>No matches.</p></div>';return;}
 sr.innerHTML=`<div class="search-summary"><div class="search-stat"><span class="search-stat-label">Sessions</span><span class="search-stat-value">${summary.count}</span></div><div class="search-stat"><span class="search-stat-label">Avg</span><span class="search-stat-value">${summary.avg_rating||'—'}/10</span></div><div class="search-stat"><span class="search-stat-label">Best</span><span class="search-stat-value">${summary.best_rating||'—'}</span></div><div class="search-stat"><span class="search-stat-label">Worst</span><span class="search-stat-value">${summary.worst_rating||'—'}</span></div></div><div class="search-result-list">${sessions.map(s=>{const d=new Date(s.session_date+'T12:00:00'),sw=JSON.parse(s.swells_json||'[]');return`<div class="feed-card" onclick="openSession(${s.id})"><div class="feed-date"><div class="day">${d.getDate()}</div><div class="mo">${d.toLocaleString('en',{month:'short'})}</div></div><div class="feed-body"><div class="feed-user">${avatarHTML(s.avatar_path,s.display_name)}<span class="feed-name">${escapeHtml(s.display_name||'Anon')}</span></div><div class="feed-tags">${sw.map(x=>`<span class="tag tag-swell">${x.height_ft}ft ${x.period_s}s ${x.direction_compass}</span>`).join('')}</div></div><div class="feed-rating">${s.rating?`<div class="rbadge ${getRatingClass(s.rating)}">${s.rating}</div>`:''}</div></div>`;}).join('')}</div>`;}catch{$('#search-results').innerHTML='<div class="empty-state">Failed</div>';}}
 
-// ===== ANALYSIS =====
-async function loadAnalysis(){try{const q=new URLSearchParams();if(currentUser)q.set('pubkey',currentUser.pubkey);if(currentSpot)q.set('spot_id',currentSpot.id);const qs=q.toString()?'?'+q:'';const[dr,br,tr]=await Promise.all([fetch(API_BASE+'/api/analysis/by-direction'+qs),fetch(API_BASE+'/api/analysis/best-conditions'+qs),fetch(API_BASE+'/api/analysis/timeline'+qs)]);const[dirs,best,tl]=await Promise.all([dr.json(),br.json(),tr.json()]);
-$('#direction-analysis').innerHTML=!dirs.length?'<p class="empty-state">Log sessions to see patterns!</p>':`<table class="analysis-table"><thead><tr><th>Dir</th><th>#</th><th>Rating</th><th>Avg Swell</th></tr></thead><tbody>${dirs.map(d=>`<tr><td><span class="dir-badge">${d.direction}</span></td><td>${d.session_count}</td><td class="bar-cell"><div class="bar-bg" style="width:${(d.avg_rating/10)*100}%;background:var(--teal)"></div><span class="bar-value">${d.avg_rating}/10</span></td><td>${d.avg_swell_height||'-'}ft ${d.avg_swell_period||'-'}s</td></tr>`).join('')}</tbody></table>`;
-$('#best-conditions').innerHTML=!best.length?'<p class="empty-state">Need 2+ sessions per combo</p>':`<table class="analysis-table"><thead><tr><th>Dir</th><th>Swell</th><th>Period</th><th>Wind</th><th>#</th><th>Avg</th></tr></thead><tbody>${best.map(b=>`<tr><td><span class="dir-badge">${b.direction}</span></td><td>${b.swell_bucket}</td><td>${b.period_bucket}</td><td>${b.wind_type}</td><td>${b.count}</td><td><strong>${b.avg_rating}/10</strong></td></tr>`).join('')}</tbody></table>`;
-$('#timeline-chart').innerHTML=!tl.length?'<p class="empty-state">Log sessions first</p>':tl.map(t=>{const r=t.avg_rating||0;const c=r>=8?'var(--teal)':r>=5?'var(--gold)':r>=3?'#f97316':'var(--coral)';const d=new Date(t.session_date+'T12:00:00');return`<div class="timeline-row"><div class="timeline-date">${d.toLocaleDateString('en',{month:'short',day:'numeric'})}</div><div class="timeline-bar"><div class="timeline-fill" style="width:${Math.max(r/10*100,8)}%;background:${c}">${r}</div></div><div class="timeline-info">${t.avg_min}-${t.avg_max}ft ${t.directions||''}</div></div>`;}).join('');}catch(e){console.error(e);}}
+// ===== FORECAST MATCH =====
+async function loadAnalysis(){
+  const el=$('#forecast-match');
+  if(!currentSpot){el.innerHTML='<p class="empty-state">Select a crew to see forecast matches.</p>';return;}
+  el.innerHTML='<div class="cond-loading">Matching forecast to past sessions...</div>';
+  try{
+    const slots=await(await fetch(`${API_BASE}/api/analysis/forecast-match?spot_id=${currentSpot.id}`)).json();
+    if(!slots.length){el.innerHTML='<p class="empty-state">No forecast data available.</p>';return;}
+    let currentDay='';
+    el.innerHTML=slots.map(s=>{
+      const dayHeader=s.day!==currentDay?(currentDay=s.day,`<div class="fm-day">${s.day} · ${new Date(s.date+'T12:00:00').toLocaleDateString('en',{month:'short',day:'numeric'})}</div>`):'';
+      const emoji=s.avg_rating>=8?'🔥':s.avg_rating>=6?'🤙':s.avg_rating>=4?'👌':s.avg_rating?'😐':'';
+      const ratingClass=s.avg_rating>=8?'fm-fire':s.avg_rating>=6?'fm-fun':s.avg_rating>=4?'fm-ok':'fm-meh';
+      const matchHTML=s.match_count>0?`
+        <div class="fm-result ${ratingClass}">
+          <div class="fm-rating">${s.avg_rating}/10 ${emoji}</div>
+          <div class="fm-stats">${s.match_count} similar session${s.match_count>1?'s':''} · best ${s.best_rating}/10 · worst ${s.worst_rating}/10</div>
+          <div class="fm-sessions">${s.sessions.map(m=>`<div class="fm-session" onclick="openSession(${m.id})"><span class="fm-session-rating ${getRatingClass(m.rating)}">${m.rating}</span> ${m.swell_compass} ${m.swell_height}ft · ${m.wind_type||'?'} · ${m.date}</div>`).join('')}</div>
+        </div>`:`<div class="fm-result fm-nodata"><div class="fm-no-match">No matching sessions yet</div><div class="fm-stats muted">Log more sessions with similar swells to get predictions</div></div>`;
+      return`${dayHeader}<div class="fm-slot">
+        <div class="fm-time">${formatTOD(s.time)}</div>
+        <div class="fm-conditions">
+          <span class="fm-swell">${s.swell.direction_compass} ${s.swell.height_ft}ft ${s.swell.period_s}s · ${s.swell.direction_deg}°</span>
+          <span class="fm-wind">${s.wind.type||'?'} ${s.wind.speed_mph||'?'}mph</span>
+          ${s.surf.min_ft?`<span class="fm-surf">${s.surf.min_ft}-${s.surf.max_ft}ft faces</span>`:''}
+        </div>
+        ${matchHTML}
+      </div>`;
+    }).join('');
+  }catch(e){console.error(e);el.innerHTML='<p class="empty-state">Error loading forecast match.</p>';}
+}
 
 // ===== INVITE CLAIM (check URL) =====
 async function checkInviteURL(){
