@@ -719,7 +719,7 @@ async function loadFeed(){
     list.innerHTML=mySpots.map(s=>`<div class="crew-card" data-id="${s.id}">
       ${s.cover_image_url?`<img src="${s.cover_image_url}" class="crew-card-cover" alt="">`:`<img src="${defaultCover(s.id)}" class="crew-card-cover" alt="">`}
       <div class="crew-card-info"><h3>${escapeHtml(s.name)}</h3><span class="muted">${s.location_text||''}</span></div>
-      <span class="crew-card-count">${s.member_count||'?'} members</span>
+      <span class="crew-card-count" onclick="event.stopPropagation();showMembers('${s.id}','${escapeHtml(s.name)}')">${s.member_count||'?'} members</span>
     </div>`).join('');
     list.querySelectorAll('.crew-card').forEach(c=>c.addEventListener('click',()=>openCrewFeed(c.dataset.id)));
   }catch{$('#crew-list').innerHTML='<div class="empty-state">Error loading crews</div>';}
@@ -910,6 +910,29 @@ async function loadAnalysis(){
   }catch(e){console.error(e);el.innerHTML='<p class="empty-state">Error loading forecast match.</p>';}
 }
 
+// ===== MEMBERS MODAL =====
+async function showMembers(spotId,spotName){
+  $('#members-modal-title').textContent=(spotName||'Crew')+' Members';
+  $('#members-modal-list').innerHTML='<div class="cond-loading">Loading...</div>';
+  $('#members-modal').classList.remove('hidden');
+  try{
+    const users=await(await fetch(`${API_BASE}/api/users?spot_id=${spotId}`)).json();
+    if(!users.length){$('#members-modal-list').innerHTML='<p class="muted">No members yet.</p>';return;}
+    $('#members-modal-list').innerHTML=users.map(u=>{
+      const isMe=currentUser?.pubkey===u.pubkey;
+      const fol=followingSet.has(u.pubkey);
+      let btn='';
+      if(isMe)btn='<span class="muted" style="font-size:0.75rem">You</span>';
+      else if(currentUser&&fol)btn=`<button class="btn-follow following" onclick="toggleFollow('${u.pubkey}');showMembers('${spotId}','${escapeHtml(spotName||'')}')">Following</button>`;
+      else if(currentUser)btn=`<button class="btn-follow" onclick="toggleFollow('${u.pubkey}');showMembers('${spotId}','${escapeHtml(spotName||'')}')">Follow</button>`;
+      return`<div class="surfer-card"><a href="${primalLink(u.pubkey)}" target="_blank" rel="noopener" class="surfer-profile-link" onclick="event.stopPropagation()">${u.avatar_path?`<img src="${u.avatar_path}" class="surfer-av">`:`<div class="surfer-av-placeholder">${(u.display_name||'?')[0].toUpperCase()}</div>`}</a><div class="surfer-info"><a href="${primalLink(u.pubkey)}" target="_blank" rel="noopener" class="surfer-name-link">${escapeHtml(u.display_name||'Anon')}</a><div class="surfer-meta">${u.session_count||0} session${u.session_count!==1?'s':''}${u.total_barrels>0?` · 🤿 ${u.total_barrels}`:''}</div></div><div>${btn}</div></div>`;
+    }).join('');
+  }catch{$('#members-modal-list').innerHTML='<p class="muted">Error loading members.</p>';}
+}
+window.showMembers=showMembers;
+$('#members-modal .modal-backdrop').addEventListener('click',()=>$('#members-modal').classList.add('hidden'));
+$('#members-modal .modal-close').addEventListener('click',()=>$('#members-modal').classList.add('hidden'));
+
 // ===== PRO SUBSCRIPTION =====
 async function checkProStatus(){
   if(!currentUser)return;
@@ -1044,7 +1067,7 @@ function renderPipelineCard(s){
     <div class="pipeline-info">
       <div class="pipeline-name">${displayName} ${activity}</div>
       ${s.description?`<div class="pipeline-desc">${escapeHtml(s.description)}</div>`:''}
-      <div class="pipeline-meta">${s.member_count} member${s.member_count!==1?'s':''}${s.is_private?' · Private':' · Public'}</div>
+      <div class="pipeline-meta"><span class="members-link" onclick="event.stopPropagation();showMembers('${s.id}','${escapeHtml(s.name||s.region||'')}')">${s.member_count} member${s.member_count!==1?'s':''}</span>${s.is_private?' · Private':' · Public'}</div>
       <div class="pipeline-admins">${adminAvatars}</div>
     </div>
     <div class="pipeline-action">${actionBtn}</div>

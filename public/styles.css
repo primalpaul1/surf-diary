@@ -779,7 +779,10 @@ footer a { color: var(--teal); text-decoration: none; }
 }
 .crew-card-info { flex: 1; min-width: 0; }
 .crew-card-info h3 { font-size: 0.95rem; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.crew-card-count { font-size: 0.8rem; color: var(--text-muted); white-space: nowrap; }
+.crew-card-count { font-size: 0.8rem; color: var(--text-muted); white-space: nowrap; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.crew-card-count:active { color: #000; }
+.members-link { cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.members-link:active { color: #000; }
 
 .feed-spot-group { margin-bottom: 1.5rem; }
 .feed-spot-group:last-child { margin-bottom: 0; }
