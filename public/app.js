@@ -576,12 +576,11 @@ function hapticTick(style){
 let lastRatingVal=5;
 function updateRating(){
   const v=+rs.value;
-  const bc=v<=3?'#f87171':v<=5?'#facc15':v<=7?'#22d3ee':'#818cf8';
-  rd.style.background='#fff';rd.style.color='#000';rd.style.borderColor=bc;
+  const bc=v<=3?'#ccc':v<=5?'#999':v<=7?'#333':'#000';
+  if(v>=8){rd.style.background='#000';rd.style.color='#fff';}else{rd.style.background='#fff';rd.style.color='#000';}
+  rd.style.borderColor=bc;
   const scale=0.9+v*0.04;rd.style.transform=`scale(${scale})`;
-  if(v>=8)rd.style.boxShadow='0 0 20px rgba(129,140,248,0.4)';
-  else if(v>=6)rd.style.boxShadow='0 0 12px rgba(56,189,248,0.25)';
-  else rd.style.boxShadow='none';
+  rd.style.boxShadow=v>=8?'0 0 16px rgba(0,0,0,0.15)':'none';
   if(v!==lastRatingVal){
     rd.classList.remove('pulse');void rd.offsetWidth;rd.classList.add('pulse');
     hapticTick(v>=8?'HEAVY':v>=5?'MEDIUM':'LIGHT');
