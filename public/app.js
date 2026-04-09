@@ -7,9 +7,9 @@ const RELAYS=['wss://relay.primal.net','wss://relay.damus.io','wss://nos.lol'];
 const IS_CAPACITOR=!!window.Capacitor;
 const API_BASE=IS_CAPACITOR?'https://swellnotes.com':'';
 const DEFAULT_COVERS=[
-  'https://images.unsplash.com/photo-1502680390548-bdbac40a5296?w=800&q=80',
-  'https://images.unsplash.com/photo-1455729552457-5c322b29ceac?w=800&q=80',
-  'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=800&q=80',
+  'https://images.unsplash.com/photo-1502933691298-84fc14542831?w=800&q=80',
+  'https://images.unsplash.com/photo-1509914398892-963f53e6e2f1?w=800&q=80',
+  'https://images.unsplash.com/photo-1416163781743-2430b42aae93?w=800&q=80',
 ];
 function defaultCover(id){return DEFAULT_COVERS[Math.abs([...((id||'')+'x')].reduce((h,c)=>((h<<5)-h)+c.charCodeAt(0),0))%DEFAULT_COVERS.length];}
 
@@ -424,6 +424,23 @@ $('#copy-key-btn').addEventListener('click',()=>{
   navigator.clipboard?.writeText(nsec);toast('Private key copied!');
 });
 
+$('#settings-avatar-upload').addEventListener('click',()=>$('#settings-avatar-file').click());
+$('#settings-avatar-file').addEventListener('change',async e=>{
+  const file=e.target.files[0];if(!file||!currentUser)return;
+  try{
+    let avatarUrl=await uploadToBlossom(file);
+    if(!avatarUrl){const r=new FileReader();const b64=await new Promise(res=>{r.onloadend=()=>res(r.result.split(',')[1]);r.readAsDataURL(file);});
+      const res=await fetch(API_BASE+'/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pubkey:currentUser.pubkey,display_name:currentUser.display_name,avatar_base64:b64})});
+      const data=await res.json();avatarUrl=data.avatar_path;
+    } else {
+      await fetch(API_BASE+'/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pubkey:currentUser.pubkey,display_name:currentUser.display_name,avatar_url:avatarUrl})});
+    }
+    currentUser.avatar_path=avatarUrl;localStorage.setItem('swellnotes_user',JSON.stringify(currentUser));
+    $('#settings-avatar').src=avatarUrl;$('#settings-avatar').style.display='';
+    if($('#user-avatar'))$('#user-avatar').src=avatarUrl;
+    toast('Photo updated!');
+  }catch{toast('Failed to update photo','error');}
+});
 $('#settings-modal .modal-backdrop').addEventListener('click',()=>$('#settings-modal').classList.add('hidden'));
 $('#settings-modal .modal-close').addEventListener('click',()=>$('#settings-modal').classList.add('hidden'));
 

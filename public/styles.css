@@ -528,7 +528,12 @@ textarea { resize: vertical; }
 #settings-modal h2 { color: white; }
 .settings-section { margin-top: 1.25rem; }
 .settings-profile { display: flex; align-items: center; gap: 0.75rem; }
+.settings-avatar-wrap { position: relative; cursor: pointer; flex-shrink: 0; }
 .settings-avatar { width: 48px; height: 48px; border-radius: 50%; object-fit: cover; border: 2px solid #e8ecf1; aspect-ratio: 1; }
+.settings-avatar-edit {
+  position: absolute; bottom: -2px; right: -2px; background: var(--ocean-dark); color: white;
+  font-size: 0.55rem; font-weight: 700; padding: 1px 5px; border-radius: 6px; border: 1.5px solid white;
+}
 .settings-name { font-weight: 700; font-size: 1rem; }
 .settings-pubkey { font-size: 0.7rem; color: rgba(255,255,255,0.4); font-family: monospace; word-break: break-all; }
 

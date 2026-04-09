@@ -114,13 +114,6 @@
       <h2>Create a Crew</h2>
       <p class="modal-sub" id="create-spot-name"></p>
       <form id="create-spot-form">
-        <div class="avatar-upload" id="cover-upload">
-          <div class="cover-placeholder" id="cover-preview">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
-            <span>Add Cover Photo</span>
-          </div>
-          <input type="file" id="cover-file" accept="image/*" class="hidden">
-        </div>
         <div class="field"><label>Region <span class="muted">(visible to everyone)</span></label><input type="text" id="spot-region" placeholder="e.g. Southern Costa Rica"></div>
         <div class="field"><label>Description <span class="muted">(optional)</span></label><textarea id="spot-description" rows="2" placeholder="What's this crew about?"></textarea></div>
         <div class="toggle-row">
@@ -267,7 +260,11 @@
 
       <div class="settings-section">
         <div class="settings-profile">
-          <img id="settings-avatar" src="" class="settings-avatar" onerror="this.style.display='none'">
+          <div class="settings-avatar-wrap" id="settings-avatar-upload">
+            <img id="settings-avatar" src="" class="settings-avatar" onerror="this.style.display='none'">
+            <div class="settings-avatar-edit">Edit</div>
+            <input type="file" id="settings-avatar-file" accept="image/*" class="hidden">
+          </div>
           <div>
             <div id="settings-name" class="settings-name"></div>
           </div>
