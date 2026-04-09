@@ -118,10 +118,7 @@ $('#hero-cover-file').addEventListener('change',async e=>{
   try{
     $('#hero-cover-btn').textContent='Uploading...';$('#hero-cover-btn').disabled=true;
     let url=await uploadToBlossom(file);
-    if(!url){const r=new FileReader();const b64=await new Promise(res=>{r.onloadend=()=>res(r.result.split(',')[1]);r.readAsDataURL(file);});
-      // No blossom fallback — just skip for now
-      toast('Upload failed','error');return;
-    }
+    if(!url){url=await uploadToServer(file);if(!url){toast('Upload failed','error');return;}}
     await fetch(`${API_BASE}/api/spots/${currentSpot.id}`,{method:'PUT',headers:{'Content-Type':'application/json','X-Nostr-Pubkey':currentUser.pubkey},body:JSON.stringify({cover_image_url:url})});
     $('#hero-img').src=url;currentSpot.cover_image_url=url;
     toast('Cover updated!');
@@ -182,7 +179,7 @@ $('#crew-settings-form').addEventListener('submit',async e=>{
   e.preventDefault();if(!currentSpot||!currentUser)return;
   try{
     const body={name:$('#crew-settings-name').value.trim(),region:$('#crew-settings-region').value.trim()||null,description:$('#crew-settings-description').value.trim()||null,is_private:$('#crew-settings-private').checked};
-    if(crewCoverFile){const url=await uploadToBlossom(crewCoverFile);if(url)body.cover_image_url=url;}
+    if(crewCoverFile){let url=await uploadToBlossom(crewCoverFile);if(!url)url=await uploadToServer(crewCoverFile);if(url)body.cover_image_url=url;}
     await fetch(`${API_BASE}/api/spots/${currentSpot.id}`,{method:'PUT',headers:{'Content-Type':'application/json','X-Nostr-Pubkey':currentUser.pubkey},body:JSON.stringify(body)});
     const spot=await(await fetch(`${API_BASE}/api/spots/${currentSpot.id}`,{headers:{'X-Nostr-Pubkey':currentUser.pubkey}})).json();
     await loadMySpots();selectSpot(spot);
@@ -205,6 +202,15 @@ async function uploadToBlossom(file){
     const res=await fetch(`${BLOSSOM}/upload`,{method:'PUT',headers:{'Authorization':'Nostr '+btoa(JSON.stringify(ev)),'Content-Type':file.type||'application/octet-stream'},body:buf});
     if(!res.ok)throw new Error(res.status);const data=await res.json();return data.url||`${BLOSSOM}/${hash}`;
   }catch(err){console.error('Blossom:',err);return null;}
+}
+
+async function uploadToServer(file){
+  try{
+    const r=new FileReader();
+    const b64=await new Promise(res=>{r.onloadend=()=>res(r.result.split(',')[1]);r.readAsDataURL(file);});
+    const res=await fetch(API_BASE+'/api/upload',{method:'POST',headers:{'Content-Type':'application/json','X-Nostr-Pubkey':currentUser.pubkey},body:JSON.stringify({base64:b64})});
+    if(!res.ok)return null;const data=await res.json();return data.url;
+  }catch{return null;}
 }
 
 // ===== PROFILE (kind 0) + FOLLOWS (kind 3) =====
@@ -645,7 +651,11 @@ function showShareModal(sd){pendingShareData=sd;const c=sd.conditions;const sw=(
 let html=`<strong>${sd.spot_name} ${sd.session_type==='observed'?'check':'session'}</strong>`;if(sh)html+=` · ${sh}`;html+=` · ${sd.rating}/10 ${emoji}`;if(sw)html+=`<div class="share-stats">Swell: ${sw}</div>`;if(sd.video_url)html+=`<video src="${sd.video_url}" controls muted preload="metadata"></video>`;
 $('#share-preview').innerHTML=html;$('#share-text').value=sd.notes||`${sd.spot_name} was ${sd.rating>=8?'firing':sd.rating>=6?'fun':sd.rating>=4?'decent':'flat'} today! ${sh} ${emoji}`;$('#share-modal').classList.remove('hidden');}
 function closeShareAndGoToFeed(){$('#share-modal').classList.add('hidden');$$('.nav-btn').forEach(x=>x.classList.remove('active'));$$('.nav-btn[data-view="history"]').forEach(x=>x.classList.add('active'));$$('.view').forEach(v=>v.classList.remove('active'));$('#view-history').classList.add('active');loadFeed();}
-function getShareText(){return $('#share-text').value.trim();}
+function getShareText(){
+  let t=$('#share-text').value.trim();
+  if(pendingShareData?.video_url&&!t.includes(pendingShareData.video_url))t+='\n'+pendingShareData.video_url;
+  return t;
+}
 function getShareUrl(){return pendingShareData?.sessionUrl||'https://swellnotes.com';}
 $('#share-skip-btn').addEventListener('click',closeShareAndGoToFeed);
 $('#share-modal .modal-backdrop').addEventListener('click',closeShareAndGoToFeed);
@@ -653,7 +663,7 @@ $('#share-modal .modal-close').addEventListener('click',closeShareAndGoToFeed);
 $('#share-whatsapp-btn').addEventListener('click',()=>{const t=getShareText()+'\n'+getShareUrl();window.open('https://wa.me/?text='+encodeURIComponent(t),'_blank');closeShareAndGoToFeed();});
 $('#share-messages-btn').addEventListener('click',()=>{const t=getShareText()+'\n'+getShareUrl();window.open('sms:&body='+encodeURIComponent(t));closeShareAndGoToFeed();});
 $('#share-native-btn').addEventListener('click',async()=>{const t=getShareText();try{await navigator.share({title:pendingShareData?.spot_name+' session',text:t,url:getShareUrl()});}catch{}closeShareAndGoToFeed();});
-$('#share-post-btn').addEventListener('click',async()=>{if(!currentUser?.secretKey||!pendingShareData)return;try{$('#share-post-btn').disabled=true;$('#share-post-btn').textContent='Posting...';const sd=pendingShareData;const c=sd.conditions;const sw=(c.swells||[]).map(s=>`${s.height_ft}ft ${s.period_s}s ${s.direction_compass} ${s.direction_deg}°`).join(', ');const sh=c.surf_height_min_ft&&c.surf_height_max_ft?`${c.surf_height_min_ft}-${c.surf_height_max_ft}ft`:'';let content=$('#share-text').value.trim();if(!content.includes(sd.spot_name))content=`🌊 ${sd.spot_name} · ${sh} · ${sd.rating}/10\n\n${content}`;if(sw&&!content.includes(sw))content+=`\n\nSwell: ${sw}`;if(c.wind_type)content+=`\nWind: ${c.wind_speed_mph}mph ${c.wind_type}`;if(sd.video_url)content+=`\n\n${sd.video_url}`;const tags=[['t','surf'],['t',sd.spot_name.toLowerCase().replace(/\s+/g,'')],['t','surfing']];if(sd.video_url)tags.push(['imeta',`url ${sd.video_url}`,`m video/mp4`]);const ev=finalizeEvent({kind:1,created_at:Math.floor(Date.now()/1000),tags,content},hexToBytes(currentUser.secretKey));for(const u of RELAYS){try{const r=await Relay.connect(u);await r.publish(ev);r.close();}catch{}}toast('Shared!');closeShareAndGoToFeed();}catch{toast('Share failed','error');}finally{$('#share-post-btn').disabled=false;$('#share-post-btn').textContent='Share';}});
+$('#share-post-btn').addEventListener('click',async()=>{if(!currentUser?.secretKey){toast('Posting to Primal requires a local account (not remote login)','error');return;}if(!pendingShareData)return;try{$('#share-post-btn').disabled=true;$('#share-post-btn').textContent='Posting...';const sd=pendingShareData;const c=sd.conditions;const sw=(c.swells||[]).map(s=>`${s.height_ft}ft ${s.period_s}s ${s.direction_compass} ${s.direction_deg}°`).join(', ');const sh=c.surf_height_min_ft&&c.surf_height_max_ft?`${c.surf_height_min_ft}-${c.surf_height_max_ft}ft`:'';let content=$('#share-text').value.trim();if(!content.includes(sd.spot_name))content=`🌊 ${sd.spot_name} · ${sh} · ${sd.rating}/10\n\n${content}`;if(sw&&!content.includes(sw))content+=`\n\nSwell: ${sw}`;if(c.wind_type)content+=`\nWind: ${c.wind_speed_mph}mph ${c.wind_type}`;if(sd.video_url)content+=`\n\n${sd.video_url}`;const tags=[['t','surf'],['t',sd.spot_name.toLowerCase().replace(/\s+/g,'')],['t','surfing']];if(sd.video_url)tags.push(['imeta',`url ${sd.video_url}`,`m video/mp4`]);const ev=finalizeEvent({kind:1,created_at:Math.floor(Date.now()/1000),tags,content},hexToBytes(currentUser.secretKey));for(const u of RELAYS){try{const r=await Relay.connect(u);await r.publish(ev);r.close();}catch{}}toast('Shared!');closeShareAndGoToFeed();}catch{toast('Share failed','error');}finally{$('#share-post-btn').disabled=false;$('#share-post-btn').textContent='Share';}});
 
 // ===== MULTI-SPOT FEED =====
 let spotFollowingSet=new Set();

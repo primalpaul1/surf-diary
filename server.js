@@ -142,6 +142,16 @@ async function getForecast(spotId){
 
 function saveFile(base64,dir,ext){const fn=`${Date.now()}_${Math.random().toString(36).slice(2,8)}.${ext}`;fs.writeFileSync(path.join(__dirname,dir,fn),Buffer.from(base64,'base64'));return`/${dir}/${fn}`;}
 
+// Image upload endpoint (fallback for NIP-46 users who can't sign Blossom auth)
+app.post('/api/upload',requireAuth,async(req,res)=>{
+  const{base64,type}=req.body;
+  if(!base64)return res.status(400).json({error:'No data'});
+  const dir=type==='avatar'?'avatars':'avatars';
+  const ext='jpg';
+  const p=saveFile(base64,dir,ext);
+  res.json({url:`https://swellnotes.com${p}`});
+});
+
 // Make media paths absolute so Capacitor local mode can resolve them
 function absUrl(p,req){if(!p||p.startsWith('http'))return p;const host=req?.headers?.origin||`http://localhost:${PORT}`;return`https://swellnotes.com${p}`;}
 function absSession(s,req){if(!s)return s;if(s.voice_memo_path)s.voice_memo_path=absUrl(s.voice_memo_path,req);if(s.video_path)s.video_path=absUrl(s.video_path,req);if(s.avatar_path)s.avatar_path=absUrl(s.avatar_path,req);return s;}
