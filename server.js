@@ -173,8 +173,8 @@ app.get('/api/spots',requireAuth,async(req,res)=>{
 app.get('/api/spots/browse',async(req,res)=>{
   const q=req.query.q;const pk=req.headers['x-nostr-pubkey']||null;
   let spots;
-  if(q){spots=await db.query('SELECT s.*,(SELECT COUNT(*)FROM spot_members WHERE spot_id=s.id) as member_count FROM spots s WHERE (LOWER(s.name) LIKE LOWER($1) OR LOWER(s.region) LIKE LOWER($1)) ORDER BY s.name',[`%${q}%`]);}
-  else{spots=await db.query('SELECT s.*,(SELECT COUNT(*)FROM spot_members WHERE spot_id=s.id) as member_count FROM spots s ORDER BY s.name');}
+  if(q){spots=await db.query('SELECT s.*,(SELECT COUNT(*)FROM spot_members WHERE spot_id=s.id) as member_count,(SELECT MAX(created_at)FROM sessions WHERE spot_id=s.id) as last_active FROM spots s WHERE (LOWER(s.name) LIKE LOWER($1) OR LOWER(s.region) LIKE LOWER($1)) ORDER BY last_active DESC NULLS LAST',[`%${q}%`]);}
+  else{spots=await db.query('SELECT s.*,(SELECT COUNT(*)FROM spot_members WHERE spot_id=s.id) as member_count,(SELECT MAX(created_at)FROM sessions WHERE spot_id=s.id) as last_active FROM spots s ORDER BY last_active DESC NULLS LAST');}
   // Enrich each spot with admin profiles, activity, membership status
   const now=Math.floor(Date.now()/1000);const weekAgo=now-7*86400;
   let memberSet=new Set(),followSet=new Set(),pendingSet=new Set();
@@ -547,7 +547,7 @@ app.get('/api/analysis/forecast-match',async(req,res)=>{
       const day=new Date(now);day.setDate(day.getDate()+d);
       const dateStr=day.toISOString().split('T')[0];
       const dayLabel=d===0?'Today':d===1?'Tomorrow':day.toLocaleDateString('en',{weekday:'long'});
-      for(const tod of['6am','9am','12pm','3pm']){
+      for(const tod of['6am','5pm']){
         const c=getConditions(forecast,dateStr,tod);
         if(!c.swells?.length)continue;
         const primary=c.swells[0];
