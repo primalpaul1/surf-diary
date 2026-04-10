@@ -415,9 +415,10 @@ async function waitForNIP46(){
 }
 
 // On mobile, check for callback result when user returns to the page
-document.addEventListener('visibilitychange',()=>{if(!document.hidden&&!currentUser)checkCallback();});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&!currentUser){checkCallback();if(nip46Data&&!nip46Data._completed){console.log('[NIP46] App resumed, reconnecting relay...');waitForNIP46();}}});
 
 async function completeLogin(pk){
+  if(nip46Data)nip46Data._completed=true;
   const profile=await fetchProfile(pk);const name=profile?.name||profile?.display_name||pk.slice(0,8)+'...';const picture=profile?.picture||null;
   await fetch(API_BASE+'/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pubkey:pk,display_name:name,avatar_url:picture})});
   // Save NIP-46 connection data for remote signing
