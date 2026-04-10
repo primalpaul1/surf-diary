@@ -70,26 +70,28 @@
   text-align: center;
   height: 100%;
 }
-.landing-top { padding-top: 12vh; margin-bottom: auto; }
-.landing-logo {
-  height: 88px; width: 88px; object-fit: cover; margin-bottom: 0.25rem;
-  border-radius: 22px;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+.landing-top { padding-top: 9vh; margin-bottom: auto; }
+.landing-logo-corner {
+  position: absolute; top: env(safe-area-inset-top, 12px); left: 16px;
+  margin-top: 12px;
+  height: 44px; width: 44px; object-fit: cover;
+  border-radius: 11px; z-index: 2;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.25);
 }
 .landing-title {
   font-family: var(--font-display); font-size: 2.2rem; font-weight: 400;
   color: #fff; letter-spacing: 0.02em;
   text-shadow: 0 2px 12px rgba(0,0,0,0.4);
-  margin-bottom: 0.75rem;
+  margin-bottom: 0.25rem;
 }
 .landing-sub {
   color: rgba(255,255,255,0.8); font-size: 0.9rem; line-height: 1.5;
   text-shadow: 0 1px 6px rgba(0,0,0,0.3);
-  padding-top: 0.75rem;
+  padding-top: 0.25rem;
   border-top: 1px solid rgba(255,255,255,0.3);
   display: inline-block;
 }
-.landing-form-area { width: 100%; padding-bottom: 5vh; }
+.landing-form-area { width: 100%; padding-bottom: 12vh; }
 .landing-avatar-row {
   display: flex; align-items: center; gap: 0.6rem;
   margin-bottom: 0.75rem;
