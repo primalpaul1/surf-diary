@@ -31,7 +31,7 @@
 
 /* ---- LANDING PAGE ---- */
 .landing-page {
-  height: 100vh; height: 100dvh; display: flex; align-items: center; justify-content: center;
+  height: 100vh; height: 100dvh; display: flex; flex-direction: column; justify-content: space-between;
   position: fixed; inset: 0; z-index: 100; overflow: hidden;
 }
 .landing-bg {
@@ -56,20 +56,23 @@
 .landing-bg::after {
   content: ''; position: absolute; inset: 0;
   background: linear-gradient(to bottom,
-    rgba(4,20,40,0.45) 0%,
-    rgba(4,20,40,0.25) 30%,
-    rgba(4,20,40,0.55) 70%,
-    rgba(4,20,40,0.75) 100%);
+    rgba(4,20,40,0.35) 0%,
+    rgba(4,20,40,0.1) 25%,
+    rgba(4,20,40,0.05) 50%,
+    rgba(4,20,40,0.3) 75%,
+    rgba(4,20,40,0.6) 100%);
 }
 .landing-content {
   position: relative; z-index: 1;
   width: 100%; max-width: 400px; padding: 0 1.75rem;
+  margin: 0 auto;
   display: flex; flex-direction: column; align-items: center;
   text-align: center;
+  height: 100%;
 }
-.landing-top { margin-bottom: 3rem; }
+.landing-top { padding-top: 12vh; margin-bottom: auto; }
 .landing-logo {
-  height: 88px; width: 88px; object-fit: cover; margin-bottom: 0.75rem;
+  height: 88px; width: 88px; object-fit: cover; margin-bottom: 0.25rem;
   border-radius: 22px;
   box-shadow: 0 8px 32px rgba(0,0,0,0.3);
 }
@@ -86,7 +89,7 @@
   border-top: 1px solid rgba(255,255,255,0.3);
   display: inline-block;
 }
-.landing-form-area { width: 100%; }
+.landing-form-area { width: 100%; padding-bottom: 5vh; }
 .landing-avatar-row {
   display: flex; align-items: center; gap: 0.6rem;
   margin-bottom: 0.75rem;
@@ -907,6 +910,10 @@ footer a { color: var(--teal); text-decoration: none; }
 .pipeline-name {
   font-weight: 600; font-size: 0.95rem;
   color: var(--text); display: flex; align-items: center; gap: 0.4rem;
+  min-width: 0;
+}
+.pipeline-name-text {
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;
 }
 .pipeline-desc {
   font-size: 0.82rem; color: var(--text-muted);
@@ -937,6 +944,34 @@ footer a { color: var(--teal); text-decoration: none; }
   border: 1.5px solid rgba(255,255,255,0.1);
 }
 .pipeline-action { flex-shrink: 0; }
+.pipeline-action .btn-request {
+  background: none; color: var(--text); border: 1.5px solid var(--border, rgba(255,255,255,0.15));
+  padding: 0.35rem 0.75rem; border-radius: 6px; font-size: 0.8rem; font-weight: 500;
+  cursor: pointer; font-family: inherit; white-space: nowrap;
+}
+.pipeline-action .btn-request:hover { background: rgba(255,255,255,0.06); }
+
+/* Onboarding highlight for new users */
+.pipeline-onboard-blur {
+  filter: blur(4px); opacity: 0.4; pointer-events: none;
+  user-select: none;
+}
+/* Onboarding overlay */
+.onboard-overlay {
+  position: fixed; inset: 0; z-index: 50;
+  display: flex; align-items: center; justify-content: center;
+  padding: 1.5rem;
+}
+.onboard-overlay::before {
+  content: ''; position: absolute; inset: 0;
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  background: rgba(240,243,247,0.6);
+}
+.onboard-overlay .card {
+  position: relative; z-index: 1;
+  width: 100%; max-width: 420px;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.12);
+}
 
 /* Join Request Cards */
 .join-request-card {

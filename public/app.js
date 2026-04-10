@@ -28,6 +28,8 @@ function selectSpot(spot){
   if(!spot||spot.error){console.error('Invalid spot:',spot);return;}
   currentSpot=spot;
   localStorage.setItem('swellnotes_spot',JSON.stringify(spot));
+  localStorage.setItem('swellnotes_onboarded','1');
+  const overlay=document.getElementById('onboard-overlay');if(overlay)overlay.remove();
   $('#spot-picker')?.classList.add('hidden');
   $('#app-header').classList.remove('hidden');
   $('#hero').classList.remove('hidden');
@@ -108,7 +110,7 @@ async function showMySpots(){
     </div>
   `).join('');
 }
-window.joinExistingSpot=async id=>{const spot=await(await fetch(`${API_BASE}/api/spots/${id}`,{headers:currentUser?{'X-Nostr-Pubkey':currentUser.pubkey}:{}})).json();selectSpot(spot);};
+window.joinExistingSpot=async id=>{localStorage.setItem('swellnotes_onboarded','1');const spot=await(await fetch(`${API_BASE}/api/spots/${id}`,{headers:currentUser?{'X-Nostr-Pubkey':currentUser.pubkey}:{}})).json();selectSpot(spot);};
 
 // ===== CREATE SPOT =====
 // Hero cover photo (admin only)
@@ -1049,6 +1051,33 @@ async function loadPipeline(q=''){
     const spots=await(await fetch(`${API_BASE}/api/spots/browse?${params}`,{headers})).json();
     if(!spots.length){list.innerHTML='<div class="empty-state"><p>No crews found.</p></div>';return;}
     list.innerHTML=spots.map(s=>renderPipelineCard(s)).join('');
+    const isNewUser=currentUser&&!q&&!localStorage.getItem('swellnotes_onboarded');
+    if(isNewUser&&!document.getElementById('onboard-overlay')){
+      const overlay=document.createElement('div');
+      overlay.id='onboard-overlay';
+      overlay.className='onboard-overlay';
+      overlay.innerHTML=`<div class="card">
+        <h2>Start a Crew</h2>
+        <p class="muted">Search for any surf break worldwide to create a new crew.</p>
+        <div class="field" style="margin:0.75rem 0">
+          <input type="text" id="onboard-spot-search" placeholder="Search surf breaks... (e.g. Pipeline, Uluwatu)" autocomplete="off">
+        </div>
+        <div id="onboard-spot-results" class="spot-results"></div>
+        <button class="link-btn" style="margin-top:0.75rem;font-size:0.85rem;color:var(--text-muted)" onclick="window.revealCrews()">Explore existing crews</button>
+      </div>`;
+      document.body.appendChild(overlay);
+      const input=overlay.querySelector('#onboard-spot-search');
+      input.addEventListener('input',()=>{
+        const origInput=$('#pipeline-spot-search');
+        if(origInput){origInput.value=input.value;origInput.dispatchEvent(new Event('input'));}
+        // mirror results into overlay
+        setTimeout(()=>{
+          const origResults=$('#pipeline-spot-results');
+          const overlayResults=overlay.querySelector('#onboard-spot-results');
+          if(origResults&&overlayResults)overlayResults.innerHTML=origResults.innerHTML;
+        },350);
+      });
+    }
   }catch{list.innerHTML='<div class="empty-state"><p>Error loading crews.</p></div>';}
 }
 
@@ -1061,13 +1090,13 @@ function renderPipelineCard(s){
   const activity=s.recent_sessions>0?'<span class="pipeline-active">Active</span>':'';
   let actionBtn='';
   if(s.is_member)actionBtn='<button class="btn-follow is-you" disabled>Member</button>';
-  else if(!s.is_private&&currentUser)actionBtn=`<button class="btn-solid btn-sm" onclick="event.stopPropagation();joinPublicCrew('${s.id}')">Join</button>`;
+  else if(!s.is_private&&currentUser)actionBtn=`<button class="btn-request" onclick="event.stopPropagation();joinPublicCrew('${s.id}')">Join</button>`;
   else if(s.has_pending_request)actionBtn='<button class="btn-follow" disabled>Requested</button>';
-  else if(currentUser)actionBtn=`<button class="btn-solid btn-sm" onclick="event.stopPropagation();openJoinRequest('${s.id}','${escapeHtml(s.region||'')}')">Request to Join</button>`;
+  else if(currentUser)actionBtn=`<button class="btn-request" onclick="event.stopPropagation();openJoinRequest('${s.id}','${escapeHtml(s.region||'')}')">Request to Join</button>`;
   return`<div class="pipeline-card" onclick="${s.is_member?`joinExistingSpot('${s.id}')`:''}">
     ${s.cover_image_url?`<img src="${s.cover_image_url}" class="pipeline-cover" alt="">`:`<img src="${defaultCover(s.id)}" class="pipeline-cover" alt="">`}
     <div class="pipeline-info">
-      <div class="pipeline-name">${displayName} ${activity}</div>
+      <div class="pipeline-name"><span class="pipeline-name-text">${displayName}</span> ${activity}</div>
       ${s.description?`<div class="pipeline-desc">${escapeHtml(s.description)}</div>`:''}
       <div class="pipeline-meta"><span class="members-link" onclick="event.stopPropagation();showMembers('${s.id}','${escapeHtml(s.name||s.region||'')}')">${s.member_count} member${s.member_count!==1?'s':''}</span>${s.is_private?' · Private':' · Public'}</div>
       <div class="pipeline-admins">${adminAvatars}</div>
@@ -1077,6 +1106,12 @@ function renderPipelineCard(s){
 }
 
 // ===== JOIN REQUESTS =====
+window.revealCrews=()=>{
+  localStorage.setItem('swellnotes_onboarded','1');
+  const overlay=document.getElementById('onboard-overlay');
+  if(overlay)overlay.remove();
+};
+
 window.openJoinRequest=(spotId,regionName)=>{
   if(!currentUser)return toast('Log in first','error');
   $('#join-request-crew-name').textContent=regionName;
@@ -1102,7 +1137,7 @@ window.joinPublicCrew=async id=>{
   if(!currentUser)return toast('Log in first','error');
   try{
     const res=await fetch(`${API_BASE}/api/spots/${id}/join`,{method:'POST',headers:{'X-Nostr-Pubkey':currentUser.pubkey}});
-    if(res.ok){toast('Joined!');await loadMySpots();loadBrowseSpots();const spot=await(await fetch(`${API_BASE}/api/spots/${id}`)).json();selectSpot(spot);}
+    if(res.ok){localStorage.setItem('swellnotes_onboarded','1');toast('Joined!');await loadMySpots();loadBrowseSpots();const spot=await(await fetch(`${API_BASE}/api/spots/${id}`)).json();selectSpot(spot);}
     else{const err=await res.json();toast(err.error||'Failed','error');}
   }catch{toast('Failed to join','error');}
 };
