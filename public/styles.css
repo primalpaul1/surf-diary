@@ -36,7 +36,22 @@
 }
 .landing-bg {
   position: absolute; inset: 0;
-  background: url('/wave-bg.jpg') center center / cover no-repeat;
+  background: #041428;
+}
+.landing-video {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  object-fit: cover;
+}
+.landing-video-mobile { display: none; }
+.landing-video-desktop { display: block; }
+@media (max-width: 768px) {
+  .landing-video-mobile { display: block; }
+  .landing-video-desktop { display: none; }
+}
+@media (orientation: portrait) {
+  .landing-video-mobile { display: block; }
+  .landing-video-desktop { display: none; }
 }
 .landing-bg::after {
   content: ''; position: absolute; inset: 0;
