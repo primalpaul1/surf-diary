@@ -437,7 +437,7 @@ app.get('/api/users',async(req,res)=>{
   const statsQ='(SELECT pubkey,COUNT(*) as session_count,COALESCE(SUM(barrels),0) as total_barrels,MAX(created_at) as last_active FROM sessions GROUP BY pubkey) st';
   if(spotId){
     const spotStatsQ='(SELECT pubkey,COUNT(*) as spot_sessions FROM sessions WHERE spot_id=$1 GROUP BY pubkey) ss';
-    users=await db.query(`SELECT u.pubkey,u.display_name,u.avatar_path,sm.role,COALESCE(ss.spot_sessions,0) as session_count,COALESCE(st.total_barrels,0) as total_barrels FROM spot_members sm LEFT JOIN users u ON sm.pubkey=u.pubkey LEFT JOIN ${statsQ} ON st.pubkey=u.pubkey LEFT JOIN ${spotStatsQ} ON ss.pubkey=u.pubkey ORDER BY session_count DESC`,[spotId]);
+    users=await db.query(`SELECT u.pubkey,u.display_name,u.avatar_path,sm.role,COALESCE(ss.spot_sessions,0) as session_count,COALESCE(st.total_barrels,0) as total_barrels FROM spot_members sm LEFT JOIN users u ON sm.pubkey=u.pubkey LEFT JOIN ${statsQ} ON st.pubkey=u.pubkey LEFT JOIN ${spotStatsQ} ON ss.pubkey=u.pubkey WHERE sm.spot_id=$2 ORDER BY session_count DESC`,[spotId,spotId]);
   } else if(crew_id){
     users=await db.query(`SELECT u.pubkey,u.display_name,u.avatar_path,sm.role,COALESCE(st.session_count,0) as session_count,COALESCE(st.total_barrels,0) as total_barrels,st.last_active FROM spot_members sm LEFT JOIN users u ON sm.pubkey=u.pubkey LEFT JOIN ${statsQ} ON st.pubkey=u.pubkey WHERE sm.spot_id=$1 ORDER BY st.last_active DESC NULLS LAST`,[crew_id]);
   } else if(sort==='recent'){
