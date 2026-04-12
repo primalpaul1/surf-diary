@@ -77,6 +77,10 @@ async function initDB(){
   try{await db.exec('ALTER TABLE users ADD COLUMN is_pro INTEGER DEFAULT 0');}catch{}
   try{await db.exec('ALTER TABLE spots ADD COLUMN description TEXT');}catch{}
   try{await db.exec('ALTER TABLE spots ADD COLUMN region TEXT');}catch{}
+  try{await db.exec('ALTER TABLE users ADD COLUMN nip05 TEXT');}catch{}
+  try{await db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_nip05 ON users(nip05) WHERE nip05 IS NOT NULL');}catch{
+    try{await db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_nip05 ON users(nip05)');}catch{}
+  }
   // Indexes for query performance
   const indexes=[
     'CREATE INDEX IF NOT EXISTS idx_sessions_pubkey ON sessions(pubkey)',
@@ -157,6 +161,22 @@ app.post('/api/upload',requireAuth,async(req,res)=>{
 function absUrl(p,req){if(!p||p.startsWith('http'))return p;const host=req?.headers?.origin||`http://localhost:${PORT}`;return`https://swellnotes.com${p}`;}
 function absSession(s,req){if(!s)return s;if(s.voice_memo_path)s.voice_memo_path=absUrl(s.voice_memo_path,req);if(s.video_path)s.video_path=absUrl(s.video_path,req);if(s.avatar_path)s.avatar_path=absUrl(s.avatar_path,req);return s;}
 function absUser(u,req){if(!u)return u;if(u.avatar_path)u.avatar_path=absUrl(u.avatar_path,req);return u;}
+
+// ===== NIP-05 =====
+// Sanitize a display name into a valid NIP-05 local-part per spec: [a-z0-9-_.]
+function sanitizeNip05Name(name){
+  if(!name)return '';
+  return String(name).toLowerCase().replace(/[^a-z0-9._-]/g,'').replace(/^[._-]+|[._-]+$/g,'').slice(0,30);
+}
+
+app.get('/.well-known/nostr.json',async(req,res)=>{
+  res.set('Access-Control-Allow-Origin','*');
+  const name=(req.query.name||'').toString().toLowerCase();
+  if(!name||!/^[a-z0-9._-]+$/.test(name))return res.json({names:{}});
+  const u=await db.get('SELECT pubkey FROM users WHERE nip05=$1',[name]);
+  if(!u)return res.json({names:{}});
+  res.json({names:{[name]:u.pubkey}});
+});
 
 // ===== AUTH =====
 function requireAuth(req,res,next){const p=req.headers['x-nostr-pubkey'];if(!p||!/^[0-9a-f]{64}$/.test(p))return res.status(401).json({error:'Missing pubkey'});req.pubkey=p;next();}
@@ -419,14 +439,24 @@ app.post('/api/auth/login',async(req,res)=>{
     // Use separate INSERT and UPDATE to avoid Postgres parameter conflicts
     const existing=await db.get('SELECT pubkey FROM users WHERE pubkey=$1',[pubkey]);
     if(existing){
+      // Existing users: update display_name and avatar only. NIP-05 is immutable once claimed.
       if(avatarPath)await db.run('UPDATE users SET display_name=$1,avatar_path=$2 WHERE pubkey=$3',[display_name||'Anon',avatarPath,pubkey]);
       else await db.run('UPDATE users SET display_name=$1 WHERE pubkey=$2',[display_name||'Anon',pubkey]);
     }else{
-      if(avatarPath)await db.run('INSERT INTO users(pubkey,display_name,avatar_path)VALUES($1,$2,$3)',[pubkey,display_name||'Anon',avatarPath]);
-      else await db.run('INSERT INTO users(pubkey,display_name)VALUES($1,$2)',[pubkey,display_name||'Anon']);
+      // New user: try to claim a NIP-05 handle derived from the display name.
+      const nip05Name=sanitizeNip05Name(display_name);
+      let nip05=null;
+      if(nip05Name){
+        const taken=await db.get('SELECT pubkey FROM users WHERE nip05=$1',[nip05Name]);
+        if(taken)return res.status(409).json({error:'name_taken',message:'That name is already taken. Please pick another.'});
+        nip05=nip05Name;
+      }
+      if(avatarPath)await db.run('INSERT INTO users(pubkey,display_name,avatar_path,nip05)VALUES($1,$2,$3,$4)',[pubkey,display_name||'Anon',avatarPath,nip05]);
+      else await db.run('INSERT INTO users(pubkey,display_name,nip05)VALUES($1,$2,$3)',[pubkey,display_name||'Anon',nip05]);
     }
     const user=await db.get('SELECT*FROM users WHERE pubkey=$1',[pubkey]);
-    res.json({ok:true,...user});
+    const host=req.headers.host||`localhost:${PORT}`;
+    res.json({ok:true,...user,nip05_full:user.nip05?`${user.nip05}@${host}`:null});
   }catch(err){console.error('Login error:',err);res.status(500).json({error:'Login failed'});}
 });
 
@@ -437,7 +467,7 @@ app.get('/api/users',async(req,res)=>{
   const statsQ='(SELECT pubkey,COUNT(*) as session_count,COALESCE(SUM(barrels),0) as total_barrels,MAX(created_at) as last_active FROM sessions GROUP BY pubkey) st';
   if(spotId){
     const spotStatsQ='(SELECT pubkey,COUNT(*) as spot_sessions FROM sessions WHERE spot_id=$1 GROUP BY pubkey) ss';
-    users=await db.query(`SELECT u.pubkey,u.display_name,u.avatar_path,sm.role,COALESCE(ss.spot_sessions,0) as session_count,COALESCE(st.total_barrels,0) as total_barrels FROM spot_members sm LEFT JOIN users u ON sm.pubkey=u.pubkey LEFT JOIN ${statsQ} ON st.pubkey=u.pubkey LEFT JOIN ${spotStatsQ} ON ss.pubkey=u.pubkey ORDER BY session_count DESC`,[spotId]);
+    users=await db.query(`SELECT u.pubkey,u.display_name,u.avatar_path,sm.role,COALESCE(ss.spot_sessions,0) as session_count,COALESCE(st.total_barrels,0) as total_barrels FROM spot_members sm LEFT JOIN users u ON sm.pubkey=u.pubkey LEFT JOIN ${statsQ} ON st.pubkey=u.pubkey LEFT JOIN ${spotStatsQ} ON ss.pubkey=u.pubkey WHERE sm.spot_id=$2 ORDER BY session_count DESC`,[spotId,spotId]);
   } else if(crew_id){
     users=await db.query(`SELECT u.pubkey,u.display_name,u.avatar_path,sm.role,COALESCE(st.session_count,0) as session_count,COALESCE(st.total_barrels,0) as total_barrels,st.last_active FROM spot_members sm LEFT JOIN users u ON sm.pubkey=u.pubkey LEFT JOIN ${statsQ} ON st.pubkey=u.pubkey WHERE sm.spot_id=$1 ORDER BY st.last_active DESC NULLS LAST`,[crew_id]);
   } else if(sort==='recent'){
