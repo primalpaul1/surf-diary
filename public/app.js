@@ -737,6 +737,15 @@ async function openCrewFeed(spotId){
   currentCrewFeed={id:spot.id,name:spot.name};
   $('#crew-list').classList.add('hidden');$('#crew-feed').classList.remove('hidden');
   $('#crew-feed-title').textContent=spot.name;
+  $('#crew-feed-invite-btn').classList.add('hidden');
+  // Check admin role for invite button visibility
+  if(currentUser){
+    try{
+      const detail=await(await fetch(`${API_BASE}/api/spots/${spotId}`,{headers:{'X-Nostr-Pubkey':currentUser.pubkey}})).json();
+      const mem=detail.members?.find(m=>m.pubkey===currentUser.pubkey);
+      if(mem?.role==='admin')$('#crew-feed-invite-btn').classList.remove('hidden');
+    }catch{}
+  }
   const list=$('#session-list');list.innerHTML='<div class="cond-loading">Loading...</div>';
   try{
     const groups=await(await fetch(`${API_BASE}/api/feed?limit=50`,{headers:{'X-Nostr-Pubkey':currentUser.pubkey}})).json();
@@ -746,8 +755,17 @@ async function openCrewFeed(spotId){
     list.querySelectorAll('.feed-card').forEach(c=>c.addEventListener('click',()=>openSession(c.dataset.id)));
   }catch{list.innerHTML='<div class="empty-state">Error loading sessions</div>';}
 }
-$('#back-to-crews').addEventListener('click',()=>{$('#crew-feed').classList.add('hidden');$('#crew-list').classList.remove('hidden');currentCrewFeed=null;});
+$('#back-to-crews').addEventListener('click',()=>{$('#crew-feed').classList.add('hidden');$('#crew-list').classList.remove('hidden');$('#crew-feed-invite-btn').classList.add('hidden');currentCrewFeed=null;});
 $('#crew-feed-members-btn').addEventListener('click',()=>{if(currentCrewFeed)showMembers(currentCrewFeed.id,currentCrewFeed.name);});
+$('#crew-feed-invite-btn').addEventListener('click',async()=>{
+  if(!currentCrewFeed||!currentUser)return;
+  try{
+    const res=await fetch(`${API_BASE}/api/spots/${currentCrewFeed.id}/invites`,{method:'POST',headers:{'Content-Type':'application/json','X-Nostr-Pubkey':currentUser.pubkey},body:JSON.stringify({})});
+    const data=await res.json();
+    $('#invite-link-input').value=data.link||`${location.origin}/join/${data.invite_code}`;
+    $('#invite-modal').classList.remove('hidden');
+  }catch{toast('Failed to create invite','error');}
+});
 
 function renderSessionCard(s){
   const d=new Date(s.session_date+'T12:00:00'),tags=[];
