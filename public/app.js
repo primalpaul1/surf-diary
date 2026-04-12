@@ -3,6 +3,7 @@ let currentUser=null,currentSpot=null,mySpots=[],followingSet=new Set(),voiceBlo
 const $=s=>document.querySelector(s),$$=s=>document.querySelectorAll(s);
 const BLOSSOM='https://blossom.primal.net';
 const RELAYS=['wss://relay.primal.net','wss://relay.damus.io','wss://nos.lol'];
+const AUTOFOLLOW_NPUB='npub1spdnfacgsd7lk0nlqkq443tkq4jx9z6c6ksvaquuewmw7d3qltpslcq6j7';
 const IS_CAPACITOR=!!window.Capacitor;
 const API_BASE=IS_CAPACITOR?'https://swellnotes.com':'';
 const DEFAULT_COVERS=['/covers/cover1.jpg','/covers/cover2.jpg','/covers/cover3.jpg','/covers/cover4.jpg'];
@@ -255,10 +256,23 @@ async function fetchProfile(pk){
   // Fallback: fetch from relay directly
   try{/* Relay from bundle */const relay=await Relay.connect(RELAYS[0]);return new Promise(r=>{let ev=null;relay.subscribe([{kinds:[0],authors:[pk],limit:1}],{onevent:e=>{if(!ev||e.created_at>ev.created_at)ev=e;},oneose:()=>{relay.close();try{r(ev?JSON.parse(ev.content):null);}catch{r(null);}}});setTimeout(()=>{try{relay.close();}catch{}r(null);},5000);});}catch{return null;}
 }
-async function publishProfile(name,pic){if(!currentUser?.secretKey)return;try{/* finalizeEvent from bundle *//* Relay from bundle *//* hexToBytes from bundle */const ex=await fetchProfile(currentUser.pubkey)||{};const p={...ex,name};if(pic)p.picture=pic;const ev=finalizeEvent({kind:0,created_at:Math.floor(Date.now()/1000),tags:[],content:JSON.stringify(p)},hexToBytes(currentUser.secretKey));for(const u of RELAYS){try{const r=await Relay.connect(u);await r.publish(ev);r.close();}catch{}}}catch{}}
+async function publishProfile(name,pic,nip05){if(!currentUser?.secretKey)return;try{/* finalizeEvent from bundle *//* Relay from bundle *//* hexToBytes from bundle */const ex=await fetchProfile(currentUser.pubkey)||{};const p={...ex,name};if(pic)p.picture=pic;if(nip05)p.nip05=nip05;const ev=finalizeEvent({kind:0,created_at:Math.floor(Date.now()/1000),tags:[],content:JSON.stringify(p)},hexToBytes(currentUser.secretKey));for(const u of RELAYS){try{const r=await Relay.connect(u);await r.publish(ev);r.close();}catch{}}}catch{}}
 async function fetchKind3(pk){try{/* Relay from bundle */const relay=await Relay.connect(RELAYS[0]);return new Promise(r=>{let ev=null;relay.subscribe([{kinds:[3],authors:[pk],limit:1}],{onevent:e=>{if(!ev||e.created_at>ev.created_at)ev=e;},oneose:()=>{relay.close();r(ev);}});setTimeout(()=>{try{relay.close();}catch{}r(ev);},5000);});}catch{return null;}}
 async function publishKind3(pks){if(!currentUser?.secretKey)return;try{/* finalizeEvent from bundle *//* Relay from bundle *//* hexToBytes from bundle */const ev=finalizeEvent({kind:3,created_at:Math.floor(Date.now()/1000),tags:pks.map(p=>['p',p]),content:''},hexToBytes(currentUser.secretKey));for(const u of RELAYS){try{const r=await Relay.connect(u);await r.publish(ev);r.close();}catch{}}}catch{}}
 async function syncFollowsFromRelay(){if(!currentUser)return;const ev=await fetchKind3(currentUser.pubkey);if(!ev)return;const pks=ev.tags.filter(t=>t[0]==='p').map(t=>t[1]);followingSet=new Set(pks);for(const pk of pks){try{await fetch(`${API_BASE}/api/follows/${pk}`,{method:'POST',headers:{'X-Nostr-Pubkey':currentUser.pubkey}});}catch{}}}
+
+// Auto-follow the default Swellnotes npub for new signups (in-app + Nostr kind 3)
+async function autoFollowDefault(){
+  if(!currentUser||!AUTOFOLLOW_NPUB)return;
+  try{
+    const d=nip19.decode(AUTOFOLLOW_NPUB);
+    const hex=d?.data;
+    if(!hex||typeof hex!=='string'||hex===currentUser.pubkey)return;
+    followingSet.add(hex);
+    try{await fetch(`${API_BASE}/api/follows/${hex}`,{method:'POST',headers:{'X-Nostr-Pubkey':currentUser.pubkey}});}catch{}
+    await publishKind3([...followingSet]);
+  }catch(err){console.error('Auto-follow failed:',err);}
+}
 
 // ===== LANDING PAGE AUTH =====
 let landingAvatarFile=null;
@@ -271,14 +285,20 @@ $('#landing-create-form').addEventListener('submit',async e=>{
   $('#landing-submit-btn').disabled=true;$('#landing-submit-btn').classList.add('hidden');$('#landing-loading').classList.remove('hidden');
   try{/* generateSecretKey,getPublicKey,bytesToHex from bundle */
   const sk=generateSecretKey(),secretKey=bytesToHex(sk),pubkey=getPublicKey(sk);
-  currentUser={pubkey,secretKey,display_name:name,avatar_path:null};
   let avatarUrl=null;if(landingAvatarFile)avatarUrl=await uploadToBlossom(landingAvatarFile);
   const body={pubkey,display_name:name};if(avatarUrl)body.avatar_url=avatarUrl;
   else if(landingAvatarFile){const r=new FileReader();body.avatar_base64=await new Promise(res=>{r.onloadend=()=>res(r.result.split(',')[1]);r.readAsDataURL(landingAvatarFile);});}
   const res=await fetch(API_BASE+'/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-  const data=await res.json();currentUser.avatar_path=data.avatar_path||avatarUrl;
+  const data=await res.json();
+  if(!res.ok){
+    if(data?.error==='name_taken')toast(data.message||'That name is taken. Pick another.','error');
+    else toast(data?.error||'Failed','error');
+    return;
+  }
+  currentUser={pubkey,secretKey,display_name:name,avatar_path:data.avatar_path||avatarUrl};
   localStorage.setItem('swellnotes_user',JSON.stringify(currentUser));
-  await publishProfile(name,avatarUrl);
+  await publishProfile(name,avatarUrl,data.nip05_full);
+  autoFollowDefault();
   updateAuthUI();landingAvatarFile=null;toast(`Welcome, ${name}!`);
   }catch(err){toast('Failed: '+err.message,'error');console.error('Account create error:',err);}
   finally{$('#landing-submit-btn').disabled=false;$('#landing-submit-btn').classList.remove('hidden');$('#landing-loading').classList.add('hidden');}
@@ -298,14 +318,20 @@ $('#create-form').addEventListener('submit',async e=>{
   $('#create-submit-btn').disabled=true;$('#create-submit-btn').classList.add('hidden');$('#create-loading').classList.remove('hidden');
   try{/* generateSecretKey,getPublicKey,bytesToHex from bundle */
   const sk=generateSecretKey(),secretKey=bytesToHex(sk),pubkey=getPublicKey(sk);
-  currentUser={pubkey,secretKey,display_name:name,avatar_path:null};
   let avatarUrl=null;if(avatarFile)avatarUrl=await uploadToBlossom(avatarFile);
   const body={pubkey,display_name:name};if(avatarUrl)body.avatar_url=avatarUrl;
   else if(avatarFile){const r=new FileReader();body.avatar_base64=await new Promise(res=>{r.onloadend=()=>res(r.result.split(',')[1]);r.readAsDataURL(avatarFile);});}
   const res=await fetch(API_BASE+'/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-  const data=await res.json();currentUser.avatar_path=data.avatar_path||avatarUrl;
+  const data=await res.json();
+  if(!res.ok){
+    if(data?.error==='name_taken')toast(data.message||'That name is taken. Pick another.','error');
+    else toast(data?.error||'Failed','error');
+    return;
+  }
+  currentUser={pubkey,secretKey,display_name:name,avatar_path:data.avatar_path||avatarUrl};
   localStorage.setItem('swellnotes_user',JSON.stringify(currentUser));
-  await publishProfile(name,avatarUrl);
+  await publishProfile(name,avatarUrl,data.nip05_full);
+  autoFollowDefault();
   updateAuthUI();$('#create-modal').classList.add('hidden');avatarFile=null;toast(`Welcome, ${name}!`);
   }catch{toast('Failed','error');}
   finally{$('#create-submit-btn').disabled=false;$('#create-submit-btn').classList.remove('hidden');$('#create-loading').classList.add('hidden');}
