@@ -730,9 +730,11 @@ async function loadFeed(){
   }catch{$('#crew-list').innerHTML='<div class="empty-state">Error loading crews</div>';}
 }
 
+let currentCrewFeed=null;
 async function openCrewFeed(spotId){
   const spot=mySpots.find(s=>s.id===spotId);
   if(!spot)return;
+  currentCrewFeed={id:spot.id,name:spot.name};
   $('#crew-list').classList.add('hidden');$('#crew-feed').classList.remove('hidden');
   $('#crew-feed-title').textContent=spot.name;
   const list=$('#session-list');list.innerHTML='<div class="cond-loading">Loading...</div>';
@@ -744,7 +746,8 @@ async function openCrewFeed(spotId){
     list.querySelectorAll('.feed-card').forEach(c=>c.addEventListener('click',()=>openSession(c.dataset.id)));
   }catch{list.innerHTML='<div class="empty-state">Error loading sessions</div>';}
 }
-$('#back-to-crews').addEventListener('click',()=>{$('#crew-feed').classList.add('hidden');$('#crew-list').classList.remove('hidden');});
+$('#back-to-crews').addEventListener('click',()=>{$('#crew-feed').classList.add('hidden');$('#crew-list').classList.remove('hidden');currentCrewFeed=null;});
+$('#crew-feed-members-btn').addEventListener('click',()=>{if(currentCrewFeed)showMembers(currentCrewFeed.id,currentCrewFeed.name);});
 
 function renderSessionCard(s){
   const d=new Date(s.session_date+'T12:00:00'),tags=[];
@@ -754,9 +757,8 @@ function renderSessionCard(s){
   else if(s.session_type==='observed')tags.push('<span class="tag tag-observed">observed</span>');
   if(s.wave_shape)tags.push(`<span class="tag tag-shape">${s.wave_shape}</span>`);
   if(s.barrels>0)tags.push(`<span class="tag tag-barrel">🤿 ${s.barrels} tube${s.barrels>1?'s':''}</span>`);
-  if(s.video_path)tags.push('<span class="tag tag-video">📹</span>');
   if(s.voice_memo_path)tags.push('<span class="tag tag-voice">🎙</span>');
-  const vt=s.video_path?`<div class="feed-video-thumb"><video src="${s.video_path}" preload="metadata" muted></video></div>`:'';
+  const vt=s.video_path?`<div class="feed-video-thumb"><video src="${s.video_path}#t=0.1" preload="metadata" muted playsinline></video><span class="feed-video-play">▶</span></div>`:'';
   const bb=s.total_barrels>0?`<span class="barrel-count" title="${s.total_barrels} tubes">🤿${s.total_barrels}</span>`:'';
   return`<div class="feed-card" data-id="${s.id}"><div class="feed-date"><div class="day">${d.getDate()}</div><div class="mo">${d.toLocaleString('en',{month:'short'})}</div></div><div class="feed-body"><div class="feed-user">${userLinkHTML(s.pubkey,s.display_name,s.avatar_path)}${bb}<span class="feed-tod">· ${formatTOD(s.time_of_day)}</span></div><div class="feed-tags">${tags.join('')}</div>${vt}</div><div class="feed-rating">${s.rating?`<div class="rbadge ${getRatingClass(s.rating)}">${s.rating}</div>`:'<div class="rbadge">—</div>'}</div></div>`;
 }
