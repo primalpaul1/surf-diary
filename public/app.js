@@ -1225,7 +1225,11 @@ const saved=localStorage.getItem('swellnotes_user');if(saved){try{currentUser=JS
 const savedSpot=localStorage.getItem('swellnotes_spot');if(savedSpot){try{currentSpot=JSON.parse(savedSpot);selectSpot(currentSpot);}catch{localStorage.removeItem('swellnotes_spot');}}
 console.log('[Init] user:',currentUser?.display_name||'none','spot:',currentSpot?.name||'none');
 updateAuthUI();checkProStatus();checkCallback();checkInviteURL();
-if(currentSpot)fetchConditions();
+if(currentUser&&currentSpot){
+  $$('.nav-btn').forEach(x=>x.classList.remove('active'));$$('.nav-btn[data-view="history"]').forEach(x=>x.classList.add('active'));
+  $$('.view').forEach(v=>v.classList.remove('active'));$('#view-history').classList.add('active');
+  fetchConditions();loadFeed();
+} else if(currentSpot){fetchConditions();}
 // Register service worker for PWA
 if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
 // Capacitor: listen for deep link returns (NIP-46 callback)
