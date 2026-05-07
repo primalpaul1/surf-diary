@@ -6,6 +6,9 @@ const RELAYS=['wss://relay.primal.net','wss://relay.damus.io','wss://nos.lol'];
 const AUTOFOLLOW_NPUB='npub1spdnfacgsd7lk0nlqkq443tkq4jx9z6c6ksvaquuewmw7d3qltpslcq6j7';
 const IS_CAPACITOR=!!window.Capacitor;
 const API_BASE=IS_CAPACITOR?'https://swellnotes.com':'';
+const KEYCHAIN_USER_KEY='swellnotes_user';
+function saveUser(u){const json=JSON.stringify(u);localStorage.setItem(KEYCHAIN_USER_KEY,json);try{window.Capacitor?.Plugins?.Keychain?.save({key:KEYCHAIN_USER_KEY,value:json});}catch(e){console.warn('[Keychain] save failed',e);}}
+function clearUser(){localStorage.removeItem(KEYCHAIN_USER_KEY);try{window.Capacitor?.Plugins?.Keychain?.clear({key:KEYCHAIN_USER_KEY});}catch(e){}}
 const DEFAULT_COVERS=['/covers/cover1.jpg','/covers/cover2.jpg','/covers/cover3.jpg','/covers/cover4.jpg'];
 function defaultCover(id){return DEFAULT_COVERS[Math.abs([...((id||'')+'x')].reduce((h,c)=>((h<<5)-h)+c.charCodeAt(0),0))%DEFAULT_COVERS.length];}
 
@@ -296,7 +299,7 @@ $('#landing-create-form').addEventListener('submit',async e=>{
     return;
   }
   currentUser={pubkey,secretKey,display_name:name,avatar_path:data.avatar_path||avatarUrl};
-  localStorage.setItem('swellnotes_user',JSON.stringify(currentUser));
+  saveUser(currentUser);
   await publishProfile(name,avatarUrl,data.nip05_full);
   autoFollowDefault();
   updateAuthUI();landingAvatarFile=null;toast(`Welcome, ${name}!`);
@@ -329,7 +332,7 @@ $('#create-form').addEventListener('submit',async e=>{
     return;
   }
   currentUser={pubkey,secretKey,display_name:name,avatar_path:data.avatar_path||avatarUrl};
-  localStorage.setItem('swellnotes_user',JSON.stringify(currentUser));
+  saveUser(currentUser);
   await publishProfile(name,avatarUrl,data.nip05_full);
   autoFollowDefault();
   updateAuthUI();$('#create-modal').classList.add('hidden');avatarFile=null;toast(`Welcome, ${name}!`);
@@ -454,7 +457,7 @@ async function completeLogin(pk){
   const bunkerPk=nip46Data?._bunkerPubkey||connected?.bunkerPubkey||null;
   currentUser={pubkey:pk,display_name:name,avatar_path:picture};
   if(localSk&&bunkerPk)currentUser.nip46={localSecretKey:localSk,bunkerPubkey:bunkerPk};
-  localStorage.setItem('swellnotes_user',JSON.stringify(currentUser));
+  saveUser(currentUser);
   // Reset mobile login UI
   $('#landing-primal-btn').disabled=false;$('#landing-primal-btn').style.opacity='';
   const st=$('#landing-primal-status');if(st){st.classList.add('hidden');st.style.display='';}
@@ -516,7 +519,7 @@ $('#settings-avatar-file').addEventListener('change',async e=>{
     } else {
       await fetch(API_BASE+'/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pubkey:currentUser.pubkey,display_name:currentUser.display_name,avatar_url:avatarUrl})});
     }
-    currentUser.avatar_path=avatarUrl;localStorage.setItem('swellnotes_user',JSON.stringify(currentUser));
+    currentUser.avatar_path=avatarUrl;saveUser(currentUser);
     $('#settings-avatar').src=avatarUrl;$('#settings-avatar').style.display='';
     if($('#user-avatar'))$('#user-avatar').src=avatarUrl;
     toast('Photo updated!');
@@ -540,7 +543,7 @@ $('#logout-btn').addEventListener('click',async()=>{
   if(keyDisplay)try{await navigator.clipboard?.writeText(keyDisplay);toast('Key copied to clipboard');}catch{}
   // Step 2: Final confirmation
   if(!confirm('Last chance — are you really sure? You will lose access to this account if you haven\'t saved your key.'))return;
-  currentUser=null;currentSpot=null;mySpots=[];followingSet.clear();localStorage.removeItem('swellnotes_user');localStorage.removeItem('swellnotes_spot');updateAuthUI();location.reload();
+  currentUser=null;currentSpot=null;mySpots=[];followingSet.clear();clearUser();localStorage.removeItem('swellnotes_spot');updateAuthUI();location.reload();
 });
 
 function updateAuthUI(){
@@ -924,8 +927,8 @@ $('#session-modal .modal-backdrop').addEventListener('click',()=>$('#session-mod
 $('#session-modal .modal-close').addEventListener('click',()=>$('#session-modal').classList.add('hidden'));
 
 // ===== SEARCH =====
-$('#search-btn').addEventListener('click',runSearch);$('#search-clear').addEventListener('click',()=>{['search-dir-min','search-dir-max','search-height-min','search-height-max','search-period-min','search-period-max','search-rating-min','search-rating-max'].forEach(id=>$(`#${id}`).value='');$('#search-results').innerHTML='';});
-async function runSearch(){const p=new URLSearchParams();if(currentUser)p.set('pubkey',currentUser.pubkey);if(currentSpot)p.set('spot_id',currentSpot.id);const fields={dir_min:'search-dir-min',dir_max:'search-dir-max',height_min:'search-height-min',height_max:'search-height-max',period_min:'search-period-min',period_max:'search-period-max',rating_min:'search-rating-min',rating_max:'search-rating-max'};Object.entries(fields).forEach(([k,id])=>{const v=$(`#${id}`).value;if(v)p.set(k,v);});
+$('#search-btn').addEventListener('click',runSearch);$('#search-clear').addEventListener('click',()=>{['search-dir-min','search-dir-max','search-height-min','search-height-max','search-period-min','search-period-max','search-rating-min','search-rating-max','search-date-from','search-date-to'].forEach(id=>$(`#${id}`).value='');$('#search-results').innerHTML='';});
+async function runSearch(){const p=new URLSearchParams();if(currentUser)p.set('pubkey',currentUser.pubkey);if(currentSpot)p.set('spot_id',currentSpot.id);const fields={dir_min:'search-dir-min',dir_max:'search-dir-max',height_min:'search-height-min',height_max:'search-height-max',period_min:'search-period-min',period_max:'search-period-max',rating_min:'search-rating-min',rating_max:'search-rating-max',date_from:'search-date-from',date_to:'search-date-to'};Object.entries(fields).forEach(([k,id])=>{const v=$(`#${id}`).value;if(v)p.set(k,v);});
 try{const{sessions,summary}=await(await fetch(`${API_BASE}/api/search?${p}`)).json();const sr=$('#search-results');if(!sessions.length){sr.innerHTML='<div class="empty-state"><p>No matches.</p></div>';return;}
 sr.innerHTML=`<div class="search-summary"><div class="search-stat"><span class="search-stat-label">Sessions</span><span class="search-stat-value">${summary.count}</span></div><div class="search-stat"><span class="search-stat-label">Avg</span><span class="search-stat-value">${summary.avg_rating||'—'}/10</span></div><div class="search-stat"><span class="search-stat-label">Best</span><span class="search-stat-value">${summary.best_rating||'—'}</span></div><div class="search-stat"><span class="search-stat-label">Worst</span><span class="search-stat-value">${summary.worst_rating||'—'}</span></div></div><div class="search-result-list">${sessions.map(s=>{const d=new Date(s.session_date+'T12:00:00'),sw=JSON.parse(s.swells_json||'[]');return`<div class="feed-card" onclick="openSession(${s.id})"><div class="feed-date"><div class="day">${d.getDate()}</div><div class="mo">${d.toLocaleString('en',{month:'short'})}</div></div><div class="feed-body"><div class="feed-user">${avatarHTML(s.avatar_path,s.display_name)}<span class="feed-name">${escapeHtml(s.display_name||'Anon')}</span></div><div class="feed-tags">${sw.map(x=>`<span class="tag tag-swell">${x.height_ft}ft ${x.period_s}s ${x.direction_compass}</span>`).join('')}</div></div><div class="feed-rating">${s.rating?`<div class="rbadge ${getRatingClass(s.rating)}">${s.rating}</div>`:''}</div></div>`;}).join('')}</div>`;}catch{$('#search-results').innerHTML='<div class="empty-state">Failed</div>';}}
 
@@ -1011,7 +1014,7 @@ $('#pro-purchase-btn').addEventListener('click',async()=>{
       const r=await window.Capacitor.Plugins.StoreKit.purchase();
       if(r.success){
         await fetch(API_BASE+'/api/pro/activate',{method:'POST',headers:{'X-Nostr-Pubkey':currentUser.pubkey}});
-        isPro=true;currentUser.is_pro=1;localStorage.setItem('swellnotes_user',JSON.stringify(currentUser));
+        isPro=true;currentUser.is_pro=1;saveUser(currentUser);
         toast('Welcome to Pro!');$('#pro-modal').classList.add('hidden');
       }else if(r.cancelled){toast('Purchase cancelled','error');}
       else if(r.pending){toast('Purchase pending — check back soon');}
@@ -1029,7 +1032,7 @@ $('#pro-restore-btn').addEventListener('click',async()=>{
       const r=await window.Capacitor.Plugins.StoreKit.restorePurchases();
       if(r.isPro){
         await fetch(API_BASE+'/api/pro/activate',{method:'POST',headers:{'X-Nostr-Pubkey':currentUser.pubkey}});
-        isPro=true;currentUser.is_pro=1;localStorage.setItem('swellnotes_user',JSON.stringify(currentUser));
+        isPro=true;currentUser.is_pro=1;saveUser(currentUser);
         toast('Pro restored!');$('#pro-modal').classList.add('hidden');
       }else{toast('No active subscription found','error');}
     }catch(e){toast('Restore failed','error');}
@@ -1268,6 +1271,8 @@ $('#nav-add-crew')?.addEventListener('click',openNewCrewFlow);
 
 // ===== INIT =====
 const saved=localStorage.getItem('swellnotes_user');if(saved){try{currentUser=JSON.parse(saved);}catch{localStorage.removeItem('swellnotes_user');}}
+// Restore from iCloud Keychain if localStorage is empty (e.g. fresh install on a new Apple device)
+if(!currentUser&&window.Capacitor?.Plugins?.Keychain){window.Capacitor.Plugins.Keychain.load({key:KEYCHAIN_USER_KEY}).then(r=>{if(r?.value){localStorage.setItem(KEYCHAIN_USER_KEY,r.value);location.reload();}}).catch(e=>console.warn('[Keychain] restore failed',e));}
 const savedSpot=localStorage.getItem('swellnotes_spot');if(savedSpot){try{currentSpot=JSON.parse(savedSpot);selectSpot(currentSpot);}catch{localStorage.removeItem('swellnotes_spot');}}
 console.log('[Init] user:',currentUser?.display_name||'none','spot:',currentSpot?.name||'none');
 updateAuthUI();checkProStatus();checkCallback();checkInviteURL();

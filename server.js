@@ -572,12 +572,12 @@ app.post('/api/sessions/:id/comments',requireAuth,async(req,res)=>{
 
 // ===== SEARCH (spot-aware) =====
 app.get('/api/search',async(req,res)=>{
-  const{pubkey,spot_id,dir_min,dir_max,height_min,height_max,period_min,period_max,rating_min,rating_max}=req.query;
+  const{pubkey,spot_id,dir_min,dir_max,height_min,height_max,period_min,period_max,rating_min,rating_max,date_from,date_to}=req.query;
   let sessions;
   const safeSpotId=spot_id?.replace(/[^a-zA-Z0-9_-]/g,'')||null;
   if(pubkey){const pks=await getFeedPubkeys(pubkey);let n=pks.length+1;const ph=pks.map((_,i)=>`$${i+1}`).join(',');const spotClause=safeSpotId?` AND s.spot_id=$${n}`:'';const params=[...pks];if(safeSpotId)params.push(safeSpotId);sessions=await db.query(`SELECT s.*,u.display_name,u.avatar_path FROM sessions s LEFT JOIN users u ON s.pubkey=u.pubkey WHERE s.pubkey IN(${ph})${spotClause} ORDER BY s.session_date DESC`,params);}
   else sessions=await db.query(`SELECT s.*,u.display_name,u.avatar_path FROM sessions s LEFT JOIN users u ON s.pubkey=u.pubkey ${baseWhere} ORDER BY s.session_date DESC`);
-  const results=sessions.filter(s=>{const swells=JSON.parse(s.swells_json||'[]');if(!swells.length)return false;if(dir_min||dir_max){const dmin=parseFloat(dir_min)||0,dmax=parseFloat(dir_max)||360;if(!swells.some(sw=>sw.direction_deg>=dmin&&sw.direction_deg<=dmax))return false;}if(height_min&&swells[0].height_ft<parseFloat(height_min))return false;if(height_max&&swells[0].height_ft>parseFloat(height_max))return false;if(period_min&&swells[0].period_s<parseFloat(period_min))return false;if(period_max&&swells[0].period_s>parseFloat(period_max))return false;if(rating_min&&(s.rating||0)<parseInt(rating_min))return false;if(rating_max&&(s.rating||0)>parseInt(rating_max))return false;return true;});
+  const results=sessions.filter(s=>{const swells=JSON.parse(s.swells_json||'[]');if(!swells.length)return false;if(dir_min||dir_max){const dmin=parseFloat(dir_min)||0,dmax=parseFloat(dir_max)||360;if(!swells.some(sw=>sw.direction_deg>=dmin&&sw.direction_deg<=dmax))return false;}if(height_min&&swells[0].height_ft<parseFloat(height_min))return false;if(height_max&&swells[0].height_ft>parseFloat(height_max))return false;if(period_min&&swells[0].period_s<parseFloat(period_min))return false;if(period_max&&swells[0].period_s>parseFloat(period_max))return false;if(rating_min&&(s.rating||0)<parseInt(rating_min))return false;if(rating_max&&(s.rating||0)>parseInt(rating_max))return false;if(date_from&&s.session_date<date_from)return false;if(date_to&&s.session_date>date_to)return false;return true;});
   const ratings=results.filter(s=>s.rating).map(s=>s.rating);
   res.json({sessions:results.slice(0,100).map(s=>absSession(s,req)),summary:{count:results.length,avg_rating:ratings.length?Math.round(ratings.reduce((a,b)=>a+b,0)/ratings.length*10)/10:null,best_rating:ratings.length?Math.max(...ratings):null,worst_rating:ratings.length?Math.min(...ratings):null}});
 });
@@ -610,18 +610,19 @@ app.get('/api/analysis/forecast-match',async(req,res)=>{
         const c=getConditions(forecast,dateStr,tod);
         if(!c.swells?.length)continue;
         const primary=c.swells[0];
-        // Find matching sessions: ±10° direction, ±1ft height
+        // Match tolerances — consider primary AND secondary swell, with direction, height, AND period
+        const DIR_TOL=3,HEIGHT_TOL=0.5,PERIOD_TOL=1.5;
+        const swellMatch=(a,b)=>{let dd=Math.abs(a.direction_deg-b.direction_deg);if(dd>180)dd=360-dd;return dd<=DIR_TOL&&Math.abs(a.height_ft-b.height_ft)<=HEIGHT_TOL&&Math.abs(a.period_s-b.period_s)<=PERIOD_TOL;};
+        const forecastSwells=c.swells.slice(0,2); // primary + secondary
         const matches=[];
         for(const s of sessions){
           const sw=JSON.parse(s.swells_json);if(!sw.length)continue;
-          const dir=sw[0].direction_deg,ht=sw[0].height_ft;
-          let dirDiff=Math.abs(dir-primary.direction_deg);
-          if(dirDiff>180)dirDiff=360-dirDiff;
-          if(dirDiff<=10&&Math.abs(ht-primary.height_ft)<=1){
-            matches.push({id:s.id,rating:s.rating,date:s.session_date,time:s.time_of_day,
-              swell_height:sw[0].height_ft,swell_dir:sw[0].direction_deg,swell_compass:sw[0].direction_compass,
-              wind_type:s.wind_type,barrels:s.barrels||0,pubkey:s.pubkey});
-          }
+          // Every forecast swell (primary + secondary) must find a matching session swell
+          const allMatched=forecastSwells.every(fs=>sw.some(ss=>swellMatch(fs,ss)));
+          if(!allMatched)continue;
+          matches.push({id:s.id,rating:s.rating,date:s.session_date,time:s.time_of_day,
+            swell_height:sw[0].height_ft,swell_dir:sw[0].direction_deg,swell_compass:sw[0].direction_compass,
+            wind_type:s.wind_type,barrels:s.barrels||0,pubkey:s.pubkey});
         }
         const ratings=matches.map(m=>m.rating);
         const avg=ratings.length?Math.round(ratings.reduce((a,b)=>a+b,0)/ratings.length*10)/10:null;
