@@ -1287,4 +1287,4 @@ if(currentUser&&currentSpot){
 // Register service worker for PWA
 if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
 // Capacitor: listen for deep link returns (NIP-46 callback)
-if(IS_CAPACITOR){try{const CapApp=window.Capacitor.Plugins.App;if(CapApp)CapApp.addListener('appUrlOpen',data=>{if(data.url&&data.url.includes('login-callback'))checkCallback();});}catch{}}
+if(IS_CAPACITOR){try{const CapApp=window.Capacitor.Plugins.App;if(CapApp)CapApp.addListener('appUrlOpen',data=>{if(!data.url)return;if(data.url.includes('login-callback')){checkCallback();return;}try{const u=new URL(data.url);const m=u.pathname.match(/^\/join\/(\w+)$/);if(m){history.replaceState(null,'',u.pathname);checkInviteURL();}}catch{}});}catch{}}

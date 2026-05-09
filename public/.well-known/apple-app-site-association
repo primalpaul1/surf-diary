@@ -1,0 +1,12 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["FZ4774954N.com.swellnotes.app"],
+        "components": [
+          { "/": "/join/*", "comment": "Crew invite links" }
+        ]
+      }
+    ]
+  }
+}
