@@ -1053,7 +1053,7 @@ async function checkInviteURL(){
     const data=await res.json();
     if(data.ok){
       await loadMySpots();
-      const spot=await(await fetch(`${API_BASE}/api/spots/${data.spot_id}`)).json();
+      const spot=await(await fetch(`${API_BASE}/api/spots/${data.spot_id}`,{headers:{'X-Nostr-Pubkey':currentUser.pubkey}})).json();
       selectSpot(spot);
       toast(`Joined ${inv.spot_name}!`);
       history.replaceState(null,'','/');
@@ -1279,6 +1279,8 @@ const saved=localStorage.getItem('swellnotes_user');if(saved){try{currentUser=JS
 // Restore from iCloud Keychain if localStorage is empty (e.g. fresh install on a new Apple device)
 if(!currentUser&&window.Capacitor?.Plugins?.Keychain){window.Capacitor.Plugins.Keychain.load({key:KEYCHAIN_USER_KEY}).then(r=>{if(r?.value){localStorage.setItem(KEYCHAIN_USER_KEY,r.value);location.reload();}}).catch(e=>console.warn('[Keychain] restore failed',e));}
 const savedSpot=localStorage.getItem('swellnotes_spot');if(savedSpot){try{currentSpot=JSON.parse(savedSpot);selectSpot(currentSpot);}catch{localStorage.removeItem('swellnotes_spot');}}
+// Heal stale spot cache: re-fetch from server with auth so missing fields (name, location, members, cover) populate
+if(currentSpot&&currentUser){fetch(`${API_BASE}/api/spots/${currentSpot.id}`,{headers:{'X-Nostr-Pubkey':currentUser.pubkey}}).then(r=>r.json()).then(fresh=>{if(fresh&&!fresh.error&&fresh.name)selectSpot(fresh);}).catch(()=>{});}
 console.log('[Init] user:',currentUser?.display_name||'none','spot:',currentSpot?.name||'none');
 updateAuthUI();checkProStatus();checkCallback();checkInviteURL();
 if(currentUser&&currentSpot){
