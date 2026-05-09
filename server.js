@@ -668,7 +668,7 @@ app.get('/api/blocks',requireAuth,async(req,res)=>{
 });
 
 app.get('/api/debug',async(req,res)=>{try{if(USE_PG){const tables=await db.query("SELECT tablename FROM pg_tables WHERE schemaname='public'");const counts={};for(const t of tables){try{const c=await db.get(`SELECT COUNT(*) as n FROM ${t.tablename}`);counts[t.tablename]=+(c?.n||0);}catch{counts[t.tablename]='error';}}res.json({use_pg:true,db_url:process.env.DATABASE_URL?.slice(0,40)+'...',tables:counts});}else{res.json({use_pg:false});}}catch(err){res.json({error:err.message});}});
-app.get('/.well-known/apple-app-site-association',(req,res)=>{res.set('Content-Type','application/json');res.sendFile(path.join(__dirname,'public','.well-known','apple-app-site-association'));});
+app.get('/.well-known/apple-app-site-association',(req,res)=>{const aasa=fs.readFileSync(path.join(__dirname,'public','.well-known','apple-app-site-association'));res.type('application/json').send(aasa);});
 app.get('/login-callback',(req,res)=>res.sendFile(path.join(__dirname,'public','login-callback.html')));
 app.get('/join/:code',(req,res)=>res.sendFile(path.join(__dirname,'public','index.html')));
 app.get('*',(req,res)=>res.sendFile(path.join(__dirname,'public','index.html')));
