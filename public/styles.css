@@ -138,12 +138,15 @@
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+html { background: var(--ocean-deep); overscroll-behavior-y: none; }
 body {
   font-family: var(--font-body);
   background: var(--bg);
   color: var(--text);
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
+  overscroll-behavior-y: none;
+  touch-action: pan-x pan-y;
 }
 
 /* ---- HEADER ---- */
@@ -161,7 +164,8 @@ header {
 .logo-icon { width: 28px; height: 28px; border-radius: 6px; }
 .logo-text { font-family: var(--font-body); font-size: 1.15rem; color: white; letter-spacing: -0.01em; font-weight: 300; display: none; }
 
-nav { display: flex; gap: 2px; flex: 1; }
+nav { display: flex; gap: 2px; flex: 1; transition: max-height 0.28s ease, opacity 0.18s ease, margin 0.28s ease, padding-top 0.28s ease, padding-bottom 0.28s ease, border-top-width 0.28s ease; max-height: 60px; overflow: hidden; }
+header.nav-hidden nav { max-height: 0; opacity: 0; margin-top: 0; margin-bottom: 0; padding-top: 0; padding-bottom: 0; border-top-width: 0; pointer-events: none; }
 .nav-btn {
   background: none; border: none; color: rgba(255,255,255,0.45);
   padding: 0.45rem 0.9rem; border-radius: 8px; cursor: pointer;

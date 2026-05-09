@@ -1269,6 +1269,9 @@ function openNewCrewFlow(){
 $('#create-crew-btn')?.addEventListener('click',openNewCrewFlow);
 $('#nav-add-crew')?.addEventListener('click',openNewCrewFlow);
 
+// ===== HIDE NAV ON SCROLL DOWN =====
+(()=>{const hdr=document.getElementById('app-header');if(!hdr)return;let lastY=window.scrollY,ticking=false;const onScroll=()=>{const y=window.scrollY;const dy=y-lastY;if(y<30){hdr.classList.remove('nav-hidden');}else if(dy>4){hdr.classList.add('nav-hidden');}else if(dy<-4){hdr.classList.remove('nav-hidden');}lastY=y;ticking=false;};window.addEventListener('scroll',()=>{if(!ticking){requestAnimationFrame(onScroll);ticking=true;}},{passive:true});})();
+
 // ===== INIT =====
 const saved=localStorage.getItem('swellnotes_user');if(saved){try{currentUser=JSON.parse(saved);}catch{localStorage.removeItem('swellnotes_user');}}
 // Restore from iCloud Keychain if localStorage is empty (e.g. fresh install on a new Apple device)

@@ -3,10 +3,11 @@
   "appName": "Swellnotes",
   "webDir": "public",
   "ios": {
-    "contentInset": "always",
+    "contentInset": "never",
     "allowsLinkPreview": false,
     "scrollEnabled": true,
-    "preferredContentMode": "mobile"
+    "preferredContentMode": "mobile",
+    "backgroundColor": "#041428"
   },
   "plugins": {
     "SplashScreen": {

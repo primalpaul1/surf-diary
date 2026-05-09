@@ -329,7 +329,9 @@ app.post('/api/spots/:id/invites',requireAuth,async(req,res)=>{
   const maxUses=req.body.max_uses||null;
   const expiresAt=req.body.expires_hours?Math.floor(Date.now()/1000)+req.body.expires_hours*3600:null;
   await db.run('INSERT INTO spot_invites(id,spot_id,created_by,max_uses,expires_at)VALUES($1,$2,$3,$4,$5)',[id,req.params.id,req.pubkey,maxUses,expiresAt]);
-  res.json({ok:true,invite_code:id,link:`${req.headers.origin||`http://localhost:${PORT}`}/join/${id}`});
+  const origin=req.headers.origin;
+  const base=(origin&&origin.startsWith('http'))?origin:'https://swellnotes.com';
+  res.json({ok:true,invite_code:id,link:`${base}/join/${id}`});
 });
 
 app.get('/api/invite/:code',async(req,res)=>{
