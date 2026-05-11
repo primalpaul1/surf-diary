@@ -8,6 +8,9 @@ const IS_CAPACITOR=!!window.Capacitor;
 const API_BASE=IS_CAPACITOR?'https://swellnotes.com':'';
 const PRIMAL_APP_STORE_HTTPS='https://apps.apple.com/app/id1673134518';
 const PRIMAL_APP_STORE_ITMS='itms-apps://apps.apple.com/app/id1673134518';
+// Normalize an avatar URL (Blossom URL or server-relative path) to an absolute https URL
+// suitable for Nostr kind-0 publish + cross-domain image loads.
+function absAvatarUrl(p){if(!p)return null;if(p.startsWith('http'))return p;return `https://swellnotes.com${p.startsWith('/')?'':'/'}${p}`;}
 // Open Primal via SFSafariViewController (keeps Swellnotes' WebSocket alive during background;
 // window.location.href backgrounds the app harder and iOS kills the relay socket).
 async function launchPrimal(deepLink){if(IS_CAPACITOR&&window.Capacitor?.Plugins?.Browser){try{await window.Capacitor.Plugins.Browser.open({url:deepLink});return;}catch{}}window.location.href=deepLink;}
@@ -19,7 +22,30 @@ const DEFAULT_COVERS=['/covers/cover1.jpg','/covers/cover2.jpg','/covers/cover3.
 function defaultCover(id){return DEFAULT_COVERS[Math.abs([...((id||'')+'x')].reduce((h,c)=>((h<<5)-h)+c.charCodeAt(0),0))%DEFAULT_COVERS.length];}
 
 // Nav
-$$('.nav-btn[data-view]').forEach(b=>{b.addEventListener('click',()=>{$$('.nav-btn').forEach(x=>x.classList.remove('active'));b.classList.add('active');$$('.view').forEach(v=>v.classList.remove('active'));$(`#view-${b.dataset.view}`).classList.add('active');if(b.dataset.view==='history')loadFeed();if(b.dataset.view==='surfers')loadSurfers();if(b.dataset.view==='analysis')loadAnalysis();if(b.dataset.view==='pipeline')loadPipeline();});});
+$$('.nav-btn[data-view]').forEach(b=>{b.addEventListener('click',()=>{$$('.nav-btn').forEach(x=>x.classList.remove('active'));b.classList.add('active');$$('.view').forEach(v=>v.classList.remove('active'));$(`#view-${b.dataset.view}`).classList.add('active');if(b.dataset.view==='history')loadFeed();if(b.dataset.view==='surfers')loadSurfers();if(b.dataset.view==='analysis')loadAnalysis();if(b.dataset.view==='pipeline')loadPipeline();maybeShowTabHint(b.dataset.view);});});
+
+// ===== TAB HINTS (first-run onboarding) =====
+const TAB_HINTS_KEY='swellnotes_seen_tabs';
+const ALL_TABS=['log','history','surfers','analysis','pipeline'];
+const TAB_HINTS={
+  log:{title:'Log',body:'Rate each session. Conditions auto-fill from Surfline.'},
+  history:{title:'Reports',body:'Browse past sessions and stats from your crew.'},
+  surfers:{title:'Surfers',body:'See who\'s in your crew and follow other surfers.'},
+  analysis:{title:'Analysis',body:'Match the incoming swell to your best past days.'},
+  pipeline:{title:'Search',body:'Find a new spot or start your own crew.'}
+};
+function getSeenTabs(){try{return JSON.parse(localStorage.getItem(TAB_HINTS_KEY)||'[]');}catch{return[];}}
+function markTabSeen(v){const s=getSeenTabs();if(!s.includes(v)){s.push(v);localStorage.setItem(TAB_HINTS_KEY,JSON.stringify(s));}renderTabDots();}
+function renderTabDots(){const s=getSeenTabs();$$('.nav-btn[data-view]').forEach(btn=>{const v=btn.dataset.view;const ex=btn.querySelector('.nav-tip-dot');if(!v||s.includes(v)){ex?.remove();}else if(!ex){btn.insertAdjacentHTML('beforeend','<span class="nav-tip-dot"></span>');}});}
+function maybeShowTabHint(v){const h=TAB_HINTS[v];if(!h)return;const seen=getSeenTabs();if(seen.includes(v))return;document.querySelector('.tab-hint')?.remove();const el=document.createElement('div');el.className='tab-hint';el.innerHTML=`<div class="tab-hint-body"><div class="tab-hint-title">${h.title}</div><div class="tab-hint-text">${h.body}</div></div><button class="tab-hint-close" aria-label="Dismiss">×</button>`;document.body.appendChild(el);const remove=()=>{el.classList.add('tab-hint-out');setTimeout(()=>el.remove(),200);};el.querySelector('.tab-hint-close').addEventListener('click',remove);setTimeout(remove,6000);markTabSeen(v);}
+function initTabHints(){
+  // If we've never tracked seen-tabs before AND a user is already logged in, mark all seen
+  // (existing users who upgrade to this build shouldn't suddenly see hints).
+  if(localStorage.getItem(TAB_HINTS_KEY)===null&&localStorage.getItem('swellnotes_user')){
+    localStorage.setItem(TAB_HINTS_KEY,JSON.stringify(ALL_TABS));
+  }
+  renderTabDots();
+}
 
 function toast(m,t='success'){const e=document.createElement('div');e.className=`toast toast-${t}`;e.textContent=m;document.body.appendChild(e);setTimeout(()=>e.remove(),3000);}
 function escapeHtml(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML;}
@@ -42,6 +68,7 @@ function selectSpot(spot){
   const overlay=document.getElementById('onboard-overlay');if(overlay)overlay.remove();
   $('#spot-picker')?.classList.add('hidden');
   $('#app-header').classList.remove('hidden');
+  renderTabDots();
   $('#hero').classList.remove('hidden');
   document.body.style.overflow='';
   $('#main-content')?.classList.remove('hidden');
@@ -304,9 +331,10 @@ $('#landing-create-form').addEventListener('submit',async e=>{
     else toast(data?.error||'Failed','error');
     return;
   }
-  currentUser={pubkey,secretKey,display_name:name,avatar_path:data.avatar_path||avatarUrl};
+  currentUser={pubkey,secretKey,display_name:name,avatar_path:absAvatarUrl(data.avatar_path)||avatarUrl};
   saveUser(currentUser);
-  await publishProfile(name,avatarUrl,data.nip05_full);
+  localStorage.setItem(TAB_HINTS_KEY,'[]'); // new account → show first-run tab hints
+  await publishProfile(name,avatarUrl||absAvatarUrl(data.avatar_path),data.nip05_full);
   autoFollowDefault();
   updateAuthUI();landingAvatarFile=null;toast(`Welcome, ${name}!`);
   }catch(err){toast('Failed: '+err.message,'error');console.error('Account create error:',err);}
@@ -337,9 +365,10 @@ $('#create-form').addEventListener('submit',async e=>{
     else toast(data?.error||'Failed','error');
     return;
   }
-  currentUser={pubkey,secretKey,display_name:name,avatar_path:data.avatar_path||avatarUrl};
+  currentUser={pubkey,secretKey,display_name:name,avatar_path:absAvatarUrl(data.avatar_path)||avatarUrl};
   saveUser(currentUser);
-  await publishProfile(name,avatarUrl,data.nip05_full);
+  localStorage.setItem(TAB_HINTS_KEY,'[]'); // new account → show first-run tab hints
+  await publishProfile(name,avatarUrl||absAvatarUrl(data.avatar_path),data.nip05_full);
   autoFollowDefault();
   updateAuthUI();$('#create-modal').classList.add('hidden');avatarFile=null;toast(`Welcome, ${name}!`);
   }catch{toast('Failed','error');}
@@ -462,9 +491,11 @@ async function completeLogin(pk){
   const connected=JSON.parse(localStorage.getItem('nip46_connected')||'null');
   const localSk=nip46Data?.secretKey||pending?.localSecretKey||null;
   const bunkerPk=nip46Data?._bunkerPubkey||connected?.bunkerPubkey||null;
+  const wasNewUser=!localStorage.getItem(TAB_HINTS_KEY);
   currentUser={pubkey:pk,display_name:name,avatar_path:picture};
   if(localSk&&bunkerPk)currentUser.nip46={localSecretKey:localSk,bunkerPubkey:bunkerPk};
   saveUser(currentUser);
+  if(wasNewUser)localStorage.setItem(TAB_HINTS_KEY,'[]'); // first-time Primal login on this device → show hints
   // Reset mobile login UI
   $('#landing-primal-btn').disabled=false;$('#landing-primal-btn').style.opacity='';
   const st=$('#landing-primal-status');if(st){st.classList.add('hidden');st.style.display='';}
@@ -522,13 +553,15 @@ $('#settings-avatar-file').addEventListener('change',async e=>{
     let avatarUrl=await uploadToBlossom(file);
     if(!avatarUrl){const r=new FileReader();const b64=await new Promise(res=>{r.onloadend=()=>res(r.result.split(',')[1]);r.readAsDataURL(file);});
       const res=await fetch(API_BASE+'/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pubkey:currentUser.pubkey,display_name:currentUser.display_name,avatar_base64:b64})});
-      const data=await res.json();avatarUrl=data.avatar_path;
+      const data=await res.json();avatarUrl=absAvatarUrl(data.avatar_path);
     } else {
       await fetch(API_BASE+'/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pubkey:currentUser.pubkey,display_name:currentUser.display_name,avatar_url:avatarUrl})});
     }
     currentUser.avatar_path=avatarUrl;saveUser(currentUser);
     $('#settings-avatar').src=avatarUrl;$('#settings-avatar').style.display='';
     if($('#user-avatar'))$('#user-avatar').src=avatarUrl;
+    // Re-publish kind-0 to Nostr so Primal etc. see the new picture
+    publishProfile(currentUser.display_name,avatarUrl,null);
     toast('Photo updated!');
   }catch{toast('Failed to update photo','error');}
 });
@@ -1281,6 +1314,7 @@ $('#nav-add-crew')?.addEventListener('click',openNewCrewFlow);
 
 // ===== INIT =====
 const saved=localStorage.getItem('swellnotes_user');if(saved){try{currentUser=JSON.parse(saved);}catch{localStorage.removeItem('swellnotes_user');}}
+initTabHints();
 // Restore from iCloud Keychain if localStorage is empty (e.g. fresh install on a new Apple device)
 if(!currentUser&&window.Capacitor?.Plugins?.Keychain){window.Capacitor.Plugins.Keychain.load({key:KEYCHAIN_USER_KEY}).then(r=>{if(r?.value){localStorage.setItem(KEYCHAIN_USER_KEY,r.value);location.reload();}}).catch(e=>console.warn('[Keychain] restore failed',e));}
 const savedSpot=localStorage.getItem('swellnotes_spot');if(savedSpot){try{currentSpot=JSON.parse(savedSpot);selectSpot(currentSpot);}catch{localStorage.removeItem('swellnotes_spot');}}

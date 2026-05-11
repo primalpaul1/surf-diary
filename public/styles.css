@@ -219,6 +219,50 @@ header.nav-hidden nav { max-height: 0; opacity: 0; margin-top: 0; margin-bottom:
   text-decoration: underline; text-decoration-color: rgba(255,255,255,0.2);
   text-underline-offset: 3px;
 }
+
+/* ---- TAB ONBOARDING HINTS ---- */
+.nav-btn { position: relative; }
+.nav-tip-dot {
+  position: absolute; top: 4px; right: 4px;
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--teal);
+  box-shadow: 0 0 0 0 rgba(0,212,170,0.6);
+  animation: navTipPulse 1.6s ease-out infinite;
+  pointer-events: none;
+}
+@keyframes navTipPulse {
+  0% { box-shadow: 0 0 0 0 rgba(0,212,170,0.55); }
+  70% { box-shadow: 0 0 0 7px rgba(0,212,170,0); }
+  100% { box-shadow: 0 0 0 0 rgba(0,212,170,0); }
+}
+.tab-hint {
+  position: fixed; left: 50%; transform: translateX(-50%);
+  top: calc(env(safe-area-inset-top, 0px) + 130px);
+  background: var(--ocean-deep); color: white;
+  border: 1px solid rgba(0,212,170,0.4);
+  padding: 0.85rem 2.6rem 0.85rem 1.1rem;
+  border-radius: 14px;
+  max-width: 320px; min-width: 240px;
+  box-shadow: 0 12px 32px rgba(0,0,0,0.35);
+  z-index: 250;
+  display: flex; align-items: flex-start; gap: 0.5rem;
+  animation: tabHintIn 0.22s ease;
+}
+.tab-hint-body { flex: 1; }
+.tab-hint-title { font: 700 0.95rem var(--font-headline); letter-spacing: -0.01em; margin-bottom: 0.15rem; color: var(--teal); }
+.tab-hint-text { font: 400 0.82rem var(--font-body); color: rgba(255,255,255,0.82); line-height: 1.35; }
+.tab-hint-close {
+  position: absolute; top: 4px; right: 4px;
+  background: none; border: none; color: rgba(255,255,255,0.5);
+  cursor: pointer; font-size: 1.2rem; line-height: 1; padding: 0.4rem 0.6rem;
+  border-radius: 8px;
+}
+.tab-hint-close:hover { color: white; background: rgba(255,255,255,0.08); }
+.tab-hint-out { opacity: 0; transform: translateX(-50%) translateY(-6px); transition: opacity 0.18s ease, transform 0.18s ease; }
+@keyframes tabHintIn {
+  from { opacity: 0; transform: translateX(-50%) translateY(-8px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
 .primal-store-link:hover { color: rgba(255,255,255,0.85); }
 #modal-primal-appstore { color: var(--text-muted); text-decoration-color: #cbd5e1; margin-top: 0.5rem; }
 #modal-primal-appstore:hover { color: var(--teal); }
