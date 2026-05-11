@@ -264,7 +264,7 @@ app.post('/api/spots',requireAuth,async(req,res)=>{
   if(!surfline_spot_id||!name)return res.status(400).json({error:'Missing fields'});
   // Free users limited to 1 crew (as admin)
   const user=await db.get('SELECT is_pro FROM users WHERE pubkey=$1',[req.pubkey]);
-  if(!user?.is_pro){const crews=await db.get("SELECT COUNT(*) as c FROM spot_members WHERE pubkey=$1 AND role='admin'",[req.pubkey]);if(crews?.c>=1)return res.status(403).json({error:'pro_required',message:'Upgrade to Pro to create more crews'});}
+  if(!user?.is_pro){const crews=await db.get('SELECT COUNT(*) as c FROM spots WHERE created_by=$1',[req.pubkey]);if(crews?.c>=1)return res.status(403).json({error:'pro_required',message:'Upgrade to Pro to create more crews'});}
   const id=genId();
   await db.run('INSERT INTO spots(id,surfline_spot_id,name,location_text,lat,lng,cover_image_url,is_private,description,region,created_by)VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)',
     [id,surfline_spot_id,name,location_text||null,lat||null,lng||null,cover_image_url||null,is_private===false?0:1,description||null,region||null,req.pubkey]);
