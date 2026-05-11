@@ -8,7 +8,10 @@ const IS_CAPACITOR=!!window.Capacitor;
 const API_BASE=IS_CAPACITOR?'https://swellnotes.com':'';
 const PRIMAL_APP_STORE_HTTPS='https://apps.apple.com/app/id1673134518';
 const PRIMAL_APP_STORE_ITMS='itms-apps://apps.apple.com/app/id1673134518';
-function launchPrimalOrAppStore(deepLink){let appLaunched=false;const onVis=()=>{if(document.hidden)appLaunched=true;};document.addEventListener('visibilitychange',onVis);const tryOpen=(url)=>{if(IS_CAPACITOR&&window.Capacitor?.Plugins?.Browser){try{window.Capacitor.Plugins.Browser.open({url});return;}catch{}}window.location.href=url;};tryOpen(deepLink);setTimeout(()=>{document.removeEventListener('visibilitychange',onVis);if(!appLaunched&&!document.hidden){toast('Primal not installed — opening App Store');tryOpen(IS_CAPACITOR?PRIMAL_APP_STORE_ITMS:PRIMAL_APP_STORE_HTTPS);}},1500);}
+// Open Primal via SFSafariViewController (keeps Swellnotes' WebSocket alive during background;
+// window.location.href backgrounds the app harder and iOS kills the relay socket).
+async function launchPrimal(deepLink){if(IS_CAPACITOR&&window.Capacitor?.Plugins?.Browser){try{await window.Capacitor.Plugins.Browser.open({url:deepLink});return;}catch{}}window.location.href=deepLink;}
+async function openPrimalAppStore(){const url=IS_CAPACITOR?PRIMAL_APP_STORE_ITMS:PRIMAL_APP_STORE_HTTPS;if(IS_CAPACITOR&&window.Capacitor?.Plugins?.Browser){try{await window.Capacitor.Plugins.Browser.open({url});return;}catch{}}window.location.href=url;}
 const KEYCHAIN_USER_KEY='swellnotes_user';
 function saveUser(u){const json=JSON.stringify(u);localStorage.setItem(KEYCHAIN_USER_KEY,json);try{window.Capacitor?.Plugins?.Keychain?.save({key:KEYCHAIN_USER_KEY,value:json});}catch(e){console.warn('[Keychain] save failed',e);}}
 function clearUser(){localStorage.removeItem(KEYCHAIN_USER_KEY);try{window.Capacitor?.Plugins?.Keychain?.clear({key:KEYCHAIN_USER_KEY});}catch(e){}}
@@ -368,7 +371,7 @@ async function openLoginModal(){
       // Small delay to let listener start, then redirect to Primal
       setTimeout(()=>{
         const st=$('#landing-primal-status');if(st){$('#landing-primal-status-text').textContent='Waiting for Primal...';}
-        launchPrimalOrAppStore(nip46Data.mobileURI);
+        launchPrimal(nip46Data.mobileURI);
       },300);
     }else{
       $('#qr-image').src=nip46Data.qrDataUrl;$('#login-qr').classList.remove('hidden');$('#login-loading').classList.add('hidden');
@@ -381,7 +384,9 @@ async function openLoginModal(){
     else{$('#landing-primal-btn').disabled=false;$('#landing-primal-btn').style.opacity='';const st=$('#landing-primal-status');if(st){st.classList.add('hidden');st.style.display='';}}
   }
 }
-$('#mobile-login-btn')?.addEventListener('click',()=>{if(!nip46Data)return;localStorage.setItem('nip46_pending',JSON.stringify({localSecretKey:nip46Data.secretKey,localPublicKey:nip46Data.publicKey,secret:nip46Data.secret,timestamp:Date.now()}));launchPrimalOrAppStore(nip46Data.mobileURI);});
+$('#mobile-login-btn')?.addEventListener('click',()=>{if(!nip46Data)return;localStorage.setItem('nip46_pending',JSON.stringify({localSecretKey:nip46Data.secretKey,localPublicKey:nip46Data.publicKey,secret:nip46Data.secret,timestamp:Date.now()}));launchPrimal(nip46Data.mobileURI);});
+$('#landing-primal-appstore')?.addEventListener('click',e=>{e.preventDefault();openPrimalAppStore();});
+$('#modal-primal-appstore')?.addEventListener('click',e=>{e.preventDefault();openPrimalAppStore();});
 async function waitForNIP46(){
   if(!nip46Data)return;
   try{

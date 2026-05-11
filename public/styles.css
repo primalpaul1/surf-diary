@@ -213,6 +213,15 @@ header.nav-hidden nav { max-height: 0; opacity: 0; margin-top: 0; margin-bottom:
   padding: 0.55rem 1.2rem; border-radius: 10px; font: 700 0.9rem var(--font-body);
   cursor: pointer; transition: all 0.2s;
 }
+.primal-store-link {
+  display: block; text-align: center; margin-top: 0.6rem;
+  font-size: 0.78rem; color: rgba(255,255,255,0.55);
+  text-decoration: underline; text-decoration-color: rgba(255,255,255,0.2);
+  text-underline-offset: 3px;
+}
+.primal-store-link:hover { color: rgba(255,255,255,0.85); }
+#modal-primal-appstore { color: var(--text-muted); text-decoration-color: #cbd5e1; margin-top: 0.5rem; }
+#modal-primal-appstore:hover { color: var(--teal); }
 .btn-primal-dark:hover { background: #222; transform: translateY(-1px); }
 .btn-primal-dark .btn-icon { width: 20px; height: 20px; border-radius: 4px; }
 
