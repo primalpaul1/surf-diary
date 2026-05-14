@@ -499,10 +499,10 @@ app.delete('/api/users',requireAuth,async(req,res)=>{
     filesToRemove.forEach(p=>{if(p&&p.startsWith('/'))try{fs.unlinkSync(path.join(__dirname,p));}catch{}});
     await db.run('DELETE FROM comments WHERE pubkey=$1',[pk]);
     await db.run('DELETE FROM sessions WHERE pubkey=$1',[pk]);
-    await db.run('DELETE FROM follows WHERE follower_pubkey=$1 OR followed_pubkey=$1',[pk]);
+    await db.run('DELETE FROM follows WHERE follower_pubkey=$1 OR followed_pubkey=$2',[pk,pk]);
     await db.run('DELETE FROM spot_follows WHERE pubkey=$1',[pk]);
     await db.run('DELETE FROM spot_members WHERE pubkey=$1',[pk]);
-    await db.run('DELETE FROM blocks WHERE blocker_pubkey=$1 OR blocked_pubkey=$1',[pk]);
+    await db.run('DELETE FROM blocks WHERE blocker_pubkey=$1 OR blocked_pubkey=$2',[pk,pk]);
     await db.run('DELETE FROM spot_join_requests WHERE pubkey=$1',[pk]);
     await db.run('DELETE FROM reports WHERE reporter_pubkey=$1',[pk]);
     await db.run('DELETE FROM users WHERE pubkey=$1',[pk]);
