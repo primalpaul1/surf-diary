@@ -568,6 +568,23 @@ $('#settings-avatar-file').addEventListener('change',async e=>{
 $('#settings-modal .modal-backdrop').addEventListener('click',()=>$('#settings-modal').classList.add('hidden'));
 $('#settings-modal .modal-close').addEventListener('click',()=>$('#settings-modal').classList.add('hidden'));
 
+$('#delete-account-btn').addEventListener('click',async()=>{
+  if(!currentUser)return;
+  if(!confirm('Delete your account?\n\nThis permanently removes your sessions, comments, follows, and profile from Swellnotes. This cannot be undone.'))return;
+  if(!confirm('Last chance — really delete your account and all your sessions?'))return;
+  try{
+    const res=await fetch(API_BASE+'/api/users',{method:'DELETE',headers:{'X-Nostr-Pubkey':currentUser.pubkey}});
+    if(!res.ok)throw new Error('Delete failed');
+    currentUser=null;currentSpot=null;mySpots=[];followingSet.clear();
+    clearUser();
+    localStorage.removeItem('swellnotes_spot');
+    localStorage.removeItem('nip46_pending');
+    localStorage.removeItem('nip46_connected');
+    toast('Account deleted');
+    location.reload();
+  }catch(e){toast('Failed to delete account','error');}
+});
+
 $('#logout-btn').addEventListener('click',async()=>{
   // Step 1: Show key and first warning
   let keyDisplay='';

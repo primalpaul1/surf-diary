@@ -486,6 +486,30 @@ app.get('/api/users',async(req,res)=>{
 });
 app.get('/api/users/:pubkey',async(req,res)=>{const u=await db.get('SELECT*FROM users WHERE pubkey=$1',[req.params.pubkey]);if(!u)return res.status(404).json({error:'Not found'});const c=await db.get('SELECT COUNT(*) as c,COALESCE(SUM(barrels),0) as b FROM sessions WHERE pubkey=$1',[req.params.pubkey]);res.json(absUser({...u,session_count:c?.c||0,total_barrels:c?.b||0},req));});
 
+// Delete the authenticated user's account and all associated data.
+app.delete('/api/users',requireAuth,async(req,res)=>{
+  try{
+    const pk=req.pubkey;
+    const user=await db.get('SELECT avatar_path FROM users WHERE pubkey=$1',[pk]);
+    if(!user)return res.status(404).json({error:'Not found'});
+    const mediaRows=await db.query('SELECT voice_memo_path,video_path FROM sessions WHERE pubkey=$1',[pk]);
+    const filesToRemove=[];
+    if(user.avatar_path)filesToRemove.push(user.avatar_path);
+    for(const r of mediaRows){if(r.voice_memo_path)filesToRemove.push(r.voice_memo_path);if(r.video_path)filesToRemove.push(r.video_path);}
+    filesToRemove.forEach(p=>{if(p&&p.startsWith('/'))try{fs.unlinkSync(path.join(__dirname,p));}catch{}});
+    await db.run('DELETE FROM comments WHERE pubkey=$1',[pk]);
+    await db.run('DELETE FROM sessions WHERE pubkey=$1',[pk]);
+    await db.run('DELETE FROM follows WHERE follower_pubkey=$1 OR followed_pubkey=$1',[pk]);
+    await db.run('DELETE FROM spot_follows WHERE pubkey=$1',[pk]);
+    await db.run('DELETE FROM spot_members WHERE pubkey=$1',[pk]);
+    await db.run('DELETE FROM blocks WHERE blocker_pubkey=$1 OR blocked_pubkey=$1',[pk]);
+    await db.run('DELETE FROM spot_join_requests WHERE pubkey=$1',[pk]);
+    await db.run('DELETE FROM reports WHERE reporter_pubkey=$1',[pk]);
+    await db.run('DELETE FROM users WHERE pubkey=$1',[pk]);
+    res.json({ok:true});
+  }catch(err){logError('Account delete failed: '+err.message);res.status(500).json({error:'Delete failed'});}
+});
+
 // ===== FOLLOWS =====
 app.get('/api/follows',requireAuth,async(req,res)=>{
   res.json({following:await db.query('SELECT f.followed_pubkey as pubkey,u.display_name,u.avatar_path,(SELECT COUNT(*)FROM sessions WHERE pubkey=f.followed_pubkey) as session_count FROM follows f LEFT JOIN users u ON f.followed_pubkey=u.pubkey WHERE f.follower_pubkey=$1',[req.pubkey]),
