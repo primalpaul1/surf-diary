@@ -108,6 +108,26 @@ async function initDB(){
 
 // ===== SURFLINE =====
 const HEADERS={'User-Agent':'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)'};
+// Surfline's API sits behind Cloudflare bot protection that fingerprints
+// non-browser clients (plain Node/curl get 403). Route requests through
+// curl-impersonate, which mimics a real Chrome TLS/HTTP2 fingerprint.
+// Falls back to plain fetch where the binary isn't installed (e.g. local dev).
+const {execFile}=require('child_process');
+const CURL_IMPERSONATE=process.env.CURL_IMPERSONATE||'/opt/curl-impersonate/curl_chrome136';
+const USE_IMPERSONATE=fs.existsSync(CURL_IMPERSONATE);
+console.log(USE_IMPERSONATE?`🛡️  Surfline via curl-impersonate: ${CURL_IMPERSONATE}`:'⚠️  curl-impersonate not found, using plain fetch for Surfline');
+function surflineFetch(url){
+  if(!USE_IMPERSONATE)return fetch(url,{headers:HEADERS});
+  return new Promise(resolve=>{
+    execFile(CURL_IMPERSONATE,['-s','-w','\n%{http_code}',url],{maxBuffer:20*1024*1024,timeout:20000},(err,stdout)=>{
+      if(err)return resolve({ok:false,status:0,statusText:err.message,json:async()=>({}),text:async()=>String(err.message||'')});
+      const i=stdout.lastIndexOf('\n');
+      const body=i>=0?stdout.slice(0,i):stdout;
+      const code=parseInt((i>=0?stdout.slice(i+1):'').trim(),10)||0;
+      resolve({ok:code>=200&&code<300,status:code,statusText:String(code),json:async()=>JSON.parse(body),text:async()=>body});
+    });
+  });
+}
 function degreesToCompass(deg){const d=['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];return d[Math.round(deg/22.5)%16];}
 function metersToFeet(m){return Math.round(m*3.28084*10)/10;}
 function timeOfDayToHours(t){const h={'5am':[5,6],'6am':[6,7],'7am':[7,8],'8am':[8,9],'9am':[9,10],'10am':[10,11],'11am':[11,12],'12pm':[12,13],'1pm':[13,14],'2pm':[14,15],'3pm':[15,16],'4pm':[16,17],'5pm':[17,18],'6pm':[18,19]};const l={dawn:[5,7],morning:[7,10],midday:[10,13],afternoon:[13,16],evening:[16,18]};return h[t]||l[t]||[7,10];}
@@ -118,7 +138,7 @@ async function fetchSurflineData(spotId){
     `https://services.surfline.com/kbyg/spots/forecasts/wind?spotId=${spotId}&days=3&intervalHours=3&units%5BwindSpeed%5D=MPH`,
     `https://services.surfline.com/kbyg/spots/forecasts/tides?spotId=${spotId}&days=3&units%5BtideHeight%5D=FT`,
   ];
-  const responses=await Promise.all(urls.map(u=>fetch(u,{headers:HEADERS})));
+  const responses=await Promise.all(urls.map(u=>surflineFetch(u)));
   for(const r of responses){if(!r.ok)console.error('Surfline API error:',r.status,r.statusText,await r.text().catch(()=>''));}
   const[wave,wind,tides]=await Promise.all(responses.map(r=>r.ok?r.json():{}));
   const data=JSON.stringify({wave:wave.data||{wave:[]},wind:wind.data||{wind:[]},tides:tides.data||{tides:[]},utcOffset:wave.associated?.utcOffset||-6});
@@ -190,7 +210,7 @@ function requireAuth(req,res,next){const p=req.headers['x-nostr-pubkey'];if(!p||
 // ===== SPOTS =====
 app.get('/api/spots/search',async(req,res)=>{
   try{
-    const r=await fetch(`https://services.surfline.com/search/site?q=${encodeURIComponent(req.query.q||'')}&querySize=10`,{headers:HEADERS});
+    const r=await surflineFetch(`https://services.surfline.com/search/site?q=${encodeURIComponent(req.query.q||'')}&querySize=10`);
     const data=await r.json();
     const spots=(data[0]?.hits?.hits||[]).map(h=>({
       surfline_id:h._id,name:h._source.name,
