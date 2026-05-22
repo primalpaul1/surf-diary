@@ -133,7 +133,7 @@ $('#spot-search-input').addEventListener('input',e=>{
       $$('.spot-result').forEach(el=>el.addEventListener('click',()=>{
         if(!currentUser)return toast('Create an account first','error');
         pendingSpotData={surfline_spot_id:el.dataset.surfline,name:el.dataset.name,location_text:el.dataset.loc,lat:parseFloat(el.dataset.lat),lng:parseFloat(el.dataset.lng)};
-        $('#create-spot-name').textContent=`${el.dataset.name} · ${el.dataset.loc}`;
+        $('#create-spot-name').textContent=`Forecasts from ${el.dataset.name} · kept private`;if($('#spot-name'))$('#spot-name').value='';
         $('#create-spot-modal').classList.remove('hidden');
       }));
     }catch{}
@@ -172,7 +172,7 @@ $('#hero-cover-file').addEventListener('change',async e=>{
 $('#create-spot-form').addEventListener('submit',async e=>{
   e.preventDefault();if(!currentUser||!pendingSpotData)return;
   try{
-    const body={...pendingSpotData,is_private:$('#spot-private').checked,region:$('#spot-region')?.value.trim()||null,description:$('#spot-description')?.value.trim()||null};
+    const body={...pendingSpotData,name:$('#spot-name')?.value.trim()||pendingSpotData.name,is_private:$('#spot-private').checked,region:$('#spot-region')?.value.trim()||null,description:$('#spot-description')?.value.trim()||null};
     const res=await fetch(API_BASE+'/api/spots',{method:'POST',headers:{'Content-Type':'application/json','X-Nostr-Pubkey':currentUser.pubkey},body:JSON.stringify(body)});
     const data=await res.json();
     if(data.ok){
@@ -1181,7 +1181,7 @@ $('#pipeline-spot-search')?.addEventListener('input',e=>{
         // Free users: 1 crew max. Check if they already admin one.
         if(!isPro){const adminCrews=mySpots.filter(s=>s.role==='admin'||s.created_by===currentUser.pubkey);if(adminCrews.length>=1){showProModal();return;}}
         pendingSpotData={surfline_spot_id:el.dataset.surfline,name:el.dataset.name,location_text:el.dataset.loc,lat:parseFloat(el.dataset.lat),lng:parseFloat(el.dataset.lng)};
-        $('#create-spot-name').textContent=`${el.dataset.name} · ${el.dataset.loc}`;
+        $('#create-spot-name').textContent=`Forecasts from ${el.dataset.name} · kept private`;if($('#spot-name'))$('#spot-name').value='';
         $('#create-spot-modal').classList.remove('hidden');
       }));
     }catch{}
@@ -1352,7 +1352,7 @@ function openNewCrewFlow(){
         `).join('')||'<p class="muted" style="padding:1rem;text-align:center">No breaks found</p>';
         modal.querySelectorAll('.spot-result').forEach(el=>el.addEventListener('click',()=>{
           pendingSpotData={surfline_spot_id:el.dataset.surfline,name:el.dataset.name,location_text:el.dataset.loc,lat:parseFloat(el.dataset.lat),lng:parseFloat(el.dataset.lng)};
-          $('#create-spot-name').textContent=`${el.dataset.name} · ${el.dataset.loc}`;
+          $('#create-spot-name').textContent=`Forecasts from ${el.dataset.name} · kept private`;if($('#spot-name'))$('#spot-name').value='';
           modal.remove();
           $('#create-spot-modal').classList.remove('hidden');
         }));
