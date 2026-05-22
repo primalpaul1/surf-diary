@@ -22,17 +22,18 @@ const DEFAULT_COVERS=['/covers/cover1.jpg','/covers/cover2.jpg','/covers/cover3.
 function defaultCover(id){return DEFAULT_COVERS[Math.abs([...((id||'')+'x')].reduce((h,c)=>((h<<5)-h)+c.charCodeAt(0),0))%DEFAULT_COVERS.length];}
 
 // Nav
-$$('.nav-btn[data-view]').forEach(b=>{b.addEventListener('click',()=>{$$('.nav-btn').forEach(x=>x.classList.remove('active'));b.classList.add('active');$$('.view').forEach(v=>v.classList.remove('active'));$(`#view-${b.dataset.view}`).classList.add('active');if(b.dataset.view==='history')loadFeed();if(b.dataset.view==='surfers')loadSurfers();if(b.dataset.view==='analysis')loadAnalysis();if(b.dataset.view==='pipeline')loadPipeline();maybeShowTabHint(b.dataset.view);});});
+$$('.nav-btn[data-view]').forEach(b=>{b.addEventListener('click',()=>{$$('.nav-btn').forEach(x=>x.classList.remove('active'));b.classList.add('active');$$('.view').forEach(v=>v.classList.remove('active'));$(`#view-${b.dataset.view}`).classList.add('active');document.body.classList.toggle('pro-immersive',b.dataset.view==='pro');window.scrollTo(0,0);if(b.dataset.view==='history')loadFeed();if(b.dataset.view==='surfers')loadSurfers();if(b.dataset.view==='analysis')loadAnalysis();if(b.dataset.view==='pipeline')loadPipeline();if(b.dataset.view==='pro')renderProTab();maybeShowTabHint(b.dataset.view);});});
 
 // ===== TAB HINTS (first-run onboarding) =====
 const TAB_HINTS_KEY='swellnotes_seen_tabs';
-const ALL_TABS=['log','history','surfers','analysis','pipeline'];
+const ALL_TABS=['log','history','surfers','analysis','pipeline','pro'];
 const TAB_HINTS={
   log:{title:'Log',body:'Rate each session. Conditions auto-fill from Surfline.'},
   history:{title:'Reports',body:'Browse past sessions and stats from your crew.'},
   surfers:{title:'Surfers',body:'See who\'s in your crew and follow other surfers.'},
   analysis:{title:'Analysis',body:'Match the incoming swell to your best past days.'},
-  pipeline:{title:'Search',body:'Find a new spot or start your own crew.'}
+  pipeline:{title:'Search',body:'Find a new spot or start your own crew.'},
+  pro:{title:'Pro',body:'Unlimited spots and crews, a gold profile ring, and more.'}
 };
 function getSeenTabs(){try{return JSON.parse(localStorage.getItem(TAB_HINTS_KEY)||'[]');}catch{return[];}}
 function markTabSeen(v){const s=getSeenTabs();if(!s.includes(v)){s.push(v);localStorage.setItem(TAB_HINTS_KEY,JSON.stringify(s));}renderTabDots();}
@@ -51,17 +52,21 @@ function toast(m,t='success'){const e=document.createElement('div');e.className=
 function escapeHtml(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML;}
 function getRatingClass(r){if(!r)return'';return r<=3?'r-low':r<=5?'r-mid':r<=7?'r-high':'r-epic';}
 function formatTOD(t){return{'5am':'5 AM','6am':'6 AM','7am':'7 AM','8am':'8 AM','9am':'9 AM','10am':'10 AM','11am':'11 AM','12pm':'12 PM','1pm':'1 PM','2pm':'2 PM','3pm':'3 PM','4pm':'4 PM','5pm':'5 PM','6pm':'6 PM',dawn:'Dawn',morning:'AM',midday:'Midday',afternoon:'PM',evening:'Eve'}[t]||t;}
-function avatarHTML(path,name,cls='feed-avatar'){if(path)return`<img src="${path}" class="${cls}" alt="">`;const i=(name||'?')[0].toUpperCase();return`<div class="${cls}-placeholder">${i}</div>`;}
+function ringCls(u){return (u&&u.is_pro&&((u.show_pro_ring??1)))?' pro-ring':'';}
+function avatarHTML(path,name,cls='feed-avatar',pro=false){const rc=pro?' pro-ring':'';if(path)return`<img src="${path}" class="${cls}${rc}" alt="">`;const i=(name||'?')[0].toUpperCase();return`<div class="${cls}-placeholder${rc}">${i}</div>`;}
 function primalLink(pubkey){return`https://primal.net/p/${pubkey}`;}
-function userLinkHTML(pubkey,name,avatarPath,cls='feed'){
+function userLinkHTML(pubkey,name,avatarPath,cls='feed',pro=false){
   const url=primalLink(pubkey);
-  const av=avatarPath?`<img src="${avatarPath}" class="${cls}-avatar" alt="">`:`<div class="${cls}-avatar-placeholder">${(name||'?')[0].toUpperCase()}</div>`;
+  const rc=pro?' pro-ring':'';
+  const av=avatarPath?`<img src="${avatarPath}" class="${cls}-avatar${rc}" alt="">`:`<div class="${cls}-avatar-placeholder${rc}">${(name||'?')[0].toUpperCase()}</div>`;
   return`<a href="${url}" target="_blank" rel="noopener" class="user-link" onclick="event.stopPropagation()">${av}<span class="${cls}-name">${escapeHtml(name||'Anon')}</span></a>`;
 }
 
 // ===== SPOT STATE =====
 function selectSpot(spot){
   if(!spot||spot.error){console.error('Invalid spot:',spot);return;}
+  // Leaving the Pro tab if it was open (e.g. via the spot switcher)
+  if($('.nav-btn.active')?.dataset?.view==='pro'){document.body.classList.remove('pro-immersive');$$('.nav-btn').forEach(x=>x.classList.remove('active'));$('.nav-btn[data-view="log"]')?.classList.add('active');$$('.view').forEach(v=>v.classList.remove('active'));$('#view-log')?.classList.add('active');}
   currentSpot=spot;
   localStorage.setItem('swellnotes_spot',JSON.stringify(spot));
   localStorage.setItem('swellnotes_onboarded','1');
@@ -516,6 +521,10 @@ $('#settings-btn').addEventListener('click',async()=>{
   $('#settings-name').textContent=currentUser.display_name;
   if(currentUser.avatar_path){$('#settings-avatar').src=currentUser.avatar_path;$('#settings-avatar').style.display='';}
   else $('#settings-avatar').style.display='none';
+  // Pro: gold-ring toggle only for Pro members
+  if(isPro){$('#settings-pro-section').classList.remove('hidden');$('#settings-pro-ring').checked=!!(currentUser.show_pro_ring??1);}
+  else $('#settings-pro-section').classList.add('hidden');
+  updateOwnAvatarRing();
   // Show key section for local accounts, NIP-46 section for Primal logins
   if(currentUser.secretKey){
     $('#settings-key-section').classList.remove('hidden');
@@ -604,11 +613,12 @@ $('#logout-btn').addEventListener('click',async()=>{
 });
 
 function updateAuthUI(){
+  document.body.classList.remove('pro-immersive');
   if(currentUser){
     $('#landing-page').classList.add('hidden');
     document.body.style.overflow='';
     $('#app-header').classList.remove('hidden');
-    $('#auth-buttons').classList.add('hidden');$('#user-info').classList.remove('hidden');$('#spot-picker-auth')?.classList.add('hidden');$('#user-name').textContent=currentUser.display_name;const av=$('#user-avatar');if(currentUser.avatar_path){av.src=currentUser.avatar_path;av.style.display='';}else av.style.display='none';$('#submit-btn').disabled=false;$('#submit-btn').textContent='Log Session';$('#comment-form')?.classList.remove('hidden');
+    $('#auth-buttons').classList.add('hidden');$('#user-info').classList.remove('hidden');$('#spot-picker-auth')?.classList.add('hidden');$('#user-name').textContent=currentUser.display_name;const av=$('#user-avatar');if(currentUser.avatar_path){av.src=currentUser.avatar_path;av.style.display='';}else av.style.display='none';av.classList.toggle('pro-ring',!!ringCls(currentUser));$('#submit-btn').disabled=false;$('#submit-btn').textContent='Log Session';$('#comment-form')?.classList.remove('hidden');checkProStatus();
     if(!currentSpot){
       // No crew selected — show main app with Search tab active
       $('#spot-picker')?.classList.add('hidden');$('#main-content')?.classList.remove('hidden');
@@ -689,7 +699,7 @@ async function loadSurfers(){
   list.innerHTML=users.map(u=>{const me=currentUser?.pubkey===u.pubkey;const fol=followingSet.has(u.pubkey);let btn;if(me)btn='<button class="btn-follow is-you" disabled>You</button>';else if(!currentUser)btn='';else if(fol)btn=`<button class="btn-follow following" onclick="toggleFollow('${u.pubkey}')">Following</button>`;else btn=`<button class="btn-follow" onclick="toggleFollow('${u.pubkey}')">Follow</button>`;
   const isAdmin=currentSpot?.members?.some(m=>m.pubkey===currentUser?.pubkey&&m.role==='admin');
   const adminBtn=(!me&&isAdmin&&u.role!=='admin'&&currentSpot)?`<button class="btn-outline btn-xs" style="margin-left:0.3rem" onclick="event.stopPropagation();makeAdmin('${currentSpot.id}','${u.pubkey}')">Make Admin</button>`:'';
-  return`<div class="surfer-card"><a href="${primalLink(u.pubkey)}" target="_blank" rel="noopener" class="surfer-profile-link" onclick="event.stopPropagation()">${u.avatar_path?`<img src="${u.avatar_path}" class="surfer-av">`:`<div class="surfer-av-placeholder">${(u.display_name||'?')[0].toUpperCase()}</div>`}</a><div class="surfer-info"><a href="${primalLink(u.pubkey)}" target="_blank" rel="noopener" class="surfer-name-link">${escapeHtml(u.display_name||'Anon')}</a></div><div class="surfer-meta">${u.session_count} session${u.session_count!==1?'s':''}${u.total_barrels>0?` · 🤿 ${u.total_barrels} tube${u.total_barrels>1?'s':''}`:''}${u.role==='admin'?' · admin':''}</div></div><div style="display:flex;align-items:center">${btn}${adminBtn}</div></div>`;}).join('');}catch{}}
+  return`<div class="surfer-card"><a href="${primalLink(u.pubkey)}" target="_blank" rel="noopener" class="surfer-profile-link" onclick="event.stopPropagation()">${u.avatar_path?`<img src="${u.avatar_path}" class="surfer-av${ringCls(u)}">`:`<div class="surfer-av-placeholder${ringCls(u)}">${(u.display_name||'?')[0].toUpperCase()}</div>`}</a><div class="surfer-info"><a href="${primalLink(u.pubkey)}" target="_blank" rel="noopener" class="surfer-name-link">${escapeHtml(u.display_name||'Anon')}</a></div><div class="surfer-meta">${u.session_count} session${u.session_count!==1?'s':''}${u.total_barrels>0?` · 🤿 ${u.total_barrels} tube${u.total_barrels>1?'s':''}`:''}${u.role==='admin'?' · admin':''}</div></div><div style="display:flex;align-items:center">${btn}${adminBtn}</div></div>`;}).join('');}catch{}}
 
 // ===== CONDITIONS =====
 $('#session_date').value=new Date().toISOString().split('T')[0];
@@ -864,7 +874,7 @@ function renderSessionCard(s){
   if(s.voice_memo_path)tags.push('<span class="tag tag-voice">🎙</span>');
   const vt=s.video_path?`<div class="feed-video-thumb"><video src="${s.video_path}#t=0.1" preload="metadata" muted playsinline></video><span class="feed-video-play">▶</span></div>`:'';
   const bb=s.total_barrels>0?`<span class="barrel-count" title="${s.total_barrels} tubes">🤿${s.total_barrels}</span>`:'';
-  return`<div class="feed-card" data-id="${s.id}"><div class="feed-date"><div class="day">${d.getDate()}</div><div class="mo">${d.toLocaleString('en',{month:'short'})}</div></div><div class="feed-body"><div class="feed-user">${userLinkHTML(s.pubkey,s.display_name,s.avatar_path)}${bb}<span class="feed-tod">· ${formatTOD(s.time_of_day)}</span></div><div class="feed-tags">${tags.join('')}</div>${vt}</div><div class="feed-rating">${s.rating?`<div class="rbadge ${getRatingClass(s.rating)}">${s.rating}</div>`:'<div class="rbadge">—</div>'}</div></div>`;
+  return`<div class="feed-card" data-id="${s.id}"><div class="feed-date"><div class="day">${d.getDate()}</div><div class="mo">${d.toLocaleString('en',{month:'short'})}</div></div><div class="feed-body"><div class="feed-user">${userLinkHTML(s.pubkey,s.display_name,s.avatar_path,'feed',!!ringCls(s))}${bb}<span class="feed-tod">· ${formatTOD(s.time_of_day)}</span></div><div class="feed-tags">${tags.join('')}</div>${vt}</div><div class="feed-rating">${s.rating?`<div class="rbadge ${getRatingClass(s.rating)}">${s.rating}</div>`:'<div class="rbadge">—</div>'}</div></div>`;
 }
 
 window.switchToSpot=async id=>{
@@ -987,7 +997,7 @@ $('#session-modal .modal-close').addEventListener('click',()=>$('#session-modal'
 $('#search-btn').addEventListener('click',runSearch);$('#search-clear').addEventListener('click',()=>{['search-dir-min','search-dir-max','search-height-min','search-height-max','search-period-min','search-period-max','search-rating-min','search-rating-max','search-date-from','search-date-to'].forEach(id=>$(`#${id}`).value='');$('#search-results').innerHTML='';});
 async function runSearch(){const p=new URLSearchParams();if(currentUser)p.set('pubkey',currentUser.pubkey);if(currentSpot)p.set('spot_id',currentSpot.id);const fields={dir_min:'search-dir-min',dir_max:'search-dir-max',height_min:'search-height-min',height_max:'search-height-max',period_min:'search-period-min',period_max:'search-period-max',rating_min:'search-rating-min',rating_max:'search-rating-max',date_from:'search-date-from',date_to:'search-date-to'};Object.entries(fields).forEach(([k,id])=>{const v=$(`#${id}`).value;if(v)p.set(k,v);});
 try{const{sessions,summary}=await(await fetch(`${API_BASE}/api/search?${p}`)).json();const sr=$('#search-results');if(!sessions.length){sr.innerHTML='<div class="empty-state"><p>No matches.</p></div>';return;}
-sr.innerHTML=`<div class="search-summary"><div class="search-stat"><span class="search-stat-label">Sessions</span><span class="search-stat-value">${summary.count}</span></div><div class="search-stat"><span class="search-stat-label">Avg</span><span class="search-stat-value">${summary.avg_rating||'—'}/10</span></div><div class="search-stat"><span class="search-stat-label">Best</span><span class="search-stat-value">${summary.best_rating||'—'}</span></div><div class="search-stat"><span class="search-stat-label">Worst</span><span class="search-stat-value">${summary.worst_rating||'—'}</span></div></div><div class="search-result-list">${sessions.map(s=>{const d=new Date(s.session_date+'T12:00:00'),sw=JSON.parse(s.swells_json||'[]');return`<div class="feed-card" onclick="openSession(${s.id})"><div class="feed-date"><div class="day">${d.getDate()}</div><div class="mo">${d.toLocaleString('en',{month:'short'})}</div></div><div class="feed-body"><div class="feed-user">${avatarHTML(s.avatar_path,s.display_name)}<span class="feed-name">${escapeHtml(s.display_name||'Anon')}</span></div><div class="feed-tags">${sw.map(x=>`<span class="tag tag-swell">${x.height_ft}ft ${x.period_s}s ${x.direction_compass}</span>`).join('')}</div></div><div class="feed-rating">${s.rating?`<div class="rbadge ${getRatingClass(s.rating)}">${s.rating}</div>`:''}</div></div>`;}).join('')}</div>`;}catch{$('#search-results').innerHTML='<div class="empty-state">Failed</div>';}}
+sr.innerHTML=`<div class="search-summary"><div class="search-stat"><span class="search-stat-label">Sessions</span><span class="search-stat-value">${summary.count}</span></div><div class="search-stat"><span class="search-stat-label">Avg</span><span class="search-stat-value">${summary.avg_rating||'—'}/10</span></div><div class="search-stat"><span class="search-stat-label">Best</span><span class="search-stat-value">${summary.best_rating||'—'}</span></div><div class="search-stat"><span class="search-stat-label">Worst</span><span class="search-stat-value">${summary.worst_rating||'—'}</span></div></div><div class="search-result-list">${sessions.map(s=>{const d=new Date(s.session_date+'T12:00:00'),sw=JSON.parse(s.swells_json||'[]');return`<div class="feed-card" onclick="openSession(${s.id})"><div class="feed-date"><div class="day">${d.getDate()}</div><div class="mo">${d.toLocaleString('en',{month:'short'})}</div></div><div class="feed-body"><div class="feed-user">${avatarHTML(s.avatar_path,s.display_name,'feed-avatar',!!ringCls(s))}<span class="feed-name">${escapeHtml(s.display_name||'Anon')}</span></div><div class="feed-tags">${sw.map(x=>`<span class="tag tag-swell">${x.height_ft}ft ${x.period_s}s ${x.direction_compass}</span>`).join('')}</div></div><div class="feed-rating">${s.rating?`<div class="rbadge ${getRatingClass(s.rating)}">${s.rating}</div>`:''}</div></div>`;}).join('')}</div>`;}catch{$('#search-results').innerHTML='<div class="empty-state">Failed</div>';}}
 
 // ===== FORECAST MATCH =====
 async function loadAnalysis(){
@@ -1036,7 +1046,7 @@ async function showMembers(spotId,spotName){
       if(isMe)btn='<span class="muted" style="font-size:0.75rem">You</span>';
       else if(currentUser&&fol)btn=`<button class="btn-follow following" onclick="toggleFollow('${u.pubkey}');showMembers('${spotId}','${escapeHtml(spotName||'')}')">Following</button>`;
       else if(currentUser)btn=`<button class="btn-follow" onclick="toggleFollow('${u.pubkey}');showMembers('${spotId}','${escapeHtml(spotName||'')}')">Follow</button>`;
-      return`<div class="surfer-card"><a href="${primalLink(u.pubkey)}" target="_blank" rel="noopener" class="surfer-profile-link" onclick="event.stopPropagation()">${u.avatar_path?`<img src="${u.avatar_path}" class="surfer-av">`:`<div class="surfer-av-placeholder">${(u.display_name||'?')[0].toUpperCase()}</div>`}</a><div class="surfer-info"><a href="${primalLink(u.pubkey)}" target="_blank" rel="noopener" class="surfer-name-link">${escapeHtml(u.display_name||'Anon')}</a><div class="surfer-meta">${u.session_count||0} session${u.session_count!==1?'s':''}${u.total_barrels>0?` · 🤿 ${u.total_barrels}`:''}</div></div><div>${btn}</div></div>`;
+      return`<div class="surfer-card"><a href="${primalLink(u.pubkey)}" target="_blank" rel="noopener" class="surfer-profile-link" onclick="event.stopPropagation()">${u.avatar_path?`<img src="${u.avatar_path}" class="surfer-av${ringCls(u)}">`:`<div class="surfer-av-placeholder${ringCls(u)}">${(u.display_name||'?')[0].toUpperCase()}</div>`}</a><div class="surfer-info"><a href="${primalLink(u.pubkey)}" target="_blank" rel="noopener" class="surfer-name-link">${escapeHtml(u.display_name||'Anon')}</a><div class="surfer-meta">${u.session_count||0} session${u.session_count!==1?'s':''}${u.total_barrels>0?` · 🤿 ${u.total_barrels}`:''}</div></div><div>${btn}</div></div>`;
     }).join('');
   }catch{$('#members-modal-list').innerHTML='<p class="muted">Error loading members.</p>';}
 }
@@ -1045,55 +1055,83 @@ $('#members-modal .modal-backdrop').addEventListener('click',()=>$('#members-mod
 $('#members-modal .modal-close').addEventListener('click',()=>$('#members-modal').classList.add('hidden'));
 
 // ===== PRO SUBSCRIPTION =====
-async function checkProStatus(){
-  if(!currentUser)return;
-  // Check native StoreKit first (iOS)
+let proPriceStr='$2.99';  // overwritten with live StoreKit price when available
+async function fetchProPrice(){
   if(IS_CAPACITOR&&window.Capacitor?.Plugins?.StoreKit){
-    try{const r=await window.Capacitor.Plugins.StoreKit.getStatus();isPro=r.isPro;
-      if(isPro)await fetch(API_BASE+'/api/pro/activate',{method:'POST',headers:{'X-Nostr-Pubkey':currentUser.pubkey}});
-    }catch{}
+    try{const r=await window.Capacitor.Plugins.StoreKit.getProducts();const p=r?.products?.[0];if(p?.displayPrice)proPriceStr=p.displayPrice;}catch{}
   }
-  // Fall back to server
-  if(!isPro){try{const r=await(await fetch(API_BASE+'/api/pro/status',{headers:{'X-Nostr-Pubkey':currentUser.pubkey}})).json();isPro=r.isPro;}catch{}}
-  currentUser.is_pro=isPro?1:0;
+  applyProPrice();
+}
+function applyProPrice(){const t=$('#pro-tab-price');if(t)t.textContent=proPriceStr;const m=$('#pro-price');if(m)m.textContent=`${proPriceStr}/mo`;}
+
+function updateOwnAvatarRing(){const on=!!ringCls(currentUser);['#user-avatar','#settings-avatar'].forEach(sel=>{const el=$(sel);if(el)el.classList.toggle('pro-ring',on);});}
+
+// Render the Pro tab between buy and owned states
+function renderProTab(){
+  const owned=$('#pro-tab-owned'),buy=$('#pro-tab-buy');
+  if(!owned||!buy)return;
+  owned.classList.toggle('hidden',!isPro);
+  buy.classList.toggle('hidden',isPro);
+  applyProPrice();
 }
 
-function showProModal(){$('#pro-modal').classList.remove('hidden');}
+async function checkProStatus(){
+  if(!currentUser)return;
+  // Native StoreKit is authoritative on iOS; auto-activate server-side on a match
+  if(IS_CAPACITOR&&window.Capacitor?.Plugins?.StoreKit){
+    try{const r=await window.Capacitor.Plugins.StoreKit.getStatus();if(r.isPro){isPro=true;await fetch(API_BASE+'/api/pro/activate',{method:'POST',headers:{'X-Nostr-Pubkey':currentUser.pubkey}});}}catch{}
+  }
+  // Server returns authoritative Pro flag + ring preference
+  try{const r=await(await fetch(API_BASE+'/api/pro/status',{headers:{'X-Nostr-Pubkey':currentUser.pubkey}})).json();if(r.isPro)isPro=true;currentUser.show_pro_ring=r.showRing??1;}catch{}
+  currentUser.is_pro=isPro?1:0;saveUser(currentUser);
+  updateOwnAvatarRing();renderProTab();fetchProPrice();
+}
+
+function showProModal(){$('#pro-modal').classList.remove('hidden');applyProPrice();fetchProPrice();}
 function requirePro(feature){if(isPro)return true;showProModal();return false;}
+
+// Shared purchase / restore — used by both the Pro tab and the upsell modal
+async function doProPurchase(btn){
+  if(!(IS_CAPACITOR&&window.Capacitor?.Plugins?.StoreKit)){toast('In-app purchases are only available in the iOS app','error');return;}
+  const orig=btn?btn.innerHTML:'';
+  try{
+    if(btn){btn.disabled=true;btn.textContent='Processing...';}
+    const r=await window.Capacitor.Plugins.StoreKit.purchase();
+    if(r.success){
+      await fetch(API_BASE+'/api/pro/activate',{method:'POST',headers:{'X-Nostr-Pubkey':currentUser.pubkey}});
+      isPro=true;currentUser.is_pro=1;currentUser.show_pro_ring=currentUser.show_pro_ring??1;saveUser(currentUser);
+      toast('Welcome to Pro!');$('#pro-modal').classList.add('hidden');
+      updateOwnAvatarRing();renderProTab();
+    }else if(r.cancelled){toast('Purchase cancelled','error');}
+    else if(r.pending){toast('Purchase pending — check back soon');}
+  }catch(e){toast('Purchase failed: '+e.message,'error');}
+  finally{if(btn){btn.disabled=false;btn.innerHTML=orig;}}
+}
+async function doProRestore(){
+  if(!(IS_CAPACITOR&&window.Capacitor?.Plugins?.StoreKit)){toast('Restore is only available in the iOS app','error');return;}
+  try{
+    const r=await window.Capacitor.Plugins.StoreKit.restorePurchases();
+    if(r.isPro){
+      await fetch(API_BASE+'/api/pro/activate',{method:'POST',headers:{'X-Nostr-Pubkey':currentUser.pubkey}});
+      isPro=true;currentUser.is_pro=1;saveUser(currentUser);
+      toast('Pro restored!');$('#pro-modal').classList.add('hidden');
+      updateOwnAvatarRing();renderProTab();
+    }else{toast('No active subscription found','error');}
+  }catch(e){toast('Restore failed','error');}
+}
 
 $('#pro-modal .modal-backdrop').addEventListener('click',()=>$('#pro-modal').classList.add('hidden'));
 $('#pro-modal .modal-close').addEventListener('click',()=>$('#pro-modal').classList.add('hidden'));
+$('#pro-purchase-btn').addEventListener('click',e=>doProPurchase(e.currentTarget));
+$('#pro-restore-btn').addEventListener('click',doProRestore);
+$('#pro-tab-purchase-btn')?.addEventListener('click',e=>doProPurchase(e.currentTarget));
+$('#pro-tab-restore-btn')?.addEventListener('click',e=>{e.preventDefault();doProRestore();});
 
-$('#pro-purchase-btn').addEventListener('click',async()=>{
-  if(IS_CAPACITOR&&window.Capacitor?.Plugins?.StoreKit){
-    try{
-      $('#pro-purchase-btn').disabled=true;$('#pro-purchase-btn').textContent='Processing...';
-      const r=await window.Capacitor.Plugins.StoreKit.purchase();
-      if(r.success){
-        await fetch(API_BASE+'/api/pro/activate',{method:'POST',headers:{'X-Nostr-Pubkey':currentUser.pubkey}});
-        isPro=true;currentUser.is_pro=1;saveUser(currentUser);
-        toast('Welcome to Pro!');$('#pro-modal').classList.add('hidden');
-      }else if(r.cancelled){toast('Purchase cancelled','error');}
-      else if(r.pending){toast('Purchase pending — check back soon');}
-    }catch(e){toast('Purchase failed: '+e.message,'error');}
-    finally{$('#pro-purchase-btn').disabled=false;$('#pro-purchase-btn').textContent='Upgrade — $2.99/mo';}
-  }else{
-    // Web: no IAP, show message
-    toast('In-app purchases are only available in the iOS app','error');
-  }
-});
-
-$('#pro-restore-btn').addEventListener('click',async()=>{
-  if(IS_CAPACITOR&&window.Capacitor?.Plugins?.StoreKit){
-    try{
-      const r=await window.Capacitor.Plugins.StoreKit.restorePurchases();
-      if(r.isPro){
-        await fetch(API_BASE+'/api/pro/activate',{method:'POST',headers:{'X-Nostr-Pubkey':currentUser.pubkey}});
-        isPro=true;currentUser.is_pro=1;saveUser(currentUser);
-        toast('Pro restored!');$('#pro-modal').classList.add('hidden');
-      }else{toast('No active subscription found','error');}
-    }catch(e){toast('Restore failed','error');}
-  }else{toast('Restore is only available in the iOS app','error');}
+// Pro ring toggle (settings)
+$('#settings-pro-ring')?.addEventListener('change',async e=>{
+  const show=e.target.checked;
+  currentUser.show_pro_ring=show?1:0;saveUser(currentUser);updateOwnAvatarRing();
+  try{await fetch(API_BASE+'/api/pro/ring',{method:'POST',headers:{'Content-Type':'application/json','X-Nostr-Pubkey':currentUser.pubkey},body:JSON.stringify({show})});toast(show?'Gold ring on':'Gold ring off');}catch{toast('Could not save','error');}
 });
 
 // ===== INVITE CLAIM (check URL) =====
@@ -1191,8 +1229,8 @@ async function loadPipeline(q=''){
 function renderPipelineCard(s){
   const displayName=s.is_member||!s.is_private?escapeHtml(s.name||s.region||'Unknown'):escapeHtml(s.region||'Unknown Region');
   const adminAvatars=(s.admins||[]).map(a=>
-    a.avatar_path?`<img src="${a.avatar_path}" class="pipeline-admin-av" title="${escapeHtml(a.display_name||'')}" alt="">`
-    :`<div class="pipeline-admin-av-placeholder" title="${escapeHtml(a.display_name||'')}">${(a.display_name||'?')[0].toUpperCase()}</div>`
+    a.avatar_path?`<img src="${a.avatar_path}" class="pipeline-admin-av${ringCls(a)}" title="${escapeHtml(a.display_name||'')}" alt="">`
+    :`<div class="pipeline-admin-av-placeholder${ringCls(a)}" title="${escapeHtml(a.display_name||'')}">${(a.display_name||'?')[0].toUpperCase()}</div>`
   ).join('');
   const activity=s.recent_sessions>0?'<span class="pipeline-active">Active</span>':'';
   let actionBtn='';
@@ -1261,7 +1299,7 @@ async function loadJoinRequests(){
     $('#join-request-count').textContent=requests.length;
     $('#join-requests-list').innerHTML=requests.map(r=>`
       <div class="join-request-card">
-        ${avatarHTML(r.avatar_path,r.display_name,'feed-avatar')}
+        ${avatarHTML(r.avatar_path,r.display_name,'feed-avatar',!!ringCls(r))}
         <div class="join-request-info">
           <div class="join-request-name">${escapeHtml(r.display_name||'Anon')}</div>
           ${r.message?`<div class="join-request-msg">"${escapeHtml(r.message)}"</div>`:''}

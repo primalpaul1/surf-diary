@@ -62,6 +62,7 @@
         <button class="nav-btn" data-view="surfers">Surfers</button>
         <button class="nav-btn" data-view="analysis">Analysis</button>
         <button class="nav-btn" data-view="pipeline">Search</button>
+        <button class="nav-btn nav-btn-pro" data-view="pro">Pro</button>
       </nav>
       <div class="auth-section">
         <div id="auth-buttons">
@@ -344,6 +345,16 @@
         <p class="muted">You're logged in with Primal. Your account is already connected.</p>
       </div>
 
+      <div id="settings-pro-section" class="settings-section hidden">
+        <div class="toggle-row">
+          <div>
+            <label class="toggle-label">✦ Gold Pro ring</label>
+            <div class="pro-ring-sub">Show a gold ring on your avatar so others know you're Pro.</div>
+          </div>
+          <input type="checkbox" id="settings-pro-ring" class="toggle-check" checked>
+        </div>
+      </div>
+
       <div class="settings-section settings-danger">
         <button id="delete-account-btn" class="btn-outline btn-block danger-btn">Delete Account</button>
         <p class="muted danger-hint">Permanently deletes your sessions, comments, follows, and profile from Swellnotes. This cannot be undone.</p>
@@ -517,6 +528,46 @@
           <input type="text" id="pipeline-search" placeholder="Search crews..." autocomplete="off">
         </div>
         <div id="pipeline-list" class="pipeline-list"></div>
+      </div>
+    </section>
+
+    <section id="view-pro" class="view">
+      <div class="pro-hero">
+        <span class="pro-eyebrow">Swellnotes Pro</span>
+        <h1>Know your spots.</h1>
+        <p class="pro-tagline">Unlock their full potential.</p>
+      </div>
+      <div class="pro-price-card">
+        <div id="pro-tab-buy">
+          <div class="pro-price"><span id="pro-tab-price">$2.99</span><span class="per"> / month</span></div>
+          <div class="pro-price-note">Billed monthly · cancel anytime</div>
+          <button id="pro-tab-purchase-btn" class="btn-solid btn-block pro-cta">Go Pro</button>
+          <a href="#" id="pro-tab-restore-btn" class="link-btn pro-restore">Restore Purchase</a>
+        </div>
+        <div id="pro-tab-owned" class="hidden">
+          <div class="pro-owned">You're a Pro member</div>
+          <p class="muted" style="margin-top:0.5rem">Thanks for backing Swellnotes. Manage or cancel anytime in your Apple ID settings.</p>
+        </div>
+        <div class="pro-terms">
+          Auto-renewing subscription. Your Apple ID is charged $2.99 each month at
+          confirmation of purchase. It renews automatically unless turned off at least
+          24 hours before the end of the current period. Manage or cancel anytime in
+          your Apple ID settings.
+          <div class="pro-legal">
+            <a href="https://www.apple.com/legal/internet-services/itunes/dev/stdeula/" target="_blank" rel="noopener">Terms of Use (EULA)</a>·<a href="https://swellnotes.com/privacy.html" target="_blank" rel="noopener">Privacy Policy</a>
+          </div>
+        </div>
+      </div>
+      <div class="pro-benefits-title">Everything in Pro</div>
+      <div class="pro-benefits">
+        <div class="pro-benefit"><h4>Unlimited spots and crews</h4><p>Track every spot you surf and run a crew at each one. Free accounts get one.</p></div>
+        <div class="pro-benefit"><h4>Gold profile ring</h4><p>A gold ring on your avatar so your crew knows you're Pro. Toggle it off anytime.</p></div>
+        <div class="pro-benefit"><h4>Priority support</h4><p>Questions answered fast, straight from the developer.</p></div>
+        <div class="pro-benefit"><h4>Back independent surf tech</h4><p>Keep Swellnotes ad-free, built by surfers for surfers.</p></div>
+      </div>
+      <div class="pro-trust">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        Secured by Apple · Billed through your Apple ID
       </div>
     </section>
   </main>

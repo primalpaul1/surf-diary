@@ -763,6 +763,55 @@ textarea { resize: vertical; }
 .pro-feature::before { content: '✓ '; font-weight: 800; }
 .pro-badge { display: inline-block; background: #000; color: #fff; font-size: 0.55rem; font-weight: 800; padding: 0.1rem 0.35rem; border-radius: 4px; vertical-align: middle; margin-left: 0.3rem; }
 
+/* ---- PRO TAB + LANDING ---- */
+.nav-btn-pro { color: var(--gold); font-weight: 700; }
+.nav-btn-pro:hover { color: #ffd35c; background: rgba(251,191,36,0.08); }
+.nav-btn-pro.active { color: var(--gold); background: rgba(251,191,36,0.18); }
+@media (max-width: 768px) { .nav-btn-pro.active { background: none; border-bottom-color: var(--gold); } }
+
+/* Immersive full-screen wave background — only while the Pro tab is open */
+body.pro-immersive { background: #041428; }
+body.pro-immersive::before { content: ''; position: fixed; inset: 0; z-index: 0; background: url('/wave-bg.jpg') center 30% / cover no-repeat; }
+body.pro-immersive::after { content: ''; position: fixed; inset: 0; z-index: 0; background: linear-gradient(180deg, rgba(4,18,38,0.30) 0%, rgba(4,18,38,0.55) 42%, rgba(4,18,38,0.80) 100%); }
+body.pro-immersive #app-header { background: rgba(4,20,40,0.55); backdrop-filter: blur(14px); }
+body.pro-immersive #main-content { position: relative; z-index: 2; background: transparent; }
+body.pro-immersive .hero, body.pro-immersive footer { display: none !important; }
+
+#view-pro { max-width: 520px; margin: 0 auto; color: #fff; }
+.pro-hero { text-align: center; padding: 1.6rem 1rem 1.4rem; }
+.pro-eyebrow { display: inline-block; color: var(--gold); font: 800 0.64rem var(--font-body); letter-spacing: 0.2em; text-transform: uppercase; margin-bottom: 0.85rem; text-shadow: 0 1px 10px rgba(0,0,0,0.5); }
+.pro-hero h1 { font: 3rem var(--font-display); line-height: 1.0; letter-spacing: -0.01em; margin: 0; text-shadow: 0 2px 28px rgba(0,0,0,0.55); }
+.pro-hero .pro-tagline { font: 400 1.1rem var(--font-body); color: rgba(255,255,255,0.92); margin-top: 0.55rem; text-shadow: 0 1px 16px rgba(0,0,0,0.55); }
+
+.pro-price-card { background: rgba(255,255,255,0.94); backdrop-filter: blur(20px); border-radius: 20px; margin: 0.5rem 0.25rem 0; padding: 1.5rem 1.4rem 1.3rem; box-shadow: 0 16px 50px rgba(0,0,0,0.35); text-align: center; color: var(--text); }
+.pro-price { font: 3.4rem var(--font-display); color: var(--text); line-height: 1; }
+.pro-price .per { font: 500 1.05rem var(--font-body); color: var(--text-muted); }
+.pro-price-note { font: 500 0.8rem var(--font-body); color: var(--text-muted); margin-top: 0.3rem; }
+.pro-cta { margin-top: 1.1rem; font-size: 1rem; background: var(--ocean-dark); color: #fff; }
+.pro-cta:hover { background: var(--ocean-mid); }
+.pro-restore { display: block; margin: 0.85rem auto 0; color: var(--text-muted); }
+.pro-owned { display: inline-flex; align-items: center; gap: 0.5rem; font: 700 1.1rem var(--font-body); color: var(--gold); }
+.pro-terms { margin: 1.1rem auto 0; max-width: 420px; font: 400 0.72rem var(--font-body); color: var(--text-muted); line-height: 1.55; }
+.pro-terms a { color: var(--teal); text-decoration: none; }
+.pro-legal { margin-top: 0.5rem; }
+.pro-legal a { margin: 0 0.4rem; }
+.pro-benefits-title { text-align: center; font: 700 0.7rem var(--font-body); letter-spacing: 0.18em; text-transform: uppercase; color: rgba(255,255,255,0.7); margin: 2rem 0 0.6rem; }
+.pro-benefits { padding: 0 0.6rem; }
+.pro-benefit { padding: 1.05rem 0.4rem; border-bottom: 1px solid rgba(255,255,255,0.14); }
+.pro-benefit:last-child { border-bottom: none; }
+.pro-benefit h4 { font: 600 1.08rem var(--font-body); color: #fff; margin: 0 0 0.18rem; text-shadow: 0 1px 12px rgba(0,0,0,0.5); }
+.pro-benefit p { font: 400 0.88rem var(--font-body); color: rgba(255,255,255,0.82); line-height: 1.42; margin: 0; text-shadow: 0 1px 12px rgba(0,0,0,0.5); }
+.pro-trust { display: flex; align-items: center; justify-content: center; gap: 0.45rem; margin: 1.6rem 0 2rem; font: 500 0.78rem var(--font-body); color: rgba(255,255,255,0.7); }
+.pro-trust svg { width: 13px; height: 13px; }
+
+/* Gold ring on Pro members' avatars */
+.pro-ring { box-shadow: 0 0 0 2px var(--card), 0 0 0 4px var(--gold); }
+.user-avatar-sm.pro-ring { box-shadow: 0 0 0 2px var(--ocean-deep), 0 0 0 4px var(--gold); border-color: transparent; }
+.settings-avatar.pro-ring { box-shadow: 0 0 0 2px var(--card), 0 0 0 4px var(--gold); border-color: transparent; }
+
+/* Pro ring toggle sub-label in settings */
+.pro-ring-sub { font: 400 0.78rem var(--font-body); color: var(--text-muted); margin-top: 0.15rem; max-width: 220px; }
+
 /* Forecast Match */
 .fm-day { font: 700 1rem var(--font-headline); margin: 1.5rem 0 0.5rem; padding-bottom: 0.4rem; border-bottom: 2px solid var(--ocean-dark); }
 .fm-day:first-child { margin-top: 0.5rem; }

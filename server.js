@@ -80,6 +80,7 @@ async function initDB(){
   // Migrations
   try{await db.exec('ALTER TABLE sessions ADD COLUMN barrels INTEGER DEFAULT 0');}catch{}
   try{await db.exec('ALTER TABLE users ADD COLUMN is_pro INTEGER DEFAULT 0');}catch{}
+  try{await db.exec('ALTER TABLE users ADD COLUMN show_pro_ring INTEGER DEFAULT 1');}catch{}
   try{await db.exec('ALTER TABLE spots ADD COLUMN description TEXT');}catch{}
   try{await db.exec('ALTER TABLE spots ADD COLUMN region TEXT');}catch{}
   try{await db.exec('ALTER TABLE users ADD COLUMN nip05 TEXT');}catch{}
@@ -221,7 +222,7 @@ app.get('/api/spots/browse',async(req,res)=>{
   }
   const result=[];
   for(const s of spots){
-    const admins=await db.query("SELECT sm.pubkey,u.display_name,u.avatar_path FROM spot_members sm LEFT JOIN users u ON sm.pubkey=u.pubkey WHERE sm.spot_id=$1 AND sm.role='admin'",[s.id]);
+    const admins=await db.query("SELECT sm.pubkey,u.display_name,u.avatar_path,u.is_pro,u.show_pro_ring FROM spot_members sm LEFT JOIN users u ON sm.pubkey=u.pubkey WHERE sm.spot_id=$1 AND sm.role='admin'",[s.id]);
     const activity=await db.get('SELECT COUNT(*) as c FROM sessions WHERE spot_id=$1 AND created_at>$2',[s.id,weekAgo]);
     const isMember=memberSet.has(s.id);
     const out={
@@ -252,10 +253,10 @@ app.get('/api/spots/:id',async(req,res)=>{
   const isMember=pk?!!(await db.get('SELECT 1 FROM spot_members WHERE spot_id=$1 AND pubkey=$2',[req.params.id,pk])):false;
   if(spot.is_private&&!isMember){
     // Non-members of private crews see limited info
-    const admins=await db.query("SELECT sm.pubkey,sm.role,u.display_name,u.avatar_path FROM spot_members sm LEFT JOIN users u ON sm.pubkey=u.pubkey WHERE sm.spot_id=$1 AND sm.role='admin'",[req.params.id]);
+    const admins=await db.query("SELECT sm.pubkey,sm.role,u.display_name,u.avatar_path,u.is_pro,u.show_pro_ring FROM spot_members sm LEFT JOIN users u ON sm.pubkey=u.pubkey WHERE sm.spot_id=$1 AND sm.role='admin'",[req.params.id]);
     return res.json({id:spot.id,region:spot.region,description:spot.description,cover_image_url:spot.cover_image_url,member_count:spot.member_count,is_private:1,members:admins.map(a=>absUser(a,req))});
   }
-  const members=await db.query('SELECT sm.pubkey,sm.role,u.display_name,u.avatar_path FROM spot_members sm LEFT JOIN users u ON sm.pubkey=u.pubkey WHERE sm.spot_id=$1',[req.params.id]);
+  const members=await db.query('SELECT sm.pubkey,sm.role,u.display_name,u.avatar_path,u.is_pro,u.show_pro_ring FROM spot_members sm LEFT JOIN users u ON sm.pubkey=u.pubkey WHERE sm.spot_id=$1',[req.params.id]);
   res.json({...spot,members:members.map(m=>absUser(m,req))});
 });
 
@@ -309,7 +310,7 @@ app.post('/api/spots/:id/join-request',requireAuth,async(req,res)=>{
 app.get('/api/spots/:id/join-requests',requireAuth,async(req,res)=>{
   const member=await db.get('SELECT role FROM spot_members WHERE spot_id=$1 AND pubkey=$2',[req.params.id,req.pubkey]);
   if(!member||member.role!=='admin')return res.status(403).json({error:'Admin only'});
-  const requests=await db.query("SELECT jr.*,u.display_name,u.avatar_path FROM spot_join_requests jr LEFT JOIN users u ON jr.pubkey=u.pubkey WHERE jr.spot_id=$1 AND jr.status='pending' ORDER BY jr.created_at DESC",[req.params.id]);
+  const requests=await db.query("SELECT jr.*,u.display_name,u.avatar_path,u.is_pro,u.show_pro_ring FROM spot_join_requests jr LEFT JOIN users u ON jr.pubkey=u.pubkey WHERE jr.spot_id=$1 AND jr.status='pending' ORDER BY jr.created_at DESC",[req.params.id]);
   res.json(requests.map(r=>absUser(r,req)));
 });
 
@@ -388,7 +389,7 @@ app.get('/api/feed',requireAuth,async(req,res)=>{
     if(month){w.push(`substring(session_date,1,7)=$${n++}`);p.push(month);}
     if(swell_dir){w.push(`swells_json LIKE $${n++}`);p.push(`%"direction_compass":"${swell_dir}"%`);}
     const wc='WHERE '+w.join(' AND ');
-    const sessions=await db.query(`SELECT s.*,u.display_name,u.avatar_path,COALESCE(bst.tb,0) as total_barrels FROM sessions s LEFT JOIN users u ON s.pubkey=u.pubkey LEFT JOIN (SELECT pubkey,SUM(barrels) as tb FROM sessions GROUP BY pubkey) bst ON bst.pubkey=s.pubkey ${wc} ORDER BY s.session_date DESC,s.created_at DESC LIMIT $${n++}`,[...p,+limit]);
+    const sessions=await db.query(`SELECT s.*,u.display_name,u.avatar_path,u.is_pro,u.show_pro_ring,COALESCE(bst.tb,0) as total_barrels FROM sessions s LEFT JOIN users u ON s.pubkey=u.pubkey LEFT JOIN (SELECT pubkey,SUM(barrels) as tb FROM sessions GROUP BY pubkey) bst ON bst.pubkey=s.pubkey ${wc} ORDER BY s.session_date DESC,s.created_at DESC LIMIT $${n++}`,[...p,+limit]);
     if(sessions.length)result.push({spot:{id:spot.id,name:spot.name,location_text:spot.location_text,cover_image_url:spot.cover_image_url,member_count:spot.member_count},sessions:sessions.map(s=>absSession(s,req))});
   }
   res.json(result);
@@ -424,8 +425,13 @@ app.get('/api/nip46/init',async(req,res)=>{try{const{generateSecretKey,getPublic
 // ===== AUTH =====
 // Pro subscription
 app.get('/api/pro/status',requireAuth,async(req,res)=>{
-  const user=await db.get('SELECT is_pro FROM users WHERE pubkey=$1',[req.pubkey]);
-  res.json({isPro:!!(user?.is_pro)});
+  const user=await db.get('SELECT is_pro,show_pro_ring FROM users WHERE pubkey=$1',[req.pubkey]);
+  res.json({isPro:!!(user?.is_pro),showRing:user?.show_pro_ring??1});
+});
+app.post('/api/pro/ring',requireAuth,async(req,res)=>{
+  const show=req.body.show?1:0;
+  await db.run('UPDATE users SET show_pro_ring=$1 WHERE pubkey=$2',[show,req.pubkey]);
+  res.json({ok:true,showRing:show});
 });
 app.post('/api/pro/activate',requireAuth,async(req,res)=>{
   // Called from client after StoreKit verifies the purchase
@@ -474,13 +480,13 @@ app.get('/api/users',async(req,res)=>{
   const statsQ='(SELECT pubkey,COUNT(*) as session_count,COALESCE(SUM(barrels),0) as total_barrels,MAX(created_at) as last_active FROM sessions GROUP BY pubkey) st';
   if(spotId){
     const spotStatsQ='(SELECT pubkey,COUNT(*) as spot_sessions FROM sessions WHERE spot_id=$1 GROUP BY pubkey) ss';
-    users=await db.query(`SELECT u.pubkey,u.display_name,u.avatar_path,sm.role,COALESCE(ss.spot_sessions,0) as session_count,COALESCE(st.total_barrels,0) as total_barrels FROM spot_members sm LEFT JOIN users u ON sm.pubkey=u.pubkey LEFT JOIN ${statsQ} ON st.pubkey=u.pubkey LEFT JOIN ${spotStatsQ} ON ss.pubkey=u.pubkey WHERE sm.spot_id=$2 ORDER BY session_count DESC`,[spotId,spotId]);
+    users=await db.query(`SELECT u.pubkey,u.display_name,u.avatar_path,u.is_pro,u.show_pro_ring,sm.role,COALESCE(ss.spot_sessions,0) as session_count,COALESCE(st.total_barrels,0) as total_barrels FROM spot_members sm LEFT JOIN users u ON sm.pubkey=u.pubkey LEFT JOIN ${statsQ} ON st.pubkey=u.pubkey LEFT JOIN ${spotStatsQ} ON ss.pubkey=u.pubkey WHERE sm.spot_id=$2 ORDER BY session_count DESC`,[spotId,spotId]);
   } else if(crew_id){
-    users=await db.query(`SELECT u.pubkey,u.display_name,u.avatar_path,sm.role,COALESCE(st.session_count,0) as session_count,COALESCE(st.total_barrels,0) as total_barrels,st.last_active FROM spot_members sm LEFT JOIN users u ON sm.pubkey=u.pubkey LEFT JOIN ${statsQ} ON st.pubkey=u.pubkey WHERE sm.spot_id=$1 ORDER BY st.last_active DESC NULLS LAST`,[crew_id]);
+    users=await db.query(`SELECT u.pubkey,u.display_name,u.avatar_path,u.is_pro,u.show_pro_ring,sm.role,COALESCE(st.session_count,0) as session_count,COALESCE(st.total_barrels,0) as total_barrels,st.last_active FROM spot_members sm LEFT JOIN users u ON sm.pubkey=u.pubkey LEFT JOIN ${statsQ} ON st.pubkey=u.pubkey WHERE sm.spot_id=$1 ORDER BY st.last_active DESC NULLS LAST`,[crew_id]);
   } else if(sort==='recent'){
-    users=await db.query(`SELECT u.pubkey,u.display_name,u.avatar_path,COALESCE(st.session_count,0) as session_count,COALESCE(st.total_barrels,0) as total_barrels,st.last_active FROM users u INNER JOIN ${statsQ} ON st.pubkey=u.pubkey ORDER BY st.last_active DESC NULLS LAST`);
+    users=await db.query(`SELECT u.pubkey,u.display_name,u.avatar_path,u.is_pro,u.show_pro_ring,COALESCE(st.session_count,0) as session_count,COALESCE(st.total_barrels,0) as total_barrels,st.last_active FROM users u INNER JOIN ${statsQ} ON st.pubkey=u.pubkey ORDER BY st.last_active DESC NULLS LAST`);
   } else {
-    users=await db.query(`SELECT u.pubkey,u.display_name,u.avatar_path,COALESCE(st.session_count,0) as session_count,COALESCE(st.total_barrels,0) as total_barrels FROM users u LEFT JOIN ${statsQ} ON st.pubkey=u.pubkey ORDER BY session_count DESC`);
+    users=await db.query(`SELECT u.pubkey,u.display_name,u.avatar_path,u.is_pro,u.show_pro_ring,COALESCE(st.session_count,0) as session_count,COALESCE(st.total_barrels,0) as total_barrels FROM users u LEFT JOIN ${statsQ} ON st.pubkey=u.pubkey ORDER BY session_count DESC`);
   }
   res.json(users.map(u=>absUser(u,req)));
 });
@@ -512,7 +518,7 @@ app.delete('/api/users',requireAuth,async(req,res)=>{
 
 // ===== FOLLOWS =====
 app.get('/api/follows',requireAuth,async(req,res)=>{
-  res.json({following:await db.query('SELECT f.followed_pubkey as pubkey,u.display_name,u.avatar_path,(SELECT COUNT(*)FROM sessions WHERE pubkey=f.followed_pubkey) as session_count FROM follows f LEFT JOIN users u ON f.followed_pubkey=u.pubkey WHERE f.follower_pubkey=$1',[req.pubkey]),
+  res.json({following:await db.query('SELECT f.followed_pubkey as pubkey,u.display_name,u.avatar_path,u.is_pro,u.show_pro_ring,(SELECT COUNT(*)FROM sessions WHERE pubkey=f.followed_pubkey) as session_count FROM follows f LEFT JOIN users u ON f.followed_pubkey=u.pubkey WHERE f.follower_pubkey=$1',[req.pubkey]),
     followers:await db.query('SELECT f.follower_pubkey as pubkey,u.display_name FROM follows f LEFT JOIN users u ON f.follower_pubkey=u.pubkey WHERE f.followed_pubkey=$1',[req.pubkey])});
 });
 app.post('/api/follows/:pubkey',requireAuth,async(req,res)=>{if(req.params.pubkey===req.pubkey)return res.status(400).json({error:'Cannot follow yourself'});await db.run('INSERT INTO follows(follower_pubkey,followed_pubkey)VALUES($1,$2)ON CONFLICT DO NOTHING',[req.pubkey,req.params.pubkey]);res.json({ok:true});});
@@ -558,15 +564,15 @@ app.get('/api/sessions',async(req,res)=>{
   if(month){w.push(`substring(session_date,1,7)=$${n++}`);p.push(month);}
   if(swell_dir){w.push(`swells_json LIKE $${n++}`);p.push(`%"direction_compass":"${swell_dir}"%`);}
   const wc=w.length?'WHERE '+w.join(' AND '):'';
-  const sessions=await db.query(`SELECT s.*,u.display_name,u.avatar_path,COALESCE(bst.tb,0) as total_barrels FROM sessions s LEFT JOIN users u ON s.pubkey=u.pubkey LEFT JOIN (SELECT pubkey,SUM(barrels) as tb FROM sessions GROUP BY pubkey) bst ON bst.pubkey=s.pubkey ${wc} ORDER BY s.session_date DESC,s.created_at DESC LIMIT $${n++} OFFSET $${n++}`,[...p,+limit,+offset]);
+  const sessions=await db.query(`SELECT s.*,u.display_name,u.avatar_path,u.is_pro,u.show_pro_ring,COALESCE(bst.tb,0) as total_barrels FROM sessions s LEFT JOIN users u ON s.pubkey=u.pubkey LEFT JOIN (SELECT pubkey,SUM(barrels) as tb FROM sessions GROUP BY pubkey) bst ON bst.pubkey=s.pubkey ${wc} ORDER BY s.session_date DESC,s.created_at DESC LIMIT $${n++} OFFSET $${n++}`,[...p,+limit,+offset]);
   const total=await db.get(`SELECT COUNT(*) as count FROM sessions s ${wc}`,p);
   res.json({sessions:sessions.map(s=>absSession(s,req)),total:total?.count||0});
 });
 
 app.get('/api/sessions/:id',async(req,res)=>{
-  const s=await db.get('SELECT s.*,u.display_name,u.avatar_path FROM sessions s LEFT JOIN users u ON s.pubkey=u.pubkey WHERE s.id=$1',[req.params.id]);
+  const s=await db.get('SELECT s.*,u.display_name,u.avatar_path,u.is_pro,u.show_pro_ring FROM sessions s LEFT JOIN users u ON s.pubkey=u.pubkey WHERE s.id=$1',[req.params.id]);
   if(!s)return res.status(404).json({error:'Not found'});
-  const comments=await db.query('SELECT c.*,u.display_name,u.avatar_path FROM comments c LEFT JOIN users u ON c.pubkey=u.pubkey WHERE c.session_id=$1 ORDER BY c.created_at ASC',[req.params.id]);
+  const comments=await db.query('SELECT c.*,u.display_name,u.avatar_path,u.is_pro,u.show_pro_ring FROM comments c LEFT JOIN users u ON c.pubkey=u.pubkey WHERE c.session_id=$1 ORDER BY c.created_at ASC',[req.params.id]);
   res.json({session:absSession(s,req),comments:comments.map(c=>absUser(c,req))});
 });
 
@@ -606,8 +612,8 @@ app.get('/api/search',async(req,res)=>{
   const{pubkey,spot_id,dir_min,dir_max,height_min,height_max,period_min,period_max,rating_min,rating_max,date_from,date_to}=req.query;
   let sessions;
   const safeSpotId=spot_id?.replace(/[^a-zA-Z0-9_-]/g,'')||null;
-  if(pubkey){const pks=await getFeedPubkeys(pubkey);let n=pks.length+1;const ph=pks.map((_,i)=>`$${i+1}`).join(',');const spotClause=safeSpotId?` AND s.spot_id=$${n}`:'';const params=[...pks];if(safeSpotId)params.push(safeSpotId);sessions=await db.query(`SELECT s.*,u.display_name,u.avatar_path FROM sessions s LEFT JOIN users u ON s.pubkey=u.pubkey WHERE s.pubkey IN(${ph})${spotClause} ORDER BY s.session_date DESC`,params);}
-  else sessions=await db.query(`SELECT s.*,u.display_name,u.avatar_path FROM sessions s LEFT JOIN users u ON s.pubkey=u.pubkey ${baseWhere} ORDER BY s.session_date DESC`);
+  if(pubkey){const pks=await getFeedPubkeys(pubkey);let n=pks.length+1;const ph=pks.map((_,i)=>`$${i+1}`).join(',');const spotClause=safeSpotId?` AND s.spot_id=$${n}`:'';const params=[...pks];if(safeSpotId)params.push(safeSpotId);sessions=await db.query(`SELECT s.*,u.display_name,u.avatar_path,u.is_pro,u.show_pro_ring FROM sessions s LEFT JOIN users u ON s.pubkey=u.pubkey WHERE s.pubkey IN(${ph})${spotClause} ORDER BY s.session_date DESC`,params);}
+  else sessions=await db.query(`SELECT s.*,u.display_name,u.avatar_path,u.is_pro,u.show_pro_ring FROM sessions s LEFT JOIN users u ON s.pubkey=u.pubkey ${baseWhere} ORDER BY s.session_date DESC`);
   const results=sessions.filter(s=>{const swells=JSON.parse(s.swells_json||'[]');if(!swells.length)return false;if(dir_min||dir_max){const dmin=parseFloat(dir_min)||0,dmax=parseFloat(dir_max)||360;if(!swells.some(sw=>sw.direction_deg>=dmin&&sw.direction_deg<=dmax))return false;}if(height_min&&swells[0].height_ft<parseFloat(height_min))return false;if(height_max&&swells[0].height_ft>parseFloat(height_max))return false;if(period_min&&swells[0].period_s<parseFloat(period_min))return false;if(period_max&&swells[0].period_s>parseFloat(period_max))return false;if(rating_min&&(s.rating||0)<parseInt(rating_min))return false;if(rating_max&&(s.rating||0)>parseInt(rating_max))return false;if(date_from&&s.session_date<date_from)return false;if(date_to&&s.session_date>date_to)return false;return true;});
   const ratings=results.filter(s=>s.rating).map(s=>s.rating);
   res.json({sessions:results.slice(0,100).map(s=>absSession(s,req)),summary:{count:results.length,avg_rating:ratings.length?Math.round(ratings.reduce((a,b)=>a+b,0)/ratings.length*10)/10:null,best_rating:ratings.length?Math.max(...ratings):null,worst_rating:ratings.length?Math.min(...ratings):null}});
