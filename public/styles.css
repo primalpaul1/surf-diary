@@ -138,14 +138,15 @@
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-html { background: var(--ocean-deep); overscroll-behavior-y: none; }
+html { background: var(--ocean-deep); overscroll-behavior: none; }
 body {
   font-family: var(--font-body);
   background: var(--bg);
   color: var(--text);
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
-  overscroll-behavior-y: none;
+  overscroll-behavior: none;
+  overflow-x: hidden;
   touch-action: pan-x pan-y;
 }
 
