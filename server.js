@@ -243,19 +243,22 @@ app.get('/api/spots/browse',async(req,res)=>{
   const result=[];
   for(const s of spots){
     const admins=await db.query("SELECT sm.pubkey,u.display_name,u.avatar_path,u.is_pro,u.show_pro_ring FROM spot_members sm LEFT JOIN users u ON sm.pubkey=u.pubkey WHERE sm.spot_id=$1 AND sm.role='admin'",[s.id]);
+    const membersPreview=await db.query("SELECT u.pubkey,u.display_name,u.avatar_path,u.is_pro,u.show_pro_ring FROM spot_members sm LEFT JOIN users u ON sm.pubkey=u.pubkey WHERE sm.spot_id=$1 ORDER BY (sm.role='admin')DESC LIMIT 8",[s.id]);
+    const creator=s.created_by?await db.get("SELECT display_name,avatar_path,is_pro,show_pro_ring FROM users WHERE pubkey=$1",[s.created_by]):null;
     const activity=await db.get('SELECT COUNT(*) as c FROM sessions WHERE spot_id=$1 AND created_at>$2',[s.id,weekAgo]);
     const isMember=memberSet.has(s.id);
     const out={
-      id:s.id,region:s.region||null,description:s.description||null,
+      id:s.id,name:s.name,region:s.region||null,description:s.description||null,
       cover_image_url:s.cover_image_url||null,member_count:s.member_count,
       is_private:s.is_private,is_member:isMember?1:0,is_following:followSet.has(s.id)?1:0,
       has_pending_request:pendingSet.has(s.id)?1:0,
       recent_sessions:activity?.c||0,
+      creator:creator?absUser(creator,req):null,
+      members_preview:membersPreview.map(m=>absUser(m,req)),
       admins:admins.map(a=>absUser(a,req))
     };
-    // Only reveal name and surfline_spot_id to members or if public
-    if(!s.is_private||isMember){out.name=s.name;out.surfline_spot_id=s.surfline_spot_id;out.location_text=s.location_text;}
-    else{out.name=null;}
+    // The surf break itself (surfline id + raw location) stays private to non-members
+    if(!s.is_private||isMember){out.surfline_spot_id=s.surfline_spot_id;out.location_text=s.location_text;}
     result.push(out);
   }
   res.json(result);

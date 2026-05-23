@@ -102,6 +102,7 @@ function selectSpot(spot){
   if(activeView==='analysis')loadAnalysis();
   if(activeView==='history')loadFeed();
   if(activeView==='surfers')loadSurfers();
+  syncHero();
 }
 
 async function loadMySpots(){
@@ -1205,27 +1206,28 @@ async function loadPipeline(q=''){
   }catch{list.innerHTML='<div class="empty-state"><p>Error loading crews.</p></div>';}
 }
 
+function packAvatar(u,cls){return u.avatar_path?`<img src="${u.avatar_path}" class="${cls}" title="${escapeHtml(u.display_name||'')}" alt="">`:`<div class="${cls}-ph" title="${escapeHtml(u.display_name||'')}">${(u.display_name||'?')[0].toUpperCase()}</div>`;}
 function renderPipelineCard(s){
-  const displayName=escapeHtml(s.name||s.region||'Unknown');
-  const adminAvatars=(s.admins||[]).map(a=>
-    a.avatar_path?`<img src="${a.avatar_path}" class="pipeline-admin-av${ringCls(a)}" title="${escapeHtml(a.display_name||'')}" alt="">`
-    :`<div class="pipeline-admin-av-placeholder${ringCls(a)}" title="${escapeHtml(a.display_name||'')}">${(a.display_name||'?')[0].toUpperCase()}</div>`
-  ).join('');
-  const activity=s.recent_sessions>0?'<span class="pipeline-active">Active</span>':'';
+  const name=escapeHtml(s.name||s.region||'Unknown');
+  const cover=s.cover_image_url||defaultCover(s.id);
+  const creator=s.creator?`<div class="pack-creator">${packAvatar(s.creator,'pack-creator-av')}<span>Started by <strong>${escapeHtml(s.creator.display_name||'Anon')}</strong></span></div>`:'';
+  const previews=(s.members_preview||[]).slice(0,6);
+  const avs=previews.map(m=>packAvatar(m,'pack-av')).join('');
+  const more=s.member_count>previews.length?`<span class="pack-av-more">+${s.member_count-previews.length}</span>`:'';
+  const active=s.recent_sessions>0?'<span class="pack-active">Active</span>':'';
   let actionBtn='';
-  if(s.is_member)actionBtn='<button class="btn-follow is-you" disabled>Member</button>';
-  else if(!s.is_private&&currentUser)actionBtn=`<button class="btn-request" onclick="event.stopPropagation();joinPublicCrew('${s.id}')">Join</button>`;
-  else if(s.has_pending_request)actionBtn='<button class="btn-follow" disabled>Requested</button>';
-  else if(currentUser)actionBtn=`<button class="btn-request" onclick="event.stopPropagation();openJoinRequest('${s.id}','${escapeHtml(s.name||s.region||'')}')">Request to Join</button>`;
-  return`<div class="pipeline-card" onclick="${s.is_member?`joinExistingSpot('${s.id}')`:''}">
-    ${s.cover_image_url?`<img src="${s.cover_image_url}" class="pipeline-cover" alt="">`:`<img src="${defaultCover(s.id)}" class="pipeline-cover" alt="">`}
-    <div class="pipeline-info">
-      <div class="pipeline-name"><span class="pipeline-name-text">${displayName}</span> ${activity}</div>
-      ${s.description?`<div class="pipeline-desc">${escapeHtml(s.description)}</div>`:''}
-      <div class="pipeline-meta"><span class="members-link" onclick="event.stopPropagation();showMembers('${s.id}','${escapeHtml(s.name||s.region||'')}')">${s.member_count} member${s.member_count!==1?'s':''}</span>${s.is_private?' · Private':' · Public'}</div>
-      <div class="pipeline-admins">${adminAvatars}</div>
+  if(s.is_member)actionBtn='<button class="pack-btn is-member" disabled>Member</button>';
+  else if(!s.is_private&&currentUser)actionBtn=`<button class="pack-btn pack-btn-join" onclick="event.stopPropagation();joinPublicCrew('${s.id}')">Join</button>`;
+  else if(s.has_pending_request)actionBtn='<button class="pack-btn" disabled>Requested</button>';
+  else if(currentUser)actionBtn=`<button class="pack-btn pack-btn-join" onclick="event.stopPropagation();openJoinRequest('${s.id}','${name}')">Request</button>`;
+  return`<div class="pack-card" onclick="${s.is_member?`joinExistingSpot('${s.id}')`:''}">
+    <div class="pack-cover-wrap"><img src="${cover}" class="pack-cover" alt="">${active}</div>
+    <div class="pack-body">
+      <div class="pack-head"><h3 class="pack-title">${name}</h3>${actionBtn}</div>
+      ${creator}
+      ${s.description?`<div class="pack-desc">${escapeHtml(s.description)}</div>`:''}
+      <div class="pack-foot"><div class="pack-avatars">${avs}${more}</div><span class="pack-count">${s.member_count} member${s.member_count!==1?'s':''} · ${s.is_private?'Private':'Public'}</span></div>
     </div>
-    <div class="pipeline-action">${actionBtn}</div>
   </div>`;
 }
 
