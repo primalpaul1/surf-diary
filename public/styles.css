@@ -295,7 +295,7 @@ header.nav-hidden nav { max-height: 0; opacity: 0; margin-top: 0; margin-bottom:
 .hero-cover-btn:active { background: rgba(0,0,0,0.75); }
 
 /* ---- MAIN ---- */
-main { max-width: 1200px; margin: 0 auto; padding: 1.5rem; }
+main { max-width: 1200px; margin: 0 auto; padding: 1.5rem; overflow-x: clip; }
 .view { display: none; } .view.active { display: block; }
 
 /* ---- CARDS ---- */
@@ -628,6 +628,19 @@ textarea { resize: vertical; }
 #create-spot-modal .btn-solid { background: var(--ocean-dark); color: #fff; }
 #create-spot-modal .btn-solid:hover { background: var(--ocean-mid); }
 .field-note { font-size: 0.72rem; color: var(--text-muted); line-height: 1.4; margin-top: 0.35rem; }
+
+/* Floating "new report" button (Reports tab) */
+.report-fab {
+  position: fixed; z-index: 90;
+  right: 1.25rem; bottom: calc(env(safe-area-inset-bottom) + 1.25rem);
+  width: 58px; height: 58px; border-radius: 50%;
+  background: var(--ocean-dark); color: #fff; border: none; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 8px 24px rgba(4,13,26,0.4); transition: transform 0.15s, background 0.15s;
+}
+.report-fab svg { width: 26px; height: 26px; }
+.report-fab:hover { background: var(--ocean-mid); transform: translateY(-2px); }
+.report-fab:active { transform: scale(0.94); }
 .settings-section { margin-top: 1.25rem; }
 .settings-profile { display: flex; align-items: center; gap: 0.75rem; }
 .settings-avatar-wrap { position: relative; cursor: pointer; flex-shrink: 0; }

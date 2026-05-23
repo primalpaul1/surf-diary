@@ -274,7 +274,7 @@ app.get('/api/spots/:id',async(req,res)=>{
   if(spot.is_private&&!isMember){
     // Non-members of private crews see limited info
     const admins=await db.query("SELECT sm.pubkey,sm.role,u.display_name,u.avatar_path,u.is_pro,u.show_pro_ring FROM spot_members sm LEFT JOIN users u ON sm.pubkey=u.pubkey WHERE sm.spot_id=$1 AND sm.role='admin'",[req.params.id]);
-    return res.json({id:spot.id,region:spot.region,description:spot.description,cover_image_url:spot.cover_image_url,member_count:spot.member_count,is_private:1,members:admins.map(a=>absUser(a,req))});
+    return res.json({id:spot.id,name:spot.name,region:spot.region,description:spot.description,cover_image_url:spot.cover_image_url,member_count:spot.member_count,is_private:1,members:admins.map(a=>absUser(a,req))});
   }
   const members=await db.query('SELECT sm.pubkey,sm.role,u.display_name,u.avatar_path,u.is_pro,u.show_pro_ring FROM spot_members sm LEFT JOIN users u ON sm.pubkey=u.pubkey WHERE sm.spot_id=$1',[req.params.id]);
   res.json({...spot,members:members.map(m=>absUser(m,req))});

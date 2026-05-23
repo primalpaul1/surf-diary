@@ -57,8 +57,8 @@
         <select id="spot-select" class="spot-select"></select>
       </div>
       <nav>
-        <button class="nav-btn active" data-view="log">Log</button>
-        <button class="nav-btn" data-view="history">Reports</button>
+        <button class="nav-btn active" data-view="history">Reports</button>
+        <button class="nav-btn" data-view="log">Log</button>
         <button class="nav-btn" data-view="surfers">Surfers</button>
         <button class="nav-btn" data-view="analysis">Analysis</button>
         <button class="nav-btn" data-view="pipeline">Search</button>
@@ -125,7 +125,6 @@
       <p class="modal-sub" id="create-spot-name"></p>
       <form id="create-spot-form">
         <div class="field"><label>Spot name</label><input type="text" id="spot-name" placeholder="Name this spot" maxlength="60" required><div class="field-note">Visible to everyone. The real surf break stays private — it's only used to pull forecasts.</div></div>
-        <div class="field"><label>Region <span class="muted">(visible to everyone)</span></label><input type="text" id="spot-region" placeholder="e.g. Southern Costa Rica"></div>
         <div class="field"><label>Description <span class="muted">(optional)</span></label><textarea id="spot-description" rows="2" placeholder="What's this crew about?"></textarea></div>
         <div class="toggle-row">
           <label class="toggle-label">Private (request to join)</label>
@@ -164,8 +163,7 @@
           </div>
           <input type="file" id="crew-cover-file" accept="image/*" class="hidden">
         </div>
-        <div class="field"><label>Crew Name</label><input type="text" id="crew-settings-name" maxlength="60"></div>
-        <div class="field"><label>Region <span class="muted">(visible to everyone)</span></label><input type="text" id="crew-settings-region" placeholder="e.g. Southern Costa Rica"></div>
+        <div class="field"><label>Crew Name <span class="muted">(visible to everyone)</span></label><input type="text" id="crew-settings-name" maxlength="60"></div>
         <div class="field"><label>Description <span class="muted">(optional)</span></label><textarea id="crew-settings-description" rows="2" placeholder="What's this crew about?"></textarea></div>
         <div class="toggle-row">
           <label class="toggle-label">Private (request to join)</label>
@@ -365,7 +363,7 @@
 
   <main class="hidden" id="main-content">
     <!-- LOG -->
-    <section id="view-log" class="view active">
+    <section id="view-log" class="view">
       <div class="card card-form">
         <div class="card-header">
           <h2>Log a Session</h2>
@@ -431,7 +429,7 @@
     </section>
 
     <!-- FEED -->
-    <section id="view-history" class="view">
+    <section id="view-history" class="view active">
       <div class="card">
         <div class="feed-header"><h2>My Spots</h2><button id="browse-spots-btn" class="btn-outline btn-sm">Browse Crews</button></div>
         <div id="crew-list" class="crew-list"></div>
@@ -571,6 +569,10 @@
       </div>
     </section>
   </main>
+
+  <button id="report-fab" class="report-fab hidden" aria-label="New report" title="New report">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+  </button>
 
   <footer><p><img src="/sn-logo.png" alt="Swellnotes" style="height:20px;vertical-align:middle;margin-right:6px;opacity:0.6">Powered by <a href="https://primal.net" target="_blank">Primal</a> & <a href="https://nostr.com" target="_blank">Nostr</a></p></footer>
   <script src="/app.js" type="module"></script>

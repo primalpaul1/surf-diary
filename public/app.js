@@ -22,7 +22,11 @@ const DEFAULT_COVERS=['/covers/cover1.jpg','/covers/cover2.jpg','/covers/cover3.
 function defaultCover(id){return DEFAULT_COVERS[Math.abs([...((id||'')+'x')].reduce((h,c)=>((h<<5)-h)+c.charCodeAt(0),0))%DEFAULT_COVERS.length];}
 
 // Nav
-$$('.nav-btn[data-view]').forEach(b=>{b.addEventListener('click',()=>{$$('.nav-btn').forEach(x=>x.classList.remove('active'));b.classList.add('active');$$('.view').forEach(v=>v.classList.remove('active'));$(`#view-${b.dataset.view}`).classList.add('active');document.body.classList.toggle('pro-immersive',b.dataset.view==='pro');window.scrollTo(0,0);if(b.dataset.view==='history')loadFeed();if(b.dataset.view==='surfers')loadSurfers();if(b.dataset.view==='analysis')loadAnalysis();if(b.dataset.view==='pipeline')loadPipeline();if(b.dataset.view==='pro')renderProTab();maybeShowTabHint(b.dataset.view);});});
+$$('.nav-btn[data-view]').forEach(b=>{b.addEventListener('click',()=>{$$('.nav-btn').forEach(x=>x.classList.remove('active'));b.classList.add('active');$$('.view').forEach(v=>v.classList.remove('active'));$(`#view-${b.dataset.view}`).classList.add('active');document.body.classList.toggle('pro-immersive',b.dataset.view==='pro');window.scrollTo(0,0);if(b.dataset.view==='history')loadFeed();if(b.dataset.view==='surfers')loadSurfers();if(b.dataset.view==='analysis')loadAnalysis();if(b.dataset.view==='pipeline')loadPipeline();if(b.dataset.view==='pro')renderProTab();updateReportFab();maybeShowTabHint(b.dataset.view);});});
+
+// Floating "new report" button — visible on the Reports tab, jumps to the Log form
+function updateReportFab(){const onHistory=$('.nav-btn.active')?.dataset?.view==='history';$('#report-fab')?.classList.toggle('hidden',!(onHistory&&currentUser));}
+$('#report-fab')?.addEventListener('click',()=>$('.nav-btn[data-view="log"]')?.click());
 
 // ===== TAB HINTS (first-run onboarding) =====
 const TAB_HINTS_KEY='swellnotes_seen_tabs';
@@ -172,7 +176,7 @@ $('#hero-cover-file').addEventListener('change',async e=>{
 $('#create-spot-form').addEventListener('submit',async e=>{
   e.preventDefault();if(!currentUser||!pendingSpotData)return;
   try{
-    const body={...pendingSpotData,name:$('#spot-name')?.value.trim()||pendingSpotData.name,is_private:$('#spot-private').checked,region:$('#spot-region')?.value.trim()||null,description:$('#spot-description')?.value.trim()||null};
+    const body={...pendingSpotData,name:$('#spot-name')?.value.trim()||pendingSpotData.name,is_private:$('#spot-private').checked,description:$('#spot-description')?.value.trim()||null};
     const res=await fetch(API_BASE+'/api/spots',{method:'POST',headers:{'Content-Type':'application/json','X-Nostr-Pubkey':currentUser.pubkey},body:JSON.stringify(body)});
     const data=await res.json();
     if(data.ok){
@@ -209,7 +213,6 @@ let crewCoverFile=null;
 $('#spot-settings-btn').addEventListener('click',()=>{
   if(!currentSpot)return;
   $('#crew-settings-name').value=currentSpot.name||'';
-  $('#crew-settings-region').value=currentSpot.region||'';
   $('#crew-settings-description').value=currentSpot.description||'';
   $('#crew-settings-private').checked=!!currentSpot.is_private;
   if(currentSpot.cover_image_url){$('#crew-cover-preview').innerHTML=`<img src="${currentSpot.cover_image_url}">`;}
@@ -222,7 +225,7 @@ $('#crew-cover-file').addEventListener('change',e=>{crewCoverFile=e.target.files
 $('#crew-settings-form').addEventListener('submit',async e=>{
   e.preventDefault();if(!currentSpot||!currentUser)return;
   try{
-    const body={name:$('#crew-settings-name').value.trim(),region:$('#crew-settings-region').value.trim()||null,description:$('#crew-settings-description').value.trim()||null,is_private:$('#crew-settings-private').checked};
+    const body={name:$('#crew-settings-name').value.trim(),description:$('#crew-settings-description').value.trim()||null,is_private:$('#crew-settings-private').checked};
     if(crewCoverFile){let url=await uploadToBlossom(crewCoverFile);if(!url)url=await uploadToServer(crewCoverFile);if(url)body.cover_image_url=url;}
     await fetch(`${API_BASE}/api/spots/${currentSpot.id}`,{method:'PUT',headers:{'Content-Type':'application/json','X-Nostr-Pubkey':currentUser.pubkey},body:JSON.stringify(body)});
     const spot=await(await fetch(`${API_BASE}/api/spots/${currentSpot.id}`,{headers:{'X-Nostr-Pubkey':currentUser.pubkey}})).json();
@@ -627,7 +630,7 @@ function updateAuthUI(){
       $$('.view').forEach(v=>v.classList.remove('active'));$('#view-pipeline').classList.add('active');
       loadPipeline();
     } else{$('#hero').classList.remove('hidden');$('#app-header').classList.remove('hidden');}
-    loadFollowing();loadMySpots().then(showMySpots);
+    loadFollowing();loadMySpots().then(showMySpots);updateReportFab();
   } else {
     $('#landing-page').classList.remove('hidden');
     document.body.style.overflow='hidden';
@@ -655,7 +658,7 @@ $('#surfer-crew-select')?.addEventListener('input',e=>{
     const spots=await(await fetch(`${API_BASE}/api/spots/browse?q=${encodeURIComponent(q)}`,{headers})).json();
     if(!spots.length){results.innerHTML='<p class="muted" style="padding:0.5rem;text-align:center">No crews found</p>';return;}
     results.innerHTML=spots.map(s=>{
-      const name=s.is_member||!s.is_private?escapeHtml(s.name||s.region||'Unknown'):escapeHtml(s.region||'Unknown Region');
+      const name=escapeHtml(s.name||s.region||'Unknown');
       return`<div class="spot-result" data-crew-id="${s.id}">
         <div class="spot-result-icon">${`<img src="${s.cover_image_url||defaultCover(s.id)}" style="width:36px;height:36px;border-radius:8px;object-fit:cover">`}</div>
         <div><div class="spot-result-name">${name}</div><div class="spot-result-loc">${s.member_count} member${s.member_count!==1?'s':''}</div></div>
@@ -900,12 +903,12 @@ async function loadBrowseSpots(q=''){
     if(!spots.length){list.innerHTML='<p class="muted" style="padding:1rem;text-align:center">No crews found</p>';return;}
     list.innerHTML=spots.map(s=>{
       const isMember=s.is_member;const isFollowing=spotFollowingSet.has(s.id);
-      const displayName=isMember||!s.is_private?escapeHtml(s.name||s.region||'Unknown'):escapeHtml(s.region||'Unknown Region');
+      const displayName=escapeHtml(s.name||s.region||'Unknown');
       let btn;
       if(isMember)btn='<button class="btn-follow is-you" disabled>Member</button>';
       else if(!s.is_private&&currentUser)btn=`<button class="btn-follow" onclick="joinPublicCrew('${s.id}')">Join</button>`;
       else if(s.has_pending_request)btn='<button class="btn-follow" disabled>Requested</button>';
-      else if(s.is_private&&currentUser)btn=`<button class="btn-follow" onclick="openJoinRequest('${s.id}','${escapeHtml(s.region||'')}')">Request</button>`;
+      else if(s.is_private&&currentUser)btn=`<button class="btn-follow" onclick="openJoinRequest('${s.id}','${escapeHtml(s.name||s.region||'')}')">Request</button>`;
       else if(!currentUser)btn='';
       else if(isFollowing)btn=`<button class="btn-follow following" onclick="toggleSpotFollow('${s.id}')">Following</button>`;
       else btn=`<button class="btn-follow" onclick="toggleSpotFollow('${s.id}')">Follow</button>`;
@@ -1227,7 +1230,7 @@ async function loadPipeline(q=''){
 }
 
 function renderPipelineCard(s){
-  const displayName=s.is_member||!s.is_private?escapeHtml(s.name||s.region||'Unknown'):escapeHtml(s.region||'Unknown Region');
+  const displayName=escapeHtml(s.name||s.region||'Unknown');
   const adminAvatars=(s.admins||[]).map(a=>
     a.avatar_path?`<img src="${a.avatar_path}" class="pipeline-admin-av${ringCls(a)}" title="${escapeHtml(a.display_name||'')}" alt="">`
     :`<div class="pipeline-admin-av-placeholder${ringCls(a)}" title="${escapeHtml(a.display_name||'')}">${(a.display_name||'?')[0].toUpperCase()}</div>`
@@ -1237,7 +1240,7 @@ function renderPipelineCard(s){
   if(s.is_member)actionBtn='<button class="btn-follow is-you" disabled>Member</button>';
   else if(!s.is_private&&currentUser)actionBtn=`<button class="btn-request" onclick="event.stopPropagation();joinPublicCrew('${s.id}')">Join</button>`;
   else if(s.has_pending_request)actionBtn='<button class="btn-follow" disabled>Requested</button>';
-  else if(currentUser)actionBtn=`<button class="btn-request" onclick="event.stopPropagation();openJoinRequest('${s.id}','${escapeHtml(s.region||'')}')">Request to Join</button>`;
+  else if(currentUser)actionBtn=`<button class="btn-request" onclick="event.stopPropagation();openJoinRequest('${s.id}','${escapeHtml(s.name||s.region||'')}')">Request to Join</button>`;
   return`<div class="pipeline-card" onclick="${s.is_member?`joinExistingSpot('${s.id}')`:''}">
     ${s.cover_image_url?`<img src="${s.cover_image_url}" class="pipeline-cover" alt="">`:`<img src="${defaultCover(s.id)}" class="pipeline-cover" alt="">`}
     <div class="pipeline-info">
@@ -1382,6 +1385,7 @@ if(currentUser&&currentSpot){
   $$('.view').forEach(v=>v.classList.remove('active'));$('#view-history').classList.add('active');
   fetchConditions();loadFeed();
 } else if(currentSpot){fetchConditions();}
+updateReportFab();
 // Register service worker for PWA
 if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
 // Capacitor: listen for deep link returns (NIP-46 callback)
