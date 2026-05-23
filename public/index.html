@@ -430,16 +430,13 @@
 
     <!-- FEED -->
     <section id="view-history" class="view active">
-      <div class="card">
-        <div class="feed-header"><h2>My Spots</h2><button id="browse-spots-btn" class="btn-outline btn-sm">Browse Crews</button></div>
-        <div id="crew-list" class="crew-list"></div>
-        <div id="crew-feed" class="hidden">
-          <div class="feed-header"><button id="back-to-crews" class="btn-outline btn-sm">← Back</button><h2 id="crew-feed-title"></h2><button id="crew-feed-invite-btn" class="btn-outline btn-sm hidden">Invite Friends</button><button id="crew-feed-members-btn" class="btn-outline btn-sm">Members</button></div>
-          <div id="session-list" class="feed-list"></div>
-        </div>
+      <div class="feed-bar">
+        <select id="feed-filter" class="feed-filter" aria-label="Filter reports by spot"></select>
+        <button id="browse-spots-btn" class="btn-outline btn-sm">Browse Crews</button>
       </div>
+      <div id="report-feed" class="feed-list"></div>
       <!-- Browse Spots Panel -->
-      <div id="browse-spots-panel" class="card hidden">
+      <div id="browse-spots-panel" class="card hidden" style="margin-top:1rem">
         <div class="feed-header"><h2>Browse Crews</h2><button id="close-browse" class="btn-outline btn-sm">Close</button></div>
         <div class="field" style="margin:0.75rem 0"><input type="text" id="browse-search" placeholder="Search crews..." autocomplete="off"></div>
         <div id="browse-spot-list" class="browse-spot-list"></div>

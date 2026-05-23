@@ -22,10 +22,12 @@ const DEFAULT_COVERS=['/covers/cover1.jpg','/covers/cover2.jpg','/covers/cover3.
 function defaultCover(id){return DEFAULT_COVERS[Math.abs([...((id||'')+'x')].reduce((h,c)=>((h<<5)-h)+c.charCodeAt(0),0))%DEFAULT_COVERS.length];}
 
 // Nav
-$$('.nav-btn[data-view]').forEach(b=>{b.addEventListener('click',()=>{$$('.nav-btn').forEach(x=>x.classList.remove('active'));b.classList.add('active');$$('.view').forEach(v=>v.classList.remove('active'));$(`#view-${b.dataset.view}`).classList.add('active');document.body.classList.toggle('pro-immersive',b.dataset.view==='pro');window.scrollTo(0,0);if(b.dataset.view==='history')loadFeed();if(b.dataset.view==='surfers')loadSurfers();if(b.dataset.view==='analysis')loadAnalysis();if(b.dataset.view==='pipeline')loadPipeline();if(b.dataset.view==='pro')renderProTab();updateReportFab();maybeShowTabHint(b.dataset.view);});});
+$$('.nav-btn[data-view]').forEach(b=>{b.addEventListener('click',()=>{$$('.nav-btn').forEach(x=>x.classList.remove('active'));b.classList.add('active');$$('.view').forEach(v=>v.classList.remove('active'));$(`#view-${b.dataset.view}`).classList.add('active');document.body.classList.toggle('pro-immersive',b.dataset.view==='pro');window.scrollTo(0,0);if(b.dataset.view==='history')loadFeed();if(b.dataset.view==='surfers')loadSurfers();if(b.dataset.view==='analysis')loadAnalysis();if(b.dataset.view==='pipeline')loadPipeline();if(b.dataset.view==='pro')renderProTab();updateReportFab();syncHero();maybeShowTabHint(b.dataset.view);});});
 
 // Floating "new report" button — visible on the Reports tab, jumps to the Log form
 function updateReportFab(){const onHistory=$('.nav-btn.active')?.dataset?.view==='history';$('#report-fab')?.classList.toggle('hidden',!(onHistory&&currentUser));}
+// The spot cover hero shows only on Log/Surfers/Analysis — never on the Reports feed
+function syncHero(){const v=$('.nav-btn.active')?.dataset?.view;const show=!!currentSpot&&(v==='log'||v==='surfers'||v==='analysis');$('#hero')?.classList.toggle('hidden',!show);}
 $('#report-fab')?.addEventListener('click',()=>$('.nav-btn[data-view="log"]')?.click());
 
 // ===== TAB HINTS (first-run onboarding) =====
@@ -813,61 +815,45 @@ $('#share-post-btn').addEventListener('click',async()=>{if(!pendingShareData)ret
 // ===== MULTI-SPOT FEED =====
 let spotFollowingSet=new Set();
 
+let feedGroups=[];
+// Unified reports feed — most recent reports across your crews, filterable by spot
 async function loadFeed(){
-  if(!currentUser){$('#crew-list').innerHTML='<div class="empty-state"><p>Log in to see your crews.</p></div>';return;}
-  $('#crew-feed').classList.add('hidden');$('#crew-list').classList.remove('hidden');
+  const feedEl=$('#report-feed');if(!feedEl)return;
+  if(!currentUser){feedEl.innerHTML='<div class="empty-state"><p>Log in to see reports.</p></div>';return;}
+  feedEl.innerHTML='<div class="cond-loading">Loading...</div>';
   try{
     await loadMySpots();
-    const list=$('#crew-list');
-    if(!mySpots.length){list.innerHTML='<div class="empty-state"><p>No crews yet.</p><p class="muted">Browse and join a crew to get started.</p></div>';return;}
-    list.innerHTML=mySpots.map(s=>`<div class="crew-card" data-id="${s.id}">
-      ${s.cover_image_url?`<img src="${s.cover_image_url}" class="crew-card-cover" alt="">`:`<img src="${defaultCover(s.id)}" class="crew-card-cover" alt="">`}
-      <div class="crew-card-info"><h3>${escapeHtml(s.name)}</h3><span class="muted">${s.location_text||''}</span></div>
-      <span class="crew-card-count" onclick="event.stopPropagation();showMembers('${s.id}','${escapeHtml(s.name)}')">${s.member_count||'?'} members</span>
-    </div>`).join('');
-    list.querySelectorAll('.crew-card').forEach(c=>c.addEventListener('click',()=>openCrewFeed(c.dataset.id)));
-  }catch{$('#crew-list').innerHTML='<div class="empty-state">Error loading crews</div>';}
+    feedGroups=await(await fetch(`${API_BASE}/api/feed?limit=50`,{headers:{'X-Nostr-Pubkey':currentUser.pubkey}})).json();
+    const filter=$('#feed-filter');
+    if(filter){
+      const prev=filter.value;
+      const spots=mySpots.slice().sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+      filter.innerHTML='<option value="__all">All spots</option>'+spots.map(s=>`<option value="${s.id}">${escapeHtml(s.name||'Spot')}</option>`).join('');
+      filter.style.display=spots.length>1?'':'none';
+      if(prev&&[...filter.options].some(o=>o.value===prev))filter.value=prev;
+    }
+    renderReportFeed();
+  }catch{feedEl.innerHTML='<div class="empty-state">Error loading reports</div>';}
 }
-
-let currentCrewFeed=null;
-async function openCrewFeed(spotId){
-  const spot=mySpots.find(s=>s.id===spotId);
-  if(!spot)return;
-  currentCrewFeed={id:spot.id,name:spot.name};
-  $('#crew-list').classList.add('hidden');$('#crew-feed').classList.remove('hidden');
-  $('#crew-feed-title').textContent=spot.name;
-  $('#crew-feed-invite-btn').classList.add('hidden');
-  // Check admin role for invite button visibility
-  if(currentUser){
-    try{
-      const detail=await(await fetch(`${API_BASE}/api/spots/${spotId}`,{headers:{'X-Nostr-Pubkey':currentUser.pubkey}})).json();
-      const mem=detail.members?.find(m=>m.pubkey===currentUser.pubkey);
-      if(mem?.role==='admin')$('#crew-feed-invite-btn').classList.remove('hidden');
-    }catch{}
+function renderReportFeed(){
+  const feedEl=$('#report-feed');if(!feedEl)return;
+  const sel=$('#feed-filter')?.value||'__all';
+  const multi=(mySpots?.length||0)>1;
+  const items=[];
+  for(const g of (feedGroups||[])){
+    if(sel!=='__all'&&g.spot.id!==sel)continue;
+    for(const s of g.sessions)items.push({...s,__spot:g.spot.name});
   }
-  const list=$('#session-list');list.innerHTML='<div class="cond-loading">Loading...</div>';
-  try{
-    const groups=await(await fetch(`${API_BASE}/api/feed?limit=50`,{headers:{'X-Nostr-Pubkey':currentUser.pubkey}})).json();
-    const group=groups.find(g=>g.spot.id===spotId);
-    if(!group||!group.sessions.length){list.innerHTML='<div class="empty-state"><p>No sessions logged yet.</p></div>';return;}
-    list.innerHTML=group.sessions.map(s=>renderSessionCard(s)).join('');
-    list.querySelectorAll('.feed-card').forEach(c=>c.addEventListener('click',()=>openSession(c.dataset.id)));
-  }catch{list.innerHTML='<div class="empty-state">Error loading sessions</div>';}
+  items.sort((a,b)=>(b.session_date||'').localeCompare(a.session_date||'')||((b.created_at||0)-(a.created_at||0)));
+  if(!items.length){feedEl.innerHTML='<div class="empty-state"><p>No reports yet.</p><p class="muted">Tap the + button to log one.</p></div>';return;}
+  feedEl.innerHTML=items.map(s=>renderSessionCard(s,multi&&sel==='__all')).join('');
+  feedEl.querySelectorAll('.feed-card').forEach(c=>c.addEventListener('click',()=>openSession(c.dataset.id)));
 }
-$('#back-to-crews').addEventListener('click',()=>{$('#crew-feed').classList.add('hidden');$('#crew-list').classList.remove('hidden');$('#crew-feed-invite-btn').classList.add('hidden');currentCrewFeed=null;});
-$('#crew-feed-members-btn').addEventListener('click',()=>{if(currentCrewFeed)showMembers(currentCrewFeed.id,currentCrewFeed.name);});
-$('#crew-feed-invite-btn').addEventListener('click',async()=>{
-  if(!currentCrewFeed||!currentUser)return;
-  try{
-    const res=await fetch(`${API_BASE}/api/spots/${currentCrewFeed.id}/invites`,{method:'POST',headers:{'Content-Type':'application/json','X-Nostr-Pubkey':currentUser.pubkey},body:JSON.stringify({})});
-    const data=await res.json();
-    $('#invite-link-input').value=data.link||`${location.origin}/join/${data.invite_code}`;
-    $('#invite-modal').classList.remove('hidden');
-  }catch{toast('Failed to create invite','error');}
-});
+$('#feed-filter')?.addEventListener('change',renderReportFeed);
 
-function renderSessionCard(s){
+function renderSessionCard(s,showSpot){
   const d=new Date(s.session_date+'T12:00:00'),tags=[];
+  const spotTag=showSpot&&s.__spot?`<span class="feed-spot">${escapeHtml(s.__spot)}</span>`:'';
   // Only show session type, wave shape, and media tags — no swell/wind data
   if(s.surf_height_min_ft!=null)tags.push(`<span class="tag tag-height">${s.surf_height_min_ft}-${s.surf_height_max_ft}ft</span>`);
   if(s.session_type==='surfed')tags.push('<span class="tag tag-shape">surfed</span>');
@@ -877,7 +863,7 @@ function renderSessionCard(s){
   if(s.voice_memo_path)tags.push('<span class="tag tag-voice">🎙</span>');
   const vt=s.video_path?`<div class="feed-video-thumb"><video src="${s.video_path}#t=0.1" preload="metadata" muted playsinline></video><span class="feed-video-play">▶</span></div>`:'';
   const bb=s.total_barrels>0?`<span class="barrel-count" title="${s.total_barrels} tubes">🤿${s.total_barrels}</span>`:'';
-  return`<div class="feed-card" data-id="${s.id}"><div class="feed-date"><div class="day">${d.getDate()}</div><div class="mo">${d.toLocaleString('en',{month:'short'})}</div></div><div class="feed-body"><div class="feed-user">${userLinkHTML(s.pubkey,s.display_name,s.avatar_path,'feed',!!ringCls(s))}${bb}<span class="feed-tod">· ${formatTOD(s.time_of_day)}</span></div><div class="feed-tags">${tags.join('')}</div>${vt}</div><div class="feed-rating">${s.rating?`<div class="rbadge ${getRatingClass(s.rating)}">${s.rating}</div>`:'<div class="rbadge">—</div>'}</div></div>`;
+  return`<div class="feed-card" data-id="${s.id}"><div class="feed-date"><div class="day">${d.getDate()}</div><div class="mo">${d.toLocaleString('en',{month:'short'})}</div></div><div class="feed-body"><div class="feed-user">${userLinkHTML(s.pubkey,s.display_name,s.avatar_path,'feed',!!ringCls(s))}${bb}<span class="feed-tod">· ${formatTOD(s.time_of_day)}</span>${spotTag}</div><div class="feed-tags">${tags.join('')}</div>${vt}</div><div class="feed-rating">${s.rating?`<div class="rbadge ${getRatingClass(s.rating)}">${s.rating}</div>`:'<div class="rbadge">—</div>'}</div></div>`;
 }
 
 window.switchToSpot=async id=>{
@@ -930,18 +916,8 @@ window.toggleSpotFollow=async id=>{
   loadFeed();
 };
 
-// ===== SINGLE-SPOT FEED (fallback for logged-out) =====
-async function loadSessions(){
-  const list=$('#session-list');
-  if(!currentSpot){list.innerHTML='<div class="empty-state"><p>Select a spot first to see the feed.</p></div>';return;}
-  const p=new URLSearchParams();
-  p.set('spot_id',currentSpot.id);if(currentUser)p.set('feed_for',currentUser.pubkey);
-  try{const{sessions}=await(await fetch(`${API_BASE}/api/sessions?${p}`)).json();
-  if(!sessions.length){list.innerHTML='<div class="empty-state"><p>No sessions yet. Be the first to log one!</p></div>';return;}
-  list.innerHTML=sessions.map(s=>renderSessionCard(s)).join('');
-  list.querySelectorAll('.feed-card').forEach(c=>c.addEventListener('click',()=>openSession(c.dataset.id)));
-  }catch{list.innerHTML='<div class="empty-state">Error</div>';}
-}
+// Kept as an alias — the unified reports feed replaced the per-spot session list
+async function loadSessions(){return loadFeed();}
 
 // ===== DETAIL =====
 async function openSession(id){try{const{session:s,comments}=await(await fetch(`${API_BASE}/api/sessions/${id}`)).json();const d=new Date(s.session_date+'T12:00:00');const ds=d.toLocaleDateString('en',{weekday:'long',year:'numeric',month:'long',day:'numeric'});const sw=JSON.parse(s.swells_json||'[]');const swH=sw.map((x,i)=>`<div class="detail-block"><h4>${i?'Secondary':'Primary'} Swell</h4><p>${x.height_ft}ft ${x.period_s}s ${x.direction_compass} ${x.direction_deg}° <small style="opacity:.5">(${x.impact}%)</small></p></div>`).join('');
@@ -958,7 +934,7 @@ async function deleteSession(id){
   if(!confirm('Delete this log? This cannot be undone.'))return;
   try{
     const res=await fetch(`${API_BASE}/api/sessions/${id}`,{method:'DELETE',headers:{'X-Nostr-Pubkey':currentUser.pubkey}});
-    if(res.ok){toast('Log deleted');$('#session-modal').classList.add('hidden');loadSessions();}
+    if(res.ok){toast('Log deleted');$('#session-modal').classList.add('hidden');loadFeed();}
     else{const err=await res.json();toast(err.error||'Failed','error');}
   }catch{toast('Failed to delete','error');}
 }
@@ -1385,7 +1361,7 @@ if(currentUser&&currentSpot){
   $$('.view').forEach(v=>v.classList.remove('active'));$('#view-history').classList.add('active');
   fetchConditions();loadFeed();
 } else if(currentSpot){fetchConditions();}
-updateReportFab();
+updateReportFab();syncHero();
 // Register service worker for PWA
 if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
 // Capacitor: listen for deep link returns (NIP-46 callback)
