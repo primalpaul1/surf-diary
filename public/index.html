@@ -573,38 +573,44 @@
 
   <!-- QUICK POST -->
   <div id="quickpost" class="qp-overlay hidden">
-    <div class="qp-bar">
-      <button class="qp-cancel" id="qp-cancel">Cancel</button>
-      <button class="qp-post" id="qp-post">Post</button>
-    </div>
-    <div class="qp-compose">
-      <img class="qp-av" id="qp-av" src="" alt="" onerror="this.style.visibility='hidden'">
-      <textarea class="qp-text" id="qp-text" rows="4" placeholder="How is/was it?"></textarea>
-    </div>
-    <div class="qp-tools">
-      <div class="qp-context">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-        <span>Posting to</span><select id="qp-spot" class="qp-spot-select"></select>
+    <div class="qp-card">
+      <div class="qp-bar">
+        <button class="qp-cancel" id="qp-cancel">Cancel</button>
+        <button class="qp-post" id="qp-post">Post</button>
       </div>
-      <div class="qp-rate">
-        <span class="qp-rate-label">Rate</span>
-        <input type="range" id="qp-rating" min="1" max="10" step="0.1" value="7" class="qp-range">
-        <div class="qp-val" id="qp-rating-val">7.0</div>
+      <div class="qp-compose">
+        <img class="qp-av" id="qp-av" src="" alt="" onerror="this.style.visibility='hidden'">
+        <div class="qp-compose-main">
+          <textarea class="qp-text" id="qp-text" rows="3" placeholder="How is/was it?"></textarea>
+          <div id="qp-preview" class="qp-preview hidden"></div>
+        </div>
       </div>
-      <div class="qp-tags" id="qp-tags">
-        <button type="button" class="qp-tag" data-type="surfed">surfed</button>
-        <button type="button" class="qp-tag" data-type="observed">observed</button>
-        <button type="button" class="qp-tag" data-shape="peaky">peaky</button>
-        <button type="button" class="qp-tag" data-shape="barreling">barreling</button>
-        <button type="button" class="qp-tag" data-shape="mushy">mushy</button>
-        <button type="button" class="qp-tag" data-shape="rippable">rippable</button>
-        <button type="button" class="qp-tag" data-shape="blown out">blown out</button>
-        <button type="button" class="qp-tag" data-shape="closed out">closed out</button>
-      </div>
-      <div class="qp-media">
-        <button type="button" class="qp-media-btn" id="qp-video-btn" aria-label="Add video"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg></button>
-        <span id="qp-video-label" class="qp-media-label hidden">Video attached</span>
-        <input type="file" id="qp-video-file" accept="video/*" class="hidden">
+      <div class="qp-tools">
+        <div class="qp-context">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+          <span>Posting to</span><select id="qp-spot" class="qp-spot-select"></select>
+        </div>
+        <div class="qp-rate">
+          <span class="qp-rate-label">Rate</span>
+          <input type="range" id="qp-rating" min="1" max="10" step="0.1" value="7" class="qp-range">
+          <div class="qp-val" id="qp-rating-val">7.0</div>
+        </div>
+        <div class="qp-tags" id="qp-tags">
+          <button type="button" class="qp-tag" data-type="surfed">surfed</button>
+          <button type="button" class="qp-tag" data-type="observed">observed</button>
+          <button type="button" class="qp-tag" data-shape="peaky">peaky</button>
+          <button type="button" class="qp-tag" data-shape="barreling">barreling</button>
+          <button type="button" class="qp-tag" data-shape="mushy">mushy</button>
+          <button type="button" class="qp-tag" data-shape="rippable">rippable</button>
+          <button type="button" class="qp-tag" data-shape="blown out">blown out</button>
+          <button type="button" class="qp-tag" data-shape="closed out">closed out</button>
+        </div>
+        <div class="qp-media">
+          <button type="button" class="qp-media-btn" id="qp-photo-btn" aria-label="Add photo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg></button>
+          <button type="button" class="qp-media-btn" id="qp-video-btn" aria-label="Add video"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg></button>
+          <input type="file" id="qp-photo-file" accept="image/*" class="hidden">
+          <input type="file" id="qp-video-file" accept="video/*" class="hidden">
+        </div>
       </div>
     </div>
   </div>
