@@ -402,7 +402,7 @@
           <input type="hidden" id="wave_shape" name="wave_shape">
 
           <div class="section-label">How was it?</div>
-          <div class="rating-row"><input type="range" id="rating" min="1" max="10" value="5" class="rating-slider"><div class="rating-num" id="rating-display">5</div></div>
+          <div class="rating-row"><input type="range" id="rating" min="1" max="10" step="0.1" value="5" class="rating-slider"><div class="rating-num" id="rating-display">5.0</div></div>
           <div class="rating-labels"><span>1 · Flat</span><span>5 · Fun</span><span>10 · All Time</span></div>
 
           <div class="section-label">Make any tubes?</div>
@@ -570,6 +570,44 @@
   <button id="report-fab" class="report-fab hidden" aria-label="New report" title="New report">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
   </button>
+
+  <!-- QUICK POST -->
+  <div id="quickpost" class="qp-overlay hidden">
+    <div class="qp-bar">
+      <button class="qp-cancel" id="qp-cancel">Cancel</button>
+      <button class="qp-post" id="qp-post">Post</button>
+    </div>
+    <div class="qp-compose">
+      <img class="qp-av" id="qp-av" src="" alt="" onerror="this.style.visibility='hidden'">
+      <textarea class="qp-text" id="qp-text" rows="4" placeholder="How is/was it?"></textarea>
+    </div>
+    <div class="qp-tools">
+      <div class="qp-context">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+        <span>Posting to</span><select id="qp-spot" class="qp-spot-select"></select>
+      </div>
+      <div class="qp-rate">
+        <span class="qp-rate-label">Rate</span>
+        <input type="range" id="qp-rating" min="1" max="10" step="0.1" value="7" class="qp-range">
+        <div class="qp-val" id="qp-rating-val">7.0</div>
+      </div>
+      <div class="qp-tags" id="qp-tags">
+        <button type="button" class="qp-tag" data-type="surfed">surfed</button>
+        <button type="button" class="qp-tag" data-type="observed">observed</button>
+        <button type="button" class="qp-tag" data-shape="peaky">peaky</button>
+        <button type="button" class="qp-tag" data-shape="barreling">barreling</button>
+        <button type="button" class="qp-tag" data-shape="mushy">mushy</button>
+        <button type="button" class="qp-tag" data-shape="rippable">rippable</button>
+        <button type="button" class="qp-tag" data-shape="blown out">blown out</button>
+        <button type="button" class="qp-tag" data-shape="closed out">closed out</button>
+      </div>
+      <div class="qp-media">
+        <button type="button" class="qp-media-btn" id="qp-video-btn" aria-label="Add video"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg></button>
+        <span id="qp-video-label" class="qp-media-label hidden">Video attached</span>
+        <input type="file" id="qp-video-file" accept="video/*" class="hidden">
+      </div>
+    </div>
+  </div>
 
   <footer><p><img src="/sn-logo.png" alt="Swellnotes" style="height:20px;vertical-align:middle;margin-right:6px;opacity:0.6">Powered by <a href="https://primal.net" target="_blank">Primal</a> & <a href="https://nostr.com" target="_blank">Nostr</a></p></footer>
   <script src="/app.js" type="module"></script>

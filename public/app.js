@@ -28,7 +28,63 @@ $$('.nav-btn[data-view]').forEach(b=>{b.addEventListener('click',()=>{$$('.nav-b
 function updateReportFab(){const onHistory=$('.nav-btn.active')?.dataset?.view==='history';$('#report-fab')?.classList.toggle('hidden',!(onHistory&&currentUser));}
 // The spot cover hero shows only on Log/Surfers/Analysis — never on the Reports feed
 function syncHero(){const v=$('.nav-btn.active')?.dataset?.view;const show=!!currentSpot&&(v==='log'||v==='surfers'||v==='analysis');$('#hero')?.classList.toggle('hidden',!show);}
-$('#report-fab')?.addEventListener('click',()=>$('.nav-btn[data-view="log"]')?.click());
+$('#report-fab')?.addEventListener('click',openQuickPost);
+
+// ===== QUICK POST (Twitter-style composer) =====
+let qpVideoFile=null;
+function nowTimeOfDay(){let h=new Date().getHours();if(h<5)h=5;if(h>18)h=18;if(h<12)return h+'am';if(h===12)return '12pm';return (h-12)+'pm';}
+function openQuickPost(){
+  if(!currentUser)return;
+  if(!mySpots.length){toast('Join or create a crew first','error');return;}
+  const sel=$('#qp-spot');
+  sel.innerHTML=mySpots.map(s=>`<option value="${s.id}">${escapeHtml(s.name||'Spot')}</option>`).join('');
+  if(currentSpot&&mySpots.some(s=>s.id===currentSpot.id))sel.value=currentSpot.id;
+  const av=$('#qp-av');if(currentUser.avatar_path){av.src=currentUser.avatar_path;av.style.visibility='';}else av.style.visibility='hidden';
+  $('#qp-text').value='';
+  $('#qp-rating').value=7;$('#qp-rating-val').textContent='7.0';
+  $$('#qp-tags .qp-tag').forEach(b=>b.classList.remove('on'));
+  $('#qp-tags .qp-tag[data-type="surfed"]')?.classList.add('on');
+  qpVideoFile=null;$('#qp-video-label').classList.add('hidden');$('#qp-video-file').value='';
+  $('#quickpost').classList.remove('hidden');
+  setTimeout(()=>$('#qp-text').focus(),50);
+}
+function closeQuickPost(){$('#quickpost').classList.add('hidden');}
+$('#qp-cancel')?.addEventListener('click',closeQuickPost);
+$('#qp-rating')?.addEventListener('input',e=>{$('#qp-rating-val').textContent=(+e.target.value).toFixed(1);});
+$('#qp-tags')?.addEventListener('click',e=>{const b=e.target.closest('.qp-tag');if(!b)return;
+  if(b.dataset.type){$$('#qp-tags .qp-tag[data-type]').forEach(x=>x.classList.remove('on'));b.classList.add('on');}
+  else b.classList.toggle('on');
+});
+$('#qp-video-btn')?.addEventListener('click',()=>$('#qp-video-file').click());
+$('#qp-video-file')?.addEventListener('change',e=>{qpVideoFile=e.target.files[0]||null;$('#qp-video-label').classList.toggle('hidden',!qpVideoFile);});
+$('#qp-post')?.addEventListener('click',async()=>{
+  if(!currentUser)return;
+  const spotId=$('#qp-spot').value;if(!spotId)return toast('Pick a spot','error');
+  const typeBtn=$('#qp-tags .qp-tag[data-type].on');
+  const shapes=[...$$('#qp-tags .qp-tag[data-shape].on')].map(b=>b.dataset.shape);
+  const data={
+    session_date:new Date().toISOString().split('T')[0],
+    time_of_day:nowTimeOfDay(),
+    rating:+$('#qp-rating').value,
+    barrels:0,
+    wave_shape:shapes.join(',')||null,
+    session_type:typeBtn?typeBtn.dataset.type:'surfed',
+    notes:$('#qp-text').value.trim()||null,
+    spot_id:spotId
+  };
+  const btn=$('#qp-post');btn.disabled=true;btn.textContent='Posting…';
+  try{
+    if(qpVideoFile){const u=await uploadToBlossom(qpVideoFile);if(u)data.video_url=u;else{const r=new FileReader();data.video_base64=await new Promise(res=>{r.onloadend=()=>res(r.result.split(',')[1]);r.readAsDataURL(qpVideoFile);});}}
+    const res=await fetch(API_BASE+'/api/sessions',{method:'POST',headers:{'Content-Type':'application/json','X-Nostr-Pubkey':currentUser.pubkey},body:JSON.stringify(data)});
+    if(!res.ok)throw new Error('post failed');
+    closeQuickPost();toast('Posted!');
+    $$('.nav-btn').forEach(x=>x.classList.remove('active'));$('.nav-btn[data-view="history"]')?.classList.add('active');
+    $$('.view').forEach(v=>v.classList.remove('active'));$('#view-history')?.classList.add('active');
+    document.body.classList.remove('pro-immersive');syncHero();updateReportFab();window.scrollTo(0,0);
+    loadFeed();
+  }catch{toast('Post failed','error');}
+  finally{btn.disabled=false;btn.textContent='Post';}
+});
 
 // ===== TAB HINTS (first-run onboarding) =====
 const TAB_HINTS_KEY='swellnotes_seen_tabs';
@@ -56,6 +112,7 @@ function initTabHints(){
 function toast(m,t='success'){const e=document.createElement('div');e.className=`toast toast-${t}`;e.textContent=m;document.body.appendChild(e);setTimeout(()=>e.remove(),3000);}
 function escapeHtml(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML;}
 function getRatingClass(r){if(!r)return'';return r<=3?'r-low':r<=5?'r-mid':r<=7?'r-high':'r-epic';}
+function fmtRating(r){if(r==null)return'—';const n=Math.round(r*10)/10;return Number.isInteger(n)?String(n):n.toFixed(1);}
 function formatTOD(t){return{'5am':'5 AM','6am':'6 AM','7am':'7 AM','8am':'8 AM','9am':'9 AM','10am':'10 AM','11am':'11 AM','12pm':'12 PM','1pm':'1 PM','2pm':'2 PM','3pm':'3 PM','4pm':'4 PM','5pm':'5 PM','6pm':'6 PM',dawn:'Dawn',morning:'AM',midday:'Midday',afternoon:'PM',evening:'Eve'}[t]||t;}
 function ringCls(u){return (u&&u.is_pro&&((u.show_pro_ring??1)))?' pro-ring':'';}
 function avatarHTML(path,name,cls='feed-avatar',pro=false){const rc=pro?' pro-ring':'';if(path)return`<img src="${path}" class="${cls}${rc}" alt="">`;const i=(name||'?')[0].toUpperCase();return`<div class="${cls}-placeholder${rc}">${i}</div>`;}
@@ -745,12 +802,13 @@ function updateRating(){
   rd.style.borderColor=bc;
   const scale=0.9+v*0.04;rd.style.transform=`scale(${scale})`;
   rd.style.boxShadow=v>=8?'0 0 16px rgba(0,0,0,0.15)':'none';
-  if(v!==lastRatingVal){
+  const iv=Math.round(v);
+  if(iv!==lastRatingVal){
     rd.classList.remove('pulse');void rd.offsetWidth;rd.classList.add('pulse');
     hapticTick(v>=8?'HEAVY':v>=5?'MEDIUM':'LIGHT');
-    lastRatingVal=v;
+    lastRatingVal=iv;
   }
-  rd.textContent=v;
+  rd.textContent=v.toFixed(1);
 }
 rs.addEventListener('input',updateRating);updateRating();
 
@@ -869,7 +927,7 @@ function renderSessionCard(s,showSpot){
   const av=s.avatar_path?`<img src="${s.avatar_path}" class="pcard-av${ringCls(s)}" alt="">`:`<div class="pcard-av-ph${ringCls(s)}">${(s.display_name||'?')[0].toUpperCase()}</div>`;
   const spotChip=showSpot&&s.__spot?`<span class="pcard-spot">${escapeHtml(s.__spot)}</span>`:'';
   const media=s.video_path?`<div class="pcard-media" onclick="event.stopPropagation()"><video src="${s.video_path}#t=0.1" preload="metadata" muted playsinline onloadedmetadata="snVideoMeta(this)"></video><button class="pcard-play" onclick="snPlayVideo(this)" aria-label="Play"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></button></div>`:'';
-  const score=s.rating?`<div class="rbadge ${getRatingClass(s.rating)}">${s.rating}</div>`:'<div class="rbadge">—</div>';
+  const score=s.rating?`<div class="rbadge ${getRatingClass(s.rating)}">${fmtRating(s.rating)}</div>`:'<div class="rbadge">—</div>';
   const cmts=(s.comments||[]).map(renderInlineComment).join('');
   const more=(s.comment_count||0)>(s.comments||[]).length?`<button class="cmt-more" onclick="event.stopPropagation();openSession(${s.id})">View all ${s.comment_count} comments</button>`:'';
   const composer=currentUser?`<div class="cmt-compose" onclick="event.stopPropagation()">${smallAvatar(currentUser,'cmt-av')}<input class="cmt-input" type="text" placeholder="Add a comment…" onkeydown="if(event.key==='Enter')postInlineComment(${s.id},this)"><button class="cmt-send" onclick="postInlineComment(${s.id},this)">Post</button></div>`:'';
@@ -952,7 +1010,7 @@ async function loadSessions(){return loadFeed();}
 async function openSession(id){try{const{session:s,comments}=await(await fetch(`${API_BASE}/api/sessions/${id}`)).json();const d=new Date(s.session_date+'T12:00:00');const ds=d.toLocaleDateString('en',{weekday:'long',year:'numeric',month:'long',day:'numeric'});const sw=JSON.parse(s.swells_json||'[]');const swH=sw.map((x,i)=>`<div class="detail-block"><h4>${i?'Secondary':'Primary'} Swell</h4><p>${x.height_ft}ft ${x.period_s}s ${x.direction_compass} ${x.direction_deg}° <small style="opacity:.5">(${x.impact}%)</small></p></div>`).join('');
 // Check if user can delete (own session or spot admin)
 const canDelete=currentUser&&(s.pubkey===currentUser.pubkey||(currentSpot?.members?.some(m=>m.pubkey===currentUser.pubkey&&m.role==='admin')));
-$('#session-detail').innerHTML=`<h2>${ds}</h2><p class="muted"><a href="${primalLink(s.pubkey)}" target="_blank" rel="noopener" class="user-link-inline">${escapeHtml(s.display_name||'Anon')}</a> · ${formatTOD(s.time_of_day)}</p><div style="margin:.75rem 0"><div class="rbadge ${getRatingClass(s.rating)}" style="width:52px;height:52px;font-size:1.3rem;display:inline-flex">${s.rating||'—'}/10</div></div><div class="detail-grid"><div class="detail-block"><h4>Surf</h4><p>${s.surf_height_min_ft||'?'}–${s.surf_height_max_ft||'?'} ft</p></div>${swH}<div class="detail-block"><h4>Wind</h4><p>${s.wind_speed_mph||'?'} mph ${s.wind_type?'('+s.wind_type+')':''}</p></div><div class="detail-block"><h4>Tide</h4><p>${s.tide_height_ft||'?'} ft</p></div>${s.wave_shape?`<div class="detail-block"><h4>Shape</h4><p style="text-transform:capitalize">${s.wave_shape}</p></div>`:''}${s.barrels>0?`<div class="detail-block"><h4>Tubes</h4><p>🤿 ${s.barrels}</p></div>`:''}</div>${s.video_path?`<div class="detail-video"><video controls src="${s.video_path}" preload="metadata"></video></div>`:''}${s.voice_memo_path?`<div class="detail-voice"><audio controls src="${s.voice_memo_path}" style="width:100%;height:36px"></audio>${s.voice_transcript?`<div class="detail-transcript">"${escapeHtml(s.voice_transcript)}"</div>`:''}</div>`:''}${s.notes?`<div class="detail-notes">${escapeHtml(s.notes)}</div>`:''}${canDelete?`<button class="btn-delete-session" onclick="deleteSession(${s.id})">Delete Log</button>`:''}${currentUser&&s.pubkey!==currentUser.pubkey?`<div class="detail-actions"><button class="btn-report" onclick="reportContent('session','${s.id}')">Report</button><button class="btn-report" onclick="blockUser('${s.pubkey}')">Block User</button></div>`:''}`;
+$('#session-detail').innerHTML=`<h2>${ds}</h2><p class="muted"><a href="${primalLink(s.pubkey)}" target="_blank" rel="noopener" class="user-link-inline">${escapeHtml(s.display_name||'Anon')}</a> · ${formatTOD(s.time_of_day)}</p><div style="margin:.75rem 0"><div class="rbadge ${getRatingClass(s.rating)}" style="width:52px;height:52px;font-size:1.2rem;display:inline-flex">${fmtRating(s.rating)}/10</div></div><div class="detail-grid"><div class="detail-block"><h4>Surf</h4><p>${s.surf_height_min_ft||'?'}–${s.surf_height_max_ft||'?'} ft</p></div>${swH}<div class="detail-block"><h4>Wind</h4><p>${s.wind_speed_mph||'?'} mph ${s.wind_type?'('+s.wind_type+')':''}</p></div><div class="detail-block"><h4>Tide</h4><p>${s.tide_height_ft||'?'} ft</p></div>${s.wave_shape?`<div class="detail-block"><h4>Shape</h4><p style="text-transform:capitalize">${s.wave_shape}</p></div>`:''}${s.barrels>0?`<div class="detail-block"><h4>Tubes</h4><p>🤿 ${s.barrels}</p></div>`:''}</div>${s.video_path?`<div class="detail-video"><video controls src="${s.video_path}" preload="metadata"></video></div>`:''}${s.voice_memo_path?`<div class="detail-voice"><audio controls src="${s.voice_memo_path}" style="width:100%;height:36px"></audio>${s.voice_transcript?`<div class="detail-transcript">"${escapeHtml(s.voice_transcript)}"</div>`:''}</div>`:''}${s.notes?`<div class="detail-notes">${escapeHtml(s.notes)}</div>`:''}${canDelete?`<button class="btn-delete-session" onclick="deleteSession(${s.id})">Delete Log</button>`:''}${currentUser&&s.pubkey!==currentUser.pubkey?`<div class="detail-actions"><button class="btn-report" onclick="reportContent('session','${s.id}')">Report</button><button class="btn-report" onclick="blockUser('${s.pubkey}')">Block User</button></div>`:''}`;
 $('#comments-list').innerHTML=comments.length?comments.map(c=>`<div class="comment"><div class="comment-meta"><a href="${primalLink(c.pubkey)}" target="_blank" rel="noopener" class="user-link-inline">${escapeHtml(c.display_name||'Anon')}</a> · ${new Date(c.created_at*1000).toLocaleDateString()}${currentUser&&c.pubkey!==currentUser.pubkey?` · <button class="btn-report-inline" onclick="event.stopPropagation();reportContent('comment','${c.id}')">Report</button>`:''}</div><div class="comment-body">${escapeHtml(c.body)}</div></div>`).join(''):'<p class="muted" style="font-size:.82rem">No comments yet</p>';
 $('#comment-form').onsubmit=async e=>{e.preventDefault();if(!currentUser)return;const b=$('#comment-body').value.trim();if(!b)return;await fetch(`${API_BASE}/api/sessions/${id}/comments`,{method:'POST',headers:{'Content-Type':'application/json','X-Nostr-Pubkey':currentUser.pubkey},body:JSON.stringify({body:b})});$('#comment-body').value='';openSession(id);};
 $('#session-modal').classList.remove('hidden');}catch{toast('Error','error');}}
