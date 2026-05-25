@@ -1311,13 +1311,24 @@ async function activatePro(jws){
   try{const r=await fetch(API_BASE+'/api/pro/activate',{method:'POST',headers:{'Content-Type':'application/json','X-Nostr-Pubkey':currentUser.pubkey},body:JSON.stringify({jws})});if(!r.ok)return false;const j=await r.json();return !!j.isPro;}catch{return false;}
 }
 
+// Reject a native call if it hangs, so the button never sits on "Processing..." forever
+function withTimeout(p,ms,msg){return Promise.race([p,new Promise((_,rej)=>setTimeout(()=>rej(new Error(msg)),ms))]);}
+
 // Shared purchase / restore — used by both the Pro tab and the upsell modal
 async function doProPurchase(btn){
   if(!StoreKit){toast('In-app purchases are only available in the iOS app','error');return;}
   const orig=btn?btn.innerHTML:'';
   try{
     if(btn){btn.disabled=true;btn.textContent='Processing...';}
-    const r=await StoreKit.purchase();
+    // Confirm StoreKit can actually see the product before opening the purchase sheet.
+    // A newly created subscription can take a few hours to reach the sandbox.
+    let prods;
+    try{prods=await withTimeout(StoreKit.getProducts(),20000,'Could not reach the App Store (timed out).');}
+    catch(e){throw new Error('Could not reach the App Store: '+(e.message||e));}
+    if(!prods||!prods.products||!prods.products.length){
+      throw new Error('Pro isn’t available from the App Store yet. A new subscription can take a few hours to reach the sandbox — try again later.');
+    }
+    const r=await withTimeout(StoreKit.purchase(),120000,'The App Store didn’t respond. Try again in a bit.');
     if(r.success){
       const ok=await activatePro(r.jws);
       if(!ok){toast('Could not verify purchase','error');return;}
