@@ -6,8 +6,19 @@ const RELAYS=['wss://relay.primal.net','wss://relay.damus.io','wss://nos.lol'];
 const AUTOFOLLOW_NPUB='npub1spdnfacgsd7lk0nlqkq443tkq4jx9z6c6ksvaquuewmw7d3qltpslcq6j7';
 const IS_CAPACITOR=!!window.Capacitor;
 const API_BASE=IS_CAPACITOR?'https://swellnotes.com':'';
-// Custom native plugins must be registered on the JS side (they're not auto-added to Capacitor.Plugins)
-const StoreKit=IS_CAPACITOR?(window.Capacitor.registerPlugin?window.Capacitor.registerPlugin('StoreKit'):(window.Capacitor.Plugins&&window.Capacitor.Plugins.StoreKit)||null):null;
+// Resolve a native plugin. This no-bundler app never loads @capacitor/core, so
+// registerPlugin() and Capacitor.Plugins are NOT available for app-local plugins.
+// The injected native bridge does expose nativePromise(plugin, method, opts),
+// which is exactly what registerPlugin's proxy calls under the hood — so we build
+// the shim from that and route straight to the native StoreKitPlugin by name.
+function resolveNativePlugin(name,methods){
+  const C=window.Capacitor;if(!C)return null;
+  if(C.Plugins&&C.Plugins[name])return C.Plugins[name];
+  if(typeof C.registerPlugin==='function'){try{return C.registerPlugin(name);}catch(e){}}
+  if(typeof C.nativePromise==='function'){const o={};methods.forEach(m=>{o[m]=(opts)=>C.nativePromise(name,m,opts||{});});return o;}
+  return null;
+}
+const StoreKit=IS_CAPACITOR?resolveNativePlugin('StoreKit',['getProducts','purchase','restorePurchases','getStatus']):null;
 const PRIMAL_APP_STORE_HTTPS='https://apps.apple.com/app/id1673134518';
 const PRIMAL_APP_STORE_ITMS='itms-apps://apps.apple.com/app/id1673134518';
 // Normalize an avatar URL (Blossom URL or server-relative path) to an absolute https URL
