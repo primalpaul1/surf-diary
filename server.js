@@ -415,6 +415,14 @@ app.get('/api/feed',requireAuth,async(req,res)=>{
     const sessions=await db.query(`SELECT s.*,u.display_name,u.avatar_path,u.is_pro,u.show_pro_ring,COALESCE(bst.tb,0) as total_barrels FROM sessions s LEFT JOIN users u ON s.pubkey=u.pubkey LEFT JOIN (SELECT pubkey,SUM(barrels) as tb FROM sessions GROUP BY pubkey) bst ON bst.pubkey=s.pubkey ${wc} ORDER BY s.session_date DESC,s.created_at DESC LIMIT $${n++}`,[...p,+limit]);
     if(sessions.length)result.push({spot:{id:spot.id,name:spot.name,location_text:spot.location_text,cover_image_url:spot.cover_image_url,member_count:spot.member_count},sessions:sessions.map(s=>absSession(s,req))});
   }
+  // Attach recent comments (+count) to each session in one batched query
+  const ids=[];for(const g of result)for(const s of g.sessions)ids.push(s.id);
+  if(ids.length){
+    const ph=ids.map((_,i)=>`$${i+1}`).join(',');
+    const comments=await db.query(`SELECT c.id,c.session_id,c.pubkey,c.body,c.created_at,u.display_name,u.avatar_path,u.is_pro,u.show_pro_ring FROM comments c LEFT JOIN users u ON c.pubkey=u.pubkey WHERE c.session_id IN(${ph}) ORDER BY c.created_at ASC`,ids);
+    const byId={};for(const c of comments){(byId[c.session_id]=byId[c.session_id]||[]).push(absUser(c,req));}
+    for(const g of result)for(const s of g.sessions){const cs=byId[s.id]||[];s.comment_count=cs.length;s.comments=cs.slice(-3);}
+  }
   res.json(result);
 });
 

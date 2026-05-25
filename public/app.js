@@ -848,26 +848,52 @@ function renderReportFeed(){
   items.sort((a,b)=>(b.session_date||'').localeCompare(a.session_date||'')||((b.created_at||0)-(a.created_at||0)));
   if(!items.length){feedEl.innerHTML='<div class="empty-state"><p>No reports yet.</p><p class="muted">Tap the + button to log one.</p></div>';return;}
   feedEl.innerHTML=items.map(s=>renderSessionCard(s,multi&&sel==='__all')).join('');
-  feedEl.querySelectorAll('.feed-card').forEach(c=>c.addEventListener('click',()=>openSession(c.dataset.id)));
+  feedEl.querySelectorAll('.pcard').forEach(c=>c.addEventListener('click',()=>openSession(c.dataset.id)));
 }
 $('#feed-filter')?.addEventListener('change',renderReportFeed);
 
+function smallAvatar(u,cls){return u.avatar_path?`<img src="${u.avatar_path}" class="${cls}" alt="">`:`<div class="${cls}-ph">${(u.display_name||'?')[0].toUpperCase()}</div>`;}
+function renderInlineComment(c){return`<div class="cmt">${smallAvatar(c,'cmt-av')}<div class="cmt-body"><b>${escapeHtml(c.display_name||'Anon')}</b>${escapeHtml(c.body)}</div></div>`;}
 function renderSessionCard(s,showSpot){
-  const d=new Date(s.session_date+'T12:00:00'),tags=[];
-  const spotTag=showSpot&&s.__spot?`<span class="feed-spot">${escapeHtml(s.__spot)}</span>`:'';
-  // Only show session type, wave shape, and media tags — no swell/wind data
+  const d=new Date(s.session_date+'T12:00:00');
+  const dateStr=d.toLocaleDateString('en',{month:'short',day:'numeric'});
+  const tags=[];
   if(s.surf_height_min_ft!=null)tags.push(`<span class="tag tag-height">${s.surf_height_min_ft}-${s.surf_height_max_ft}ft</span>`);
   if(s.session_type==='surfed')tags.push('<span class="tag tag-shape">surfed</span>');
   else if(s.session_type==='observed')tags.push('<span class="tag tag-observed">observed</span>');
   if(s.wave_shape)tags.push(`<span class="tag tag-shape">${s.wave_shape}</span>`);
   if(s.barrels>0)tags.push(`<span class="tag tag-barrel">🤿 ${s.barrels} tube${s.barrels>1?'s':''}</span>`);
   if(s.voice_memo_path)tags.push('<span class="tag tag-voice">🎙</span>');
-  const vt=s.video_path?`<div class="feed-video-thumb"><video src="${s.video_path}#t=0.1" preload="metadata" muted playsinline></video><span class="feed-video-play">▶</span></div>`:'';
-  const bb=s.total_barrels>0?`<span class="barrel-count" title="${s.total_barrels} tubes">🤿${s.total_barrels}</span>`:'';
   const capText=(s.notes||s.voice_transcript||'').trim();
-  const cap=capText?`<div class="feed-caption">${escapeHtml(capText)}</div>`:'';
-  return`<div class="feed-card" data-id="${s.id}"><div class="feed-date"><div class="day">${d.getDate()}</div><div class="mo">${d.toLocaleString('en',{month:'short'})}</div></div><div class="feed-body"><div class="feed-user">${userLinkHTML(s.pubkey,s.display_name,s.avatar_path,'feed',!!ringCls(s))}${bb}<span class="feed-tod">· ${formatTOD(s.time_of_day)}</span>${spotTag}</div><div class="feed-tags">${tags.join('')}</div>${cap}${vt}</div><div class="feed-rating">${s.rating?`<div class="rbadge ${getRatingClass(s.rating)}">${s.rating}</div>`:'<div class="rbadge">—</div>'}</div></div>`;
+  const cap=capText?`<div class="pcard-caption">${escapeHtml(capText)}</div>`:'';
+  const av=s.avatar_path?`<img src="${s.avatar_path}" class="pcard-av${ringCls(s)}" alt="">`:`<div class="pcard-av-ph${ringCls(s)}">${(s.display_name||'?')[0].toUpperCase()}</div>`;
+  const spotChip=showSpot&&s.__spot?`<span class="pcard-spot">${escapeHtml(s.__spot)}</span>`:'';
+  const media=s.video_path?`<div class="pcard-media" onclick="event.stopPropagation()"><video src="${s.video_path}#t=0.1" preload="metadata" muted playsinline onloadedmetadata="snVideoMeta(this)"></video><button class="pcard-play" onclick="snPlayVideo(this)" aria-label="Play"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></button></div>`:'';
+  const score=s.rating?`<div class="rbadge ${getRatingClass(s.rating)}">${s.rating}</div>`:'<div class="rbadge">—</div>';
+  const cmts=(s.comments||[]).map(renderInlineComment).join('');
+  const more=(s.comment_count||0)>(s.comments||[]).length?`<button class="cmt-more" onclick="event.stopPropagation();openSession(${s.id})">View all ${s.comment_count} comments</button>`:'';
+  const composer=currentUser?`<div class="cmt-compose" onclick="event.stopPropagation()">${smallAvatar(currentUser,'cmt-av')}<input class="cmt-input" type="text" placeholder="Add a comment…" onkeydown="if(event.key==='Enter')postInlineComment(${s.id},this)"><button class="cmt-send" onclick="postInlineComment(${s.id},this)">Post</button></div>`:'';
+  return`<div class="pcard" data-id="${s.id}">
+    <div class="pcard-top"><a class="pcard-who" href="${primalLink(s.pubkey)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${av}<span class="pcard-id"><span class="pcard-name">${escapeHtml(s.display_name||'Anon')}</span><span class="pcard-time">· ${formatTOD(s.time_of_day)}</span></span></a>${spotChip}</div>
+    ${cap}
+    ${tags.length?`<div class="pcard-tags">${tags.join('')}</div>`:''}
+    ${media}
+    <div class="pcard-foot"><span class="foot-date">${dateStr}</span>${score}</div>
+    <div class="pcard-comments">${cmts}${more}${composer}</div>
+  </div>`;
 }
+window.snVideoMeta=function(v){const w=v.videoWidth,h=v.videoHeight;if(w&&h)v.closest('.pcard-media').classList.add(h>w?'portrait':'landscape');};
+window.snPlayVideo=function(btn){const m=btn.closest('.pcard-media');const v=m.querySelector('video');v.controls=true;v.muted=false;v.play();btn.remove();};
+window.postInlineComment=async function(id,el){
+  const card=el.closest('.pcard');const input=card.querySelector('.cmt-input');const body=(input.value||'').trim();
+  if(!body||!currentUser)return;
+  input.value='';input.disabled=true;
+  try{
+    await fetch(`${API_BASE}/api/sessions/${id}/comments`,{method:'POST',headers:{'Content-Type':'application/json','X-Nostr-Pubkey':currentUser.pubkey},body:JSON.stringify({body})});
+    card.querySelector('.cmt-compose').insertAdjacentHTML('beforebegin',renderInlineComment({display_name:currentUser.display_name,avatar_path:currentUser.avatar_path,body}));
+  }catch{toast('Comment failed','error');}
+  finally{input.disabled=false;}
+};
 
 window.switchToSpot=async id=>{
   try{const spot=await(await fetch(`${API_BASE}/api/spots/${id}`)).json();selectSpot(spot);}catch{}
