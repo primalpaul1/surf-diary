@@ -137,9 +137,8 @@ async function doQuickPost(){
 
 // ===== TAB HINTS (first-run onboarding) =====
 const TAB_HINTS_KEY='swellnotes_seen_tabs';
-const ALL_TABS=['log','history','surfers','analysis','pipeline'];
+const ALL_TABS=['history','forecast','surfers','analysis','pipeline'];
 const TAB_HINTS={
-  log:{title:'Log',body:'Rate each session. Conditions auto-fill from Surfline.'},
   history:{title:'Reports',body:'Browse past sessions and stats from your crew.'},
   surfers:{title:'Surfers',body:'See who\'s in your crew and follow other surfers.'},
   analysis:{title:'Analysis',body:'Match the incoming swell to your best past days.'},
@@ -147,7 +146,7 @@ const TAB_HINTS={
 };
 function getSeenTabs(){try{return JSON.parse(localStorage.getItem(TAB_HINTS_KEY)||'[]');}catch{return[];}}
 function markTabSeen(v){const s=getSeenTabs();if(!s.includes(v)){s.push(v);localStorage.setItem(TAB_HINTS_KEY,JSON.stringify(s));}renderTabDots();}
-function renderTabDots(){const s=getSeenTabs();$$('.nav-btn[data-view]').forEach(btn=>{const v=btn.dataset.view;const ex=btn.querySelector('.nav-tip-dot');if(!v||v==='pro'||s.includes(v)){ex?.remove();}else if(!ex){btn.insertAdjacentHTML('beforeend','<span class="nav-tip-dot"></span>');}});}
+function renderTabDots(){const s=getSeenTabs();$$('.nav-btn[data-view]').forEach(btn=>{const v=btn.dataset.view;const ex=btn.querySelector('.nav-tip-dot');if(!v||v==='pro'||v==='forecast'||s.includes(v)){ex?.remove();}else if(!ex){btn.insertAdjacentHTML('beforeend','<span class="nav-tip-dot"></span>');}});}
 function maybeShowTabHint(v){const h=TAB_HINTS[v];if(!h)return;const seen=getSeenTabs();if(seen.includes(v))return;document.querySelector('.tab-hint')?.remove();const el=document.createElement('div');el.className='tab-hint';el.innerHTML=`<div class="tab-hint-body"><div class="tab-hint-title">${h.title}</div><div class="tab-hint-text">${h.body}</div></div><button class="tab-hint-close" aria-label="Dismiss">×</button>`;document.body.appendChild(el);const remove=()=>{el.classList.add('tab-hint-out');setTimeout(()=>el.remove(),200);};el.querySelector('.tab-hint-close').addEventListener('click',remove);setTimeout(remove,6000);markTabSeen(v);}
 function initTabHints(){
   // If we've never tracked seen-tabs before AND a user is already logged in, mark all seen
