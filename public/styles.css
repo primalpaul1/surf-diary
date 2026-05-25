@@ -415,6 +415,28 @@ textarea { resize: vertical; }
 .feed-spot { font-size: 0.72rem; font-weight: 600; color: var(--teal); background: rgba(26,115,232,0.08); padding: 0.05rem 0.4rem; border-radius: 5px; margin-left: 0.4rem; white-space: nowrap; }
 .feed-caption { font-size: 0.88rem; color: var(--text); line-height: 1.4; margin-top: 0.4rem; white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 
+/* ---- FORECAST TAB ---- */
+.feed-header-actions { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+#view-forecast { max-width: 560px; margin: 0 auto; }
+.fc-head { text-align: center; margin-bottom: 1rem; }
+.fc-head-big { font: 3rem var(--font-display); color: var(--text); line-height: 1; }
+.fc-head-sub { font: 500 0.85rem var(--font-body); color: var(--text-muted); margin-top: 0.25rem; }
+.fc-card { background: #fff; border-radius: 16px; box-shadow: var(--shadow); padding: 1rem; margin-bottom: 0.9rem; }
+.fc-card-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 0.6rem; }
+.fc-card-label { font: 700 0.72rem var(--font-body); letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); }
+.fc-card-now { font: 700 0.95rem var(--font-body); color: var(--text); }
+.fc-bars { display: flex; align-items: flex-end; gap: 0.3rem; margin-top: 0.7rem; }
+.fc-col { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 0.2rem; }
+.fc-track { width: 100%; height: 80px; display: flex; align-items: flex-end; }
+.fc-bar { width: 70%; margin: 0 auto; border-radius: 4px 4px 0 0; background: linear-gradient(180deg, var(--teal-glow), var(--teal)); min-height: 4px; }
+.fc-num { font: 700 0.72rem var(--font-body); color: var(--text); }
+.fc-time { font: 500 0.66rem var(--font-body); color: var(--text-muted); }
+.fc-wind { font-size: 0.7rem; color: var(--text-muted); line-height: 1; }
+.fc-svg { width: 100%; height: 120px; display: block; overflow: visible; }
+.fc-now { stroke: var(--coral); stroke-width: 1.5; stroke-dasharray: 3 3; }
+.fc-svg-lbl { font: 700 9px var(--font-body); fill: var(--text-soft); }
+.fc-axis { display: flex; justify-content: space-between; margin-top: 0.3rem; font: 500 0.66rem var(--font-body); color: var(--text-muted); }
+
 /* ---- FEED CARD v2 (Reports) ---- */
 .pcard { background: #fff; border-radius: 16px; padding: 1rem; box-shadow: var(--shadow); cursor: pointer; }
 .pcard-top { display: flex; align-items: center; gap: 0.65rem; }

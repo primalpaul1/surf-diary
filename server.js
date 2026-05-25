@@ -451,6 +451,31 @@ app.get('/api/conditions',async(req,res)=>{
   }catch(err){console.error('Conditions error:',err.message||err);res.status(500).json({error:'Failed to fetch conditions'});}
 });
 
+// Full forecast arrays for the Forecast tab charts (surf bars, tide curve, energy)
+app.get('/api/forecast',async(req,res)=>{
+  try{
+    const spotId=req.query.spot_id;
+    let surflineSpotId='5842041f4e65fad6a7708b9c';
+    if(spotId){
+      const spot=await db.get('SELECT surfline_spot_id,is_private FROM spots WHERE id=$1',[spotId]);
+      if(spot){
+        if(spot.is_private){const pk=req.headers['x-nostr-pubkey']||null;if(!pk)return res.status(403).json({error:'Private crew'});const mem=await db.get('SELECT 1 FROM spot_members WHERE spot_id=$1 AND pubkey=$2',[spotId,pk]);if(!mem)return res.status(403).json({error:'Private crew'});}
+        surflineSpotId=spot.surfline_spot_id;
+      }
+    }else if(req.query.surfline_spot_id)surflineSpotId=req.query.surfline_spot_id;
+    const f=await getForecast(surflineSpotId);
+    const wave=(f.wave&&f.wave.wave)||[];
+    const wind=(f.wind&&f.wind.wind)||[];
+    const tides=(f.tides&&f.tides.tides)||[];
+    res.json({
+      utcOffset:f.utcOffset??-6,
+      wave:wave.map(w=>({t:w.timestamp,min:w.surf?.min??null,max:w.surf?.max??null,power:w.power??null})),
+      wind:wind.map(w=>({t:w.timestamp,speed:w.speed??null,dir:w.direction??null})),
+      tides:tides.map(t=>({t:t.timestamp,h:t.height,type:t.type}))
+    });
+  }catch(err){console.error('Forecast error:',err.message||err);res.status(500).json({error:'Failed to fetch forecast'});}
+});
+
 // ===== NIP-46 =====
 app.get('/api/nip46/init',async(req,res)=>{try{const{generateSecretKey,getPublicKey}=await import('nostr-tools');const sk=generateSecretKey();const secretKey=Buffer.from(sk).toString('hex');const publicKey=getPublicKey(sk);const rh=crypto.randomBytes(16).toString('hex');const secret=`sec-${rh.slice(0,8)}-${rh.slice(8,12)}-${rh.slice(12,16)}-${rh.slice(16,20)}-${rh.slice(20,32)}`;const relay='wss://relay.primal.net';const p=new URLSearchParams();p.append('relay',relay);p.append('secret',secret);p.append('name','Swellnotes');p.append('url',req.query.origin||`http://localhost:${PORT}`);p.append('image','https://swellnotes.com/sn-logo.png');const qrURI=`nostrconnect://${publicKey}?${p.toString()}`;const cp=new URLSearchParams(p);const callbackBase=req.query.platform==='ios'?'swellnotes://login-callback':`${req.query.origin||`http://localhost:${PORT}`}/login-callback`;cp.append('callback',callbackBase);res.json({secretKey,publicKey,secret,relay,qrDataUrl:await QRCode.toDataURL(qrURI,{width:280,margin:2}),qrURI,mobileURI:`nostrconnect://${publicKey}?${cp.toString()}`});}catch(err){console.error('NIP-46 init error:',err);res.status(500).json({error:'NIP-46 init failed: '+(err.message||'unknown')});}});
 

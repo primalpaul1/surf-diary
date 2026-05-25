@@ -22,12 +22,12 @@ const DEFAULT_COVERS=['/covers/cover1.jpg','/covers/cover2.jpg','/covers/cover3.
 function defaultCover(id){return DEFAULT_COVERS[Math.abs([...((id||'')+'x')].reduce((h,c)=>((h<<5)-h)+c.charCodeAt(0),0))%DEFAULT_COVERS.length];}
 
 // Nav
-$$('.nav-btn[data-view]').forEach(b=>{b.addEventListener('click',()=>{$$('.nav-btn').forEach(x=>x.classList.remove('active'));b.classList.add('active');$$('.view').forEach(v=>v.classList.remove('active'));$(`#view-${b.dataset.view}`).classList.add('active');document.body.classList.toggle('pro-immersive',b.dataset.view==='pro');window.scrollTo(0,0);if(b.dataset.view==='history')loadFeed();if(b.dataset.view==='surfers')loadSurfers();if(b.dataset.view==='analysis')loadAnalysis();if(b.dataset.view==='pipeline')loadPipeline();if(b.dataset.view==='pro')renderProTab();updateReportFab();syncHero();maybeShowTabHint(b.dataset.view);});});
+$$('.nav-btn[data-view]').forEach(b=>{b.addEventListener('click',()=>{$$('.nav-btn').forEach(x=>x.classList.remove('active'));b.classList.add('active');$$('.view').forEach(v=>v.classList.remove('active'));$(`#view-${b.dataset.view}`).classList.add('active');document.body.classList.toggle('pro-immersive',b.dataset.view==='pro');window.scrollTo(0,0);if(b.dataset.view==='history')loadFeed();if(b.dataset.view==='surfers')loadSurfers();if(b.dataset.view==='analysis')loadAnalysis();if(b.dataset.view==='pipeline')loadPipeline();if(b.dataset.view==='pro')renderProTab();if(b.dataset.view==='forecast')loadForecast();updateReportFab();syncHero();maybeShowTabHint(b.dataset.view);});});
 
 // Floating "new report" button — visible on the Reports tab, jumps to the Log form
 function updateReportFab(){const onHistory=$('.nav-btn.active')?.dataset?.view==='history';$('#report-fab')?.classList.toggle('hidden',!(onHistory&&currentUser));}
 // The spot cover hero shows only on Log/Surfers/Analysis — never on the Reports feed
-function syncHero(){const v=$('.nav-btn.active')?.dataset?.view;const show=!!currentSpot&&(v==='log'||v==='surfers'||v==='analysis');$('#hero')?.classList.toggle('hidden',!show);}
+function syncHero(){const v=$('.nav-btn.active')?.dataset?.view;const show=!!currentSpot&&(v==='forecast'||v==='surfers'||v==='analysis');$('#hero')?.classList.toggle('hidden',!show);}
 $('#report-fab')?.addEventListener('click',openQuickPost);
 
 // ===== QUICK POST (Twitter-style composer, 2 steps) =====
@@ -73,7 +73,7 @@ function closeQuickPost(){if(qpRec?.state==='recording')qpStopVoice();$('#quickp
 $('#qp-left')?.addEventListener('click',()=>{qpStep===1?closeQuickPost():qpGoStep(1);});
 $('#qp-right')?.addEventListener('click',()=>{qpStep===1?qpGoStep(2):doQuickPost();});
 $('#quickpost')?.addEventListener('click',e=>{if(e.target.id==='quickpost')closeQuickPost();});
-$('#qp-rating')?.addEventListener('input',e=>{const v=+e.target.value;$('#qp-rating-val').textContent=v.toFixed(1);const iv=Math.round(v);if(iv!==qpLastRate){hapticTick(v>=8?'HEAVY':v>=5?'MEDIUM':'LIGHT');qpLastRate=iv;}});
+$('#qp-rating')?.addEventListener('input',e=>{const v=+e.target.value;$('#qp-rating-val').textContent=v.toFixed(1);if(v!==qpLastRate){hapticTick('LIGHT');qpLastRate=v;}});
 $('#qp-tags')?.addEventListener('click',e=>{const b=e.target.closest('.qp-tag');if(!b)return;
   if(b.dataset.type){$$('#qp-tags .qp-tag[data-type]').forEach(x=>x.classList.remove('on'));b.classList.add('on');}
   else b.classList.toggle('on');
@@ -190,7 +190,7 @@ function selectSpot(spot){
   // Show spot settings + cover edit if admin
   if(currentUser){
     const mem=spot.members?.find(m=>m.pubkey===currentUser.pubkey);
-    $('#log-members-btn').classList.remove('hidden');
+    $('#log-members-btn')?.classList.remove('hidden');
     if(mem?.role==='admin'){$('#spot-settings-btn').classList.remove('hidden');$('#invite-btn').classList.remove('hidden');$('#hero-cover-btn').classList.remove('hidden');}
     else{$('#spot-settings-btn').classList.add('hidden');$('#invite-btn').classList.add('hidden');$('#hero-cover-btn').classList.add('hidden');}
   }
@@ -296,7 +296,7 @@ $('#create-spot-modal .modal-backdrop').addEventListener('click',()=>$('#create-
 $('#create-spot-modal .modal-close').addEventListener('click',()=>$('#create-spot-modal').classList.add('hidden'));
 
 // ===== LOG MEMBERS + INVITES =====
-$('#log-members-btn').addEventListener('click',()=>{if(currentSpot)showMembers(currentSpot.id,currentSpot.name);});
+$('#log-members-btn')?.addEventListener('click',()=>{if(currentSpot)showMembers(currentSpot.id,currentSpot.name);});
 $('#invite-btn').addEventListener('click',async()=>{
   if(!currentSpot||!currentUser)return;
   try{
@@ -951,6 +951,63 @@ function renderReportFeed(){
   feedEl.querySelectorAll('.pcard').forEach(c=>c.addEventListener('click',()=>openSession(c.dataset.id)));
 }
 $('#feed-filter')?.addEventListener('change',renderReportFeed);
+
+// ===== FORECAST TAB =====
+function fcLocalHour(t,off){return new Date((t+off*3600)*1000).getUTCHours();}
+function fcHourLabel(h){if(h===0)return'12a';if(h===12)return'12p';return h<12?h+'a':(h-12)+'p';}
+function fcTimeLabel(t,off){const D=new Date((t+off*3600)*1000);let h=D.getUTCHours();const m=D.getUTCMinutes();const ap=h<12?'am':'pm';h=h%12||12;return `${h}:${String(m).padStart(2,'0')}${ap}`;}
+function fcDayWindow(off){const nowU=Math.floor(Date.now()/1000);const local=nowU+off*3600;const startLocal=Math.floor(local/86400)*86400;return{start:startLocal-off*3600,end:startLocal-off*3600+86400,nowU};}
+function fcScale(pts,start,w,h){const vs=pts.map(p=>p.v);let lo=Math.min(...vs),hi=Math.max(...vs);if(hi===lo){hi+=1;lo-=1;}const pad=(hi-lo)*0.18;lo-=pad;hi+=pad;const X=t=>(((t-start)/86400)*w);const Y=v=>h-((v-lo)/(hi-lo))*h;return{X,Y,lo,hi};}
+function fcCurve(pts,start,w,h){const s=fcScale(pts,start,w,h);const line=pts.map((p,i)=>`${i?'L':'M'}${s.X(p.t).toFixed(1)},${s.Y(p.v).toFixed(1)}`).join(' ');const area=`${line} L${s.X(pts[pts.length-1].t).toFixed(1)},${h} L${s.X(pts[0].t).toFixed(1)},${h} Z`;return{...s,line,area};}
+function fcNearest(arr,t){let best=null,bd=1/0;for(const a of arr){const d=Math.abs(a.t-t);if(d<bd){bd=d;best=a;}}return best;}
+async function loadForecast(){
+  const el=$('#forecast-body');if(!el)return;
+  if(!currentSpot){el.innerHTML='<div class="empty-state"><p>Join a crew to see its forecast.</p></div>';return;}
+  el.innerHTML='<div class="cond-loading">Loading forecast…</div>';
+  try{
+    const headers=currentUser?{'X-Nostr-Pubkey':currentUser.pubkey}:{};
+    const f=await(await fetch(`${API_BASE}/api/forecast?spot_id=${currentSpot.id}`,{headers})).json();
+    if(f.error||!f.wave){el.innerHTML='<div class="empty-state"><p>Forecast unavailable.</p></div>';return;}
+    el.innerHTML=renderForecast(f);
+  }catch{el.innerHTML='<div class="empty-state"><p>Could not load forecast.</p></div>';}
+}
+function renderForecast(f){
+  const off=f.utcOffset??-6;const {start,nowU}=fcDayWindow(off);const end=start+86400;
+  const W=320,H=110;
+  // Surf bars (3-hourly)
+  const wave=f.wave.filter(w=>w.t>=start&&w.t<end&&w.max!=null);
+  const wind=f.wind.filter(w=>w.t>=start&&w.t<end);
+  const maxSurf=Math.max(1,...wave.map(w=>w.max));
+  const bars=wave.map(w=>{const pct=Math.max(6,Math.round((w.max/maxSurf)*100));const wd=fcNearest(wind,w.t);const arrow=wd&&wd.dir!=null?`<span class="fc-wind" style="transform:rotate(${Math.round(wd.dir+180)}deg)">↑</span>`:'';return`<div class="fc-col"><div class="fc-track"><div class="fc-bar" style="height:${pct}%"></div></div><div class="fc-num">${w.min!=null?w.min+'-':''}${w.max}</div>${arrow}<div class="fc-time">${fcHourLabel(fcLocalHour(w.t,off))}</div></div>`;}).join('');
+  // Tide
+  const tide=f.tides.filter(t=>t.t>=start-7200&&t.t<end+7200);
+  let tideHTML='';
+  if(tide.length>1){
+    const c=fcCurve(tide.map(t=>({t:t.t,v:t.h})),start,W,H);
+    const now=fcNearest(tide,nowU);const nx=c.X(nowU);
+    const ext=tide.filter(t=>(t.type==='HIGH'||t.type==='LOW')&&t.t>=start&&t.t<end);
+    const dots=ext.map(t=>`<circle cx="${c.X(t.t).toFixed(1)}" cy="${c.Y(t.h).toFixed(1)}" r="3" fill="#1a4a7a"/><text x="${c.X(t.t).toFixed(1)}" y="${(c.Y(t.h)-8).toFixed(1)}" class="fc-svg-lbl" text-anchor="middle">${t.h}ft</text>`).join('');
+    const nowLine=(nx>=0&&nx<=W)?`<line x1="${nx.toFixed(1)}" y1="0" x2="${nx.toFixed(1)}" y2="${H}" class="fc-now"/>`:'';
+    tideHTML=`<div class="fc-card"><div class="fc-card-head"><span class="fc-card-label">Tide</span><span class="fc-card-now">${now?now.h+'ft now':''}</span></div>
+      <svg viewBox="0 0 ${W} ${H+18}" class="fc-svg" preserveAspectRatio="none"><path d="${c.area}" fill="rgba(26,74,122,0.12)"/><path d="${c.line}" fill="none" stroke="#1a4a7a" stroke-width="2"/>${nowLine}${dots}</svg>
+      <div class="fc-axis">${[start,start+21600,start+43200,start+64800,end-1].map(t=>`<span>${fcHourLabel(fcLocalHour(t,off))}</span>`).join('')}</div></div>`;
+  }
+  // Energy (kJ)
+  const en=f.wave.filter(w=>w.t>=start&&w.t<end&&w.power!=null);
+  let enHTML='';
+  if(en.length>1){
+    const c=fcCurve(en.map(w=>({t:w.t,v:w.power})),start,W,H);
+    const now=fcNearest(en,nowU);const nx=c.X(nowU);
+    const nowLine=(nx>=0&&nx<=W)?`<line x1="${nx.toFixed(1)}" y1="0" x2="${nx.toFixed(1)}" y2="${H}" class="fc-now"/>`:'';
+    enHTML=`<div class="fc-card"><div class="fc-card-head"><span class="fc-card-label">Swell energy</span><span class="fc-card-now">${now?Math.round(now.power)+' kJ now':''}</span></div>
+      <svg viewBox="0 0 ${W} ${H}" class="fc-svg" preserveAspectRatio="none"><path d="${c.area}" fill="rgba(56,189,248,0.14)"/><path d="${c.line}" fill="none" stroke="var(--cyan)" stroke-width="2"/>${nowLine}</svg>
+      <div class="fc-axis">${[start,start+21600,start+43200,start+64800,end-1].map(t=>`<span>${fcHourLabel(fcLocalHour(t,off))}</span>`).join('')}</div></div>`;
+  }
+  const nowSurf=fcNearest(wave,nowU);
+  return`<div class="fc-head"><div class="fc-head-big">${nowSurf?`${nowSurf.min!=null?nowSurf.min+'-':''}${nowSurf.max}ft`:'—'}</div><div class="fc-head-sub">Surf right now · ${currentSpot.name}</div></div>
+    <div class="fc-card"><div class="fc-card-label">Surf height · today</div><div class="fc-bars">${bars||'<span class="muted">No data</span>'}</div></div>
+    ${tideHTML}${enHTML}`;
+}
 
 function smallAvatar(u,cls){return u.avatar_path?`<img src="${u.avatar_path}" class="${cls}" alt="">`:`<div class="${cls}-ph">${(u.display_name||'?')[0].toUpperCase()}</div>`;}
 function renderInlineComment(c){return`<div class="cmt">${smallAvatar(c,'cmt-av')}<div class="cmt-body"><b>${escapeHtml(c.display_name||'Anon')}</b>${escapeHtml(c.body)}</div></div>`;}

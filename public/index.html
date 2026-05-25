@@ -58,7 +58,7 @@
       </div>
       <nav>
         <button class="nav-btn active" data-view="history">Reports</button>
-        <button class="nav-btn" data-view="log">Log</button>
+        <button class="nav-btn" data-view="forecast">Forecast</button>
         <button class="nav-btn" data-view="surfers">Surfers</button>
         <button class="nav-btn" data-view="analysis">Analysis</button>
         <button class="nav-btn" data-view="pipeline">Search</button>
@@ -362,17 +362,17 @@
   </div>
 
   <main class="hidden" id="main-content">
-    <!-- LOG -->
+    <!-- FORECAST -->
+    <section id="view-forecast" class="view">
+      <div id="forecast-body"></div>
+    </section>
+
+    <!-- LOG (legacy form, kept for quick-post plumbing; not in nav) -->
     <section id="view-log" class="view">
       <div class="card card-form">
         <div class="card-header">
           <h2>Log a Session</h2>
           <p class="muted">Conditions auto-fill from Surfline.</p>
-          <div class="log-crew-actions">
-            <button id="spot-settings-btn" class="btn-outline btn-xs hidden">Crew Settings</button>
-            <button id="invite-btn" class="btn-outline btn-xs hidden">Invite Friends</button>
-            <button id="log-members-btn" class="btn-outline btn-xs hidden">Members</button>
-          </div>
         </div>
         <form id="session-form">
           <div class="row-2">
@@ -448,7 +448,10 @@
       <div class="card">
         <div class="feed-header">
           <h2>Surfers</h2>
-          <button id="invite-btn" class="btn-solid btn-sm hidden">Invite</button>
+          <div class="feed-header-actions">
+            <button id="spot-settings-btn" class="btn-outline btn-sm hidden">Crew Settings</button>
+            <button id="invite-btn" class="btn-solid btn-sm hidden">Invite Friends</button>
+          </div>
         </div>
         <div id="join-requests-panel" class="hidden" style="margin-bottom:1rem">
           <div class="section-label">Pending Requests <span id="join-request-count" class="badge"></span></div>
