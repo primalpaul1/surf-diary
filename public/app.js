@@ -956,10 +956,12 @@ $('#feed-filter')?.addEventListener('change',renderReportFeed);
 function fcLocalHour(t,off){return new Date((t+off*3600)*1000).getUTCHours();}
 function fcHourLabel(h){if(h===0)return'12a';if(h===12)return'12p';return h<12?h+'a':(h-12)+'p';}
 function fcTimeLabel(t,off){const D=new Date((t+off*3600)*1000);let h=D.getUTCHours();const m=D.getUTCMinutes();const ap=h<12?'am':'pm';h=h%12||12;return `${h}:${String(m).padStart(2,'0')}${ap}`;}
-function fcDayWindow(off){const nowU=Math.floor(Date.now()/1000);const local=nowU+off*3600;const startLocal=Math.floor(local/86400)*86400;return{start:startLocal-off*3600,end:startLocal-off*3600+86400,nowU};}
+const FC_DOW=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+function fcDayWindow(off,dayIndex=0){const nowU=Math.floor(Date.now()/1000);const local=nowU+off*3600;const todayStartLocal=Math.floor(local/86400)*86400;const startLocal=todayStartLocal+dayIndex*86400;return{start:startLocal-off*3600,end:startLocal-off*3600+86400,nowU};}
 function fcScale(pts,start,w,h){const vs=pts.map(p=>p.v);let lo=Math.min(...vs),hi=Math.max(...vs);if(hi===lo){hi+=1;lo-=1;}const pad=(hi-lo)*0.18;lo-=pad;hi+=pad;const X=t=>(((t-start)/86400)*w);const Y=v=>h-((v-lo)/(hi-lo))*h;return{X,Y,lo,hi};}
 function fcCurve(pts,start,w,h){const s=fcScale(pts,start,w,h);const line=pts.map((p,i)=>`${i?'L':'M'}${s.X(p.t).toFixed(1)},${s.Y(p.v).toFixed(1)}`).join(' ');const area=`${line} L${s.X(pts[pts.length-1].t).toFixed(1)},${h} L${s.X(pts[0].t).toFixed(1)},${h} Z`;return{...s,line,area};}
 function fcNearest(arr,t){let best=null,bd=1/0;for(const a of arr){const d=Math.abs(a.t-t);if(d<bd){bd=d;best=a;}}return best;}
+let fcData=null,fcDay=0;
 async function loadForecast(){
   const el=$('#forecast-body');if(!el)return;
   if(!currentSpot){el.innerHTML='<div class="empty-state"><p>Join a crew to see its forecast.</p></div>';return;}
@@ -968,17 +970,25 @@ async function loadForecast(){
     const headers=currentUser?{'X-Nostr-Pubkey':currentUser.pubkey}:{};
     const f=await(await fetch(`${API_BASE}/api/forecast?spot_id=${currentSpot.id}`,{headers})).json();
     if(f.error||!f.wave){el.innerHTML='<div class="empty-state"><p>Forecast unavailable.</p></div>';return;}
-    el.innerHTML=renderForecast(f);
+    fcData=f;fcDay=0;renderForecastDay();
   }catch{el.innerHTML='<div class="empty-state"><p>Could not load forecast.</p></div>';}
 }
-function renderForecast(f){
-  const off=f.utcOffset??-6;const {start,nowU}=fcDayWindow(off);const end=start+86400;
+window.fcSelectDay=i=>{fcDay=i;renderForecastDay();window.scrollTo(0,0);};
+function renderForecastDay(){
+  const el=$('#forecast-body');const f=fcData;if(!el||!f)return;
+  const off=f.utcOffset??-6;const {start,end,nowU}=fcDayWindow(off,fcDay);const isToday=fcDay===0;
   const W=320,H=110;
-  // Surf bars (3-hourly)
+  // Day tabs
+  const tabs=[0,1,2].map(d=>{const w=fcDayWindow(off,d);const lbl=d===0?'Today':FC_DOW[new Date((w.start+off*3600)*1000).getUTCDay()];return `<button class="fc-day ${d===fcDay?'on':''}" onclick="fcSelectDay(${d})">${lbl}</button>`;}).join('');
+  // Surf bars with primary swell (period + direction arrow)
   const wave=f.wave.filter(w=>w.t>=start&&w.t<end&&w.max!=null);
-  const wind=f.wind.filter(w=>w.t>=start&&w.t<end);
   const maxSurf=Math.max(1,...wave.map(w=>w.max));
-  const bars=wave.map(w=>{const pct=Math.max(6,Math.round((w.max/maxSurf)*100));const wd=fcNearest(wind,w.t);const arrow=wd&&wd.dir!=null?`<span class="fc-wind" style="transform:rotate(${Math.round(wd.dir+180)}deg)">↑</span>`:'';return`<div class="fc-col"><div class="fc-track"><div class="fc-bar" style="height:${pct}%"></div></div><div class="fc-num">${w.min!=null?w.min+'-':''}${w.max}</div>${arrow}<div class="fc-time">${fcHourLabel(fcLocalHour(w.t,off))}</div></div>`;}).join('');
+  const bars=wave.map(w=>{const pct=Math.max(6,Math.round((w.max/maxSurf)*100));const sw=(w.swells||[])[0];const swHTML=sw?`<span class="fc-sw"><span class="fc-sw-arrow" style="transform:rotate(${Math.round(sw.dir+180)}deg)">↑</span>${sw.p}s</span>`:'<span class="fc-sw">—</span>';return`<div class="fc-col"><div class="fc-track"><div class="fc-bar" style="height:${pct}%"></div></div><div class="fc-num">${w.min!=null?w.min+'-':''}${w.max}</div>${swHTML}<div class="fc-time">${fcHourLabel(fcLocalHour(w.t,off))}</div></div>`;}).join('');
+  // Swell breakdown for the representative slot (now today, else midday)
+  const repT=isToday?nowU:(start+12*3600);
+  const repWave=fcNearest(wave,repT);
+  const swList=(repWave?.swells||[]).map((s,i)=>`<div class="fc-swell-row"><span class="fc-swell-arrow" style="transform:rotate(${Math.round(s.dir+180)}deg)">↑</span><span class="fc-swell-main">${s.cdir} · ${s.p}s</span><span class="fc-swell-sub">${s.dir}° · ${s.h}ft</span></div>`).join('');
+  const swellHTML=swList?`<div class="fc-card"><div class="fc-card-head"><span class="fc-card-label">Swell</span><span class="fc-card-now">${isToday?'now':'midday'}</span></div>${swList}</div>`:'';
   // Tide
   const tide=f.tides.filter(t=>t.t>=start-7200&&t.t<end+7200);
   let tideHTML='';
@@ -987,8 +997,8 @@ function renderForecast(f){
     const now=fcNearest(tide,nowU);const nx=c.X(nowU);
     const ext=tide.filter(t=>(t.type==='HIGH'||t.type==='LOW')&&t.t>=start&&t.t<end);
     const dots=ext.map(t=>`<circle cx="${c.X(t.t).toFixed(1)}" cy="${c.Y(t.h).toFixed(1)}" r="3" fill="#1a4a7a"/><text x="${c.X(t.t).toFixed(1)}" y="${(c.Y(t.h)-8).toFixed(1)}" class="fc-svg-lbl" text-anchor="middle">${t.h}ft</text>`).join('');
-    const nowLine=(nx>=0&&nx<=W)?`<line x1="${nx.toFixed(1)}" y1="0" x2="${nx.toFixed(1)}" y2="${H}" class="fc-now"/>`:'';
-    tideHTML=`<div class="fc-card"><div class="fc-card-head"><span class="fc-card-label">Tide</span><span class="fc-card-now">${now?now.h+'ft now':''}</span></div>
+    const nowLine=(isToday&&nx>=0&&nx<=W)?`<line x1="${nx.toFixed(1)}" y1="0" x2="${nx.toFixed(1)}" y2="${H}" class="fc-now"/>`:'';
+    tideHTML=`<div class="fc-card"><div class="fc-card-head"><span class="fc-card-label">Tide</span><span class="fc-card-now">${isToday&&now?now.h+'ft now':''}</span></div>
       <svg viewBox="0 0 ${W} ${H+18}" class="fc-svg" preserveAspectRatio="none"><path d="${c.area}" fill="rgba(26,74,122,0.12)"/><path d="${c.line}" fill="none" stroke="#1a4a7a" stroke-width="2"/>${nowLine}${dots}</svg>
       <div class="fc-axis">${[start,start+21600,start+43200,start+64800,end-1].map(t=>`<span>${fcHourLabel(fcLocalHour(t,off))}</span>`).join('')}</div></div>`;
   }
@@ -998,15 +1008,16 @@ function renderForecast(f){
   if(en.length>1){
     const c=fcCurve(en.map(w=>({t:w.t,v:w.power})),start,W,H);
     const now=fcNearest(en,nowU);const nx=c.X(nowU);
-    const nowLine=(nx>=0&&nx<=W)?`<line x1="${nx.toFixed(1)}" y1="0" x2="${nx.toFixed(1)}" y2="${H}" class="fc-now"/>`:'';
-    enHTML=`<div class="fc-card"><div class="fc-card-head"><span class="fc-card-label">Swell energy</span><span class="fc-card-now">${now?Math.round(now.power)+' kJ now':''}</span></div>
+    const nowLine=(isToday&&nx>=0&&nx<=W)?`<line x1="${nx.toFixed(1)}" y1="0" x2="${nx.toFixed(1)}" y2="${H}" class="fc-now"/>`:'';
+    enHTML=`<div class="fc-card"><div class="fc-card-head"><span class="fc-card-label">Swell energy</span><span class="fc-card-now">${isToday&&now?Math.round(now.power)+' kJ now':''}</span></div>
       <svg viewBox="0 0 ${W} ${H}" class="fc-svg" preserveAspectRatio="none"><path d="${c.area}" fill="rgba(56,189,248,0.14)"/><path d="${c.line}" fill="none" stroke="var(--cyan)" stroke-width="2"/>${nowLine}</svg>
       <div class="fc-axis">${[start,start+21600,start+43200,start+64800,end-1].map(t=>`<span>${fcHourLabel(fcLocalHour(t,off))}</span>`).join('')}</div></div>`;
   }
-  const nowSurf=fcNearest(wave,nowU);
-  return`<div class="fc-head"><div class="fc-head-big">${nowSurf?`${nowSurf.min!=null?nowSurf.min+'-':''}${nowSurf.max}ft`:'—'}</div><div class="fc-head-sub">Surf right now · ${currentSpot.name}</div></div>
-    <div class="fc-card"><div class="fc-card-label">Surf height · today</div><div class="fc-bars">${bars||'<span class="muted">No data</span>'}</div></div>
-    ${tideHTML}${enHTML}`;
+  const headWave=isToday?fcNearest(wave,nowU):fcNearest(wave,start+12*3600);
+  el.innerHTML=`<div class="fc-days">${tabs}</div>
+    <div class="fc-head"><div class="fc-head-big">${headWave?`${headWave.min!=null?headWave.min+'-':''}${headWave.max}ft`:'—'}</div><div class="fc-head-sub">${isToday?'Surf right now':'Midday surf'} · ${escapeHtml(currentSpot.name||'')}</div></div>
+    <div class="fc-card"><div class="fc-card-label">Surf height</div><div class="fc-bars">${bars||'<span class="muted">No data</span>'}</div></div>
+    ${swellHTML}${tideHTML}${enHTML}`;
 }
 
 function smallAvatar(u,cls){return u.avatar_path?`<img src="${u.avatar_path}" class="${cls}" alt="">`:`<div class="${cls}-ph">${(u.display_name||'?')[0].toUpperCase()}</div>`;}

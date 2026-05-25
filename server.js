@@ -469,7 +469,8 @@ app.get('/api/forecast',async(req,res)=>{
     const tides=(f.tides&&f.tides.tides)||[];
     res.json({
       utcOffset:f.utcOffset??-6,
-      wave:wave.map(w=>({t:w.timestamp,min:w.surf?.min??null,max:w.surf?.max??null,power:w.power??null})),
+      wave:wave.map(w=>({t:w.timestamp,min:w.surf?.min??null,max:w.surf?.max??null,power:w.power??null,
+        swells:(w.swells||[]).filter(s=>s.height>0).sort((a,b)=>(b.power||0)-(a.power||0)).slice(0,3).map(s=>({h:Math.round(s.height*10)/10,p:Math.round(s.period),dir:Math.round(s.direction),cdir:degreesToCompass(s.direction)}))})),
       wind:wind.map(w=>({t:w.timestamp,speed:w.speed??null,dir:w.direction??null})),
       tides:tides.map(t=>({t:t.timestamp,h:t.height,type:t.type}))
     });

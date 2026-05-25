@@ -418,6 +418,16 @@ textarea { resize: vertical; }
 /* ---- FORECAST TAB ---- */
 .feed-header-actions { display: flex; gap: 0.4rem; flex-wrap: wrap; }
 #view-forecast { max-width: 560px; margin: 0 auto; }
+.fc-days { display: flex; gap: 0.4rem; margin-bottom: 1rem; }
+.fc-day { flex: 1; padding: 0.5rem; border-radius: 10px; border: 1px solid #e2e8f0; background: #fff; font: 700 0.85rem var(--font-body); color: var(--text-soft); cursor: pointer; }
+.fc-day.on { background: var(--ocean-dark); color: #fff; border-color: var(--ocean-dark); }
+.fc-sw { display: flex; align-items: center; justify-content: center; gap: 0.15rem; font: 600 0.64rem var(--font-body); color: var(--text-muted); }
+.fc-sw-arrow { display: inline-block; font-size: 0.7rem; line-height: 1; color: var(--teal); }
+.fc-swell-row { display: flex; align-items: center; gap: 0.6rem; padding: 0.5rem 0; border-bottom: 1px solid #f1f5f9; }
+.fc-swell-row:last-child { border-bottom: none; }
+.fc-swell-arrow { display: inline-block; font-size: 1.1rem; color: var(--teal); width: 18px; text-align: center; flex-shrink: 0; }
+.fc-swell-main { font: 700 0.92rem var(--font-body); color: var(--text); }
+.fc-swell-sub { margin-left: auto; font: 500 0.8rem var(--font-body); color: var(--text-muted); }
 .fc-head { text-align: center; margin-bottom: 1rem; }
 .fc-head-big { font: 3rem var(--font-display); color: var(--text); line-height: 1; }
 .fc-head-sub { font: 500 0.85rem var(--font-body); color: var(--text-muted); margin-top: 0.25rem; }
