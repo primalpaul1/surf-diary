@@ -974,50 +974,66 @@ async function loadForecast(){
   }catch{el.innerHTML='<div class="empty-state"><p>Could not load forecast.</p></div>';}
 }
 window.fcSelectDay=i=>{fcDay=i;renderForecastDay();window.scrollTo(0,0);};
+let fcCur=null;
+function fcTideAt(t){const a=fcCur?.tide||[];if(!a.length)return null;if(t<=a[0].t)return a[0].h;if(t>=a[a.length-1].t)return a[a.length-1].h;for(let i=1;i<a.length;i++){if(a[i].t>=t){const p=a[i-1],q=a[i];return p.h+(q.h-p.h)*((t-p.t)/(q.t-p.t));}}return a[a.length-1].h;}
+function fcScrubUpdate(t){
+  if(!fcCur)return;
+  const {off,start,end,W,wave,en}=fcCur;
+  t=Math.max(start,Math.min(end-1,t));fcCur.scrubT=t;
+  const xv=((t-start)/86400)*W;
+  const w=fcNearest(wave,t),eW=fcNearest(en,t),tideH=fcTideAt(t),tl=fcTimeLabel(t,off);
+  const set=(id,v)=>{const el=$('#'+id);if(el!=null&&v!=null)el.textContent=v;};
+  if(w)set('fc-head-big',`${w.min!=null?w.min+'-':''}${w.max}ft`);
+  set('fc-head-sub',`${tl} · ${currentSpot?.name||''}`);
+  set('fc-scrub-time',tl);
+  if(tideH!=null)set('fc-tide-val',`${tideH.toFixed(1)}ft`);
+  if(eW)set('fc-energy-val',`${Math.round(eW.power)} kJ`);
+  const sb=$('#fc-swell-body');if(sb)sb.innerHTML=(w?.swells||[]).map(s=>`<div class="fc-swell-row"><span class="fc-swell-arrow" style="transform:rotate(${Math.round(s.dir+180)}deg)">↑</span><span class="fc-swell-main">${s.cdir} · ${s.p}s</span><span class="fc-swell-sub">${s.dir}° · ${s.h}ft</span></div>`).join('')||'<div class="muted" style="padding:.3rem 0">No swell</div>';
+  ['fc-tide-cursor','fc-energy-cursor'].forEach(id=>{const ln=$('#'+id);if(ln){ln.setAttribute('x1',xv.toFixed(1));ln.setAttribute('x2',xv.toFixed(1));}});
+}
+function fcBindScrub(){
+  const svg=$('#fc-tide-svg');if(!svg||!fcCur)return;
+  const at=clientX=>{const r=svg.getBoundingClientRect();let frac=(clientX-r.left)/r.width;frac=Math.max(0,Math.min(1,frac));fcScrubUpdate(fcCur.start+frac*86400);};
+  let drag=false;
+  svg.addEventListener('pointerdown',e=>{drag=true;try{svg.setPointerCapture(e.pointerId);}catch{}at(e.clientX);e.preventDefault();});
+  svg.addEventListener('pointermove',e=>{if(drag)at(e.clientX);});
+  const up=()=>{drag=false;};svg.addEventListener('pointerup',up);svg.addEventListener('pointercancel',up);
+}
 function renderForecastDay(){
   const el=$('#forecast-body');const f=fcData;if(!el||!f)return;
   const off=f.utcOffset??-6;const {start,end,nowU}=fcDayWindow(off,fcDay);const isToday=fcDay===0;
   const W=320,H=110;
-  // Day tabs
   const tabs=[0,1,2].map(d=>{const w=fcDayWindow(off,d);const lbl=d===0?'Today':FC_DOW[new Date((w.start+off*3600)*1000).getUTCDay()];return `<button class="fc-day ${d===fcDay?'on':''}" onclick="fcSelectDay(${d})">${lbl}</button>`;}).join('');
-  // Surf bars with primary swell (period + direction arrow)
   const wave=f.wave.filter(w=>w.t>=start&&w.t<end&&w.max!=null);
+  const en=f.wave.filter(w=>w.t>=start&&w.t<end&&w.power!=null);
   const maxSurf=Math.max(1,...wave.map(w=>w.max));
   const bars=wave.map(w=>{const pct=Math.max(6,Math.round((w.max/maxSurf)*100));const sw=(w.swells||[])[0];const swHTML=sw?`<span class="fc-sw"><span class="fc-sw-arrow" style="transform:rotate(${Math.round(sw.dir+180)}deg)">↑</span>${sw.p}s</span>`:'<span class="fc-sw">—</span>';return`<div class="fc-col"><div class="fc-track"><div class="fc-bar" style="height:${pct}%"></div></div><div class="fc-num">${w.min!=null?w.min+'-':''}${w.max}</div>${swHTML}<div class="fc-time">${fcHourLabel(fcLocalHour(w.t,off))}</div></div>`;}).join('');
-  // Swell breakdown for the representative slot (now today, else midday)
-  const repT=isToday?nowU:(start+12*3600);
-  const repWave=fcNearest(wave,repT);
-  const swList=(repWave?.swells||[]).map((s,i)=>`<div class="fc-swell-row"><span class="fc-swell-arrow" style="transform:rotate(${Math.round(s.dir+180)}deg)">↑</span><span class="fc-swell-main">${s.cdir} · ${s.p}s</span><span class="fc-swell-sub">${s.dir}° · ${s.h}ft</span></div>`).join('');
-  const swellHTML=swList?`<div class="fc-card"><div class="fc-card-head"><span class="fc-card-label">Swell</span><span class="fc-card-now">${isToday?'now':'midday'}</span></div>${swList}</div>`:'';
-  // Tide
+  const axis=`<div class="fc-axis">${[start,start+21600,start+43200,start+64800,end-1].map(t=>`<span>${fcHourLabel(fcLocalHour(t,off))}</span>`).join('')}</div>`;
+  // Tide chart (scrubber)
   const tide=f.tides.filter(t=>t.t>=start-7200&&t.t<end+7200);
   let tideHTML='';
   if(tide.length>1){
     const c=fcCurve(tide.map(t=>({t:t.t,v:t.h})),start,W,H);
-    const now=fcNearest(tide,nowU);const nx=c.X(nowU);
     const ext=tide.filter(t=>(t.type==='HIGH'||t.type==='LOW')&&t.t>=start&&t.t<end);
     const dots=ext.map(t=>`<circle cx="${c.X(t.t).toFixed(1)}" cy="${c.Y(t.h).toFixed(1)}" r="3" fill="#1a4a7a"/><text x="${c.X(t.t).toFixed(1)}" y="${(c.Y(t.h)-8).toFixed(1)}" class="fc-svg-lbl" text-anchor="middle">${t.h}ft</text>`).join('');
-    const nowLine=(isToday&&nx>=0&&nx<=W)?`<line x1="${nx.toFixed(1)}" y1="0" x2="${nx.toFixed(1)}" y2="${H}" class="fc-now"/>`:'';
-    tideHTML=`<div class="fc-card"><div class="fc-card-head"><span class="fc-card-label">Tide</span><span class="fc-card-now">${isToday&&now?now.h+'ft now':''}</span></div>
-      <svg viewBox="0 0 ${W} ${H+18}" class="fc-svg" preserveAspectRatio="none"><path d="${c.area}" fill="rgba(26,74,122,0.12)"/><path d="${c.line}" fill="none" stroke="#1a4a7a" stroke-width="2"/>${nowLine}${dots}</svg>
-      <div class="fc-axis">${[start,start+21600,start+43200,start+64800,end-1].map(t=>`<span>${fcHourLabel(fcLocalHour(t,off))}</span>`).join('')}</div></div>`;
+    tideHTML=`<div class="fc-card"><div class="fc-card-head"><span class="fc-card-label">Tide · drag to scrub</span><span class="fc-card-now" id="fc-tide-val"></span></div>
+      <svg id="fc-tide-svg" viewBox="0 0 ${W} ${H+18}" class="fc-svg fc-scrub" preserveAspectRatio="none"><path d="${c.area}" fill="rgba(26,74,122,0.12)"/><path d="${c.line}" fill="none" stroke="#1a4a7a" stroke-width="2"/><line id="fc-tide-cursor" x1="0" y1="0" x2="0" y2="${H}" class="fc-cursor"/>${dots}</svg>${axis}</div>`;
   }
-  // Energy (kJ)
-  const en=f.wave.filter(w=>w.t>=start&&w.t<end&&w.power!=null);
+  // Energy chart
   let enHTML='';
   if(en.length>1){
     const c=fcCurve(en.map(w=>({t:w.t,v:w.power})),start,W,H);
-    const now=fcNearest(en,nowU);const nx=c.X(nowU);
-    const nowLine=(isToday&&nx>=0&&nx<=W)?`<line x1="${nx.toFixed(1)}" y1="0" x2="${nx.toFixed(1)}" y2="${H}" class="fc-now"/>`:'';
-    enHTML=`<div class="fc-card"><div class="fc-card-head"><span class="fc-card-label">Swell energy</span><span class="fc-card-now">${isToday&&now?Math.round(now.power)+' kJ now':''}</span></div>
-      <svg viewBox="0 0 ${W} ${H}" class="fc-svg" preserveAspectRatio="none"><path d="${c.area}" fill="rgba(56,189,248,0.14)"/><path d="${c.line}" fill="none" stroke="var(--cyan)" stroke-width="2"/>${nowLine}</svg>
-      <div class="fc-axis">${[start,start+21600,start+43200,start+64800,end-1].map(t=>`<span>${fcHourLabel(fcLocalHour(t,off))}</span>`).join('')}</div></div>`;
+    enHTML=`<div class="fc-card"><div class="fc-card-head"><span class="fc-card-label">Swell energy</span><span class="fc-card-now" id="fc-energy-val"></span></div>
+      <svg viewBox="0 0 ${W} ${H}" class="fc-svg" preserveAspectRatio="none"><path d="${c.area}" fill="rgba(56,189,248,0.14)"/><path d="${c.line}" fill="none" stroke="var(--cyan)" stroke-width="2"/><line id="fc-energy-cursor" x1="0" y1="0" x2="0" y2="${H}" class="fc-cursor"/></svg>${axis}</div>`;
   }
-  const headWave=isToday?fcNearest(wave,nowU):fcNearest(wave,start+12*3600);
   el.innerHTML=`<div class="fc-days">${tabs}</div>
-    <div class="fc-head"><div class="fc-head-big">${headWave?`${headWave.min!=null?headWave.min+'-':''}${headWave.max}ft`:'—'}</div><div class="fc-head-sub">${isToday?'Surf right now':'Midday surf'} · ${escapeHtml(currentSpot.name||'')}</div></div>
+    <div class="fc-head"><div class="fc-head-big" id="fc-head-big">—</div><div class="fc-head-sub" id="fc-head-sub"></div></div>
     <div class="fc-card"><div class="fc-card-label">Surf height</div><div class="fc-bars">${bars||'<span class="muted">No data</span>'}</div></div>
-    ${swellHTML}${tideHTML}${enHTML}`;
+    <div class="fc-card"><div class="fc-card-head"><span class="fc-card-label">Swell</span><span class="fc-card-now" id="fc-scrub-time"></span></div><div id="fc-swell-body"></div></div>
+    ${tideHTML}${enHTML}`;
+  fcCur={off,start,end,W,wave,en,tide:tide.map(t=>({t:t.t,h:t.h}))};
+  fcBindScrub();
+  fcScrubUpdate(isToday?nowU:start+12*3600);
 }
 
 function smallAvatar(u,cls){return u.avatar_path?`<img src="${u.avatar_path}" class="${cls}" alt="">`:`<div class="${cls}-ph">${(u.display_name||'?')[0].toUpperCase()}</div>`;}

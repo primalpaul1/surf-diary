@@ -444,6 +444,8 @@ textarea { resize: vertical; }
 .fc-wind { font-size: 0.7rem; color: var(--text-muted); line-height: 1; }
 .fc-svg { width: 100%; height: 120px; display: block; overflow: visible; }
 .fc-now { stroke: var(--coral); stroke-width: 1.5; stroke-dasharray: 3 3; }
+.fc-cursor { stroke: var(--coral); stroke-width: 1.5; }
+.fc-scrub { touch-action: none; cursor: ew-resize; }
 .fc-svg-lbl { font: 700 9px var(--font-body); fill: var(--text-soft); }
 .fc-axis { display: flex; justify-content: space-between; margin-top: 0.3rem; font: 500 0.66rem var(--font-body); color: var(--text-muted); }
 
