@@ -31,19 +31,25 @@ function syncHero(){const v=$('.nav-btn.active')?.dataset?.view;const show=!!cur
 $('#report-fab')?.addEventListener('click',openQuickPost);
 
 // ===== QUICK POST (Twitter-style composer, 2 steps) =====
-let qpVideoFile=null,qpPhotoFile=null,qpVoiceBlob=null,qpStep=1,qpLastRate=7;
+let qpVideoFile=null,qpPhotos=[],qpVoiceBlob=null,qpVoiceTranscript='',qpSR=null,qpStep=1,qpLastRate=7;
 let qpRec=null,qpRecChunks=[],qpRecTimer=null,qpRecSecs=0;
 function nowTimeOfDay(){let h=new Date().getHours();if(h<5)h=5;if(h>18)h=18;if(h<12)return h+'am';if(h===12)return '12pm';return (h-12)+'pm';}
 function qpRenderPreview(){
   const wrap=$('#qp-preview');if(!wrap)return;
-  if(qpPhotoFile){wrap.innerHTML=`<img src="${URL.createObjectURL(qpPhotoFile)}" alt="">`;}
-  else if(qpVideoFile){wrap.innerHTML=`<video src="${URL.createObjectURL(qpVideoFile)}" muted></video>`;}
-  else if(qpVoiceBlob){wrap.innerHTML=`<audio controls src="${URL.createObjectURL(qpVoiceBlob)}"></audio>`;}
-  else{wrap.classList.add('hidden');wrap.innerHTML='';return;}
-  wrap.insertAdjacentHTML('beforeend',`<button type="button" class="qp-preview-x" id="qp-preview-x" aria-label="Remove">×</button>`);
-  wrap.classList.remove('hidden');
-  $('#qp-preview-x').addEventListener('click',()=>{qpPhotoFile=null;qpVideoFile=null;qpVoiceBlob=null;$('#qp-photo-file').value='';$('#qp-video-file').value='';qpRenderPreview();});
+  let html='';
+  if(qpPhotos.length)html+=`<div class="qp-thumbs">${qpPhotos.map((f,i)=>`<div class="qp-thumb"><img src="${URL.createObjectURL(f)}" alt=""><button type="button" class="qp-thumb-x" data-photo="${i}" aria-label="Remove">×</button></div>`).join('')}</div>`;
+  else if(qpVideoFile)html+=`<div class="qp-thumbs"><div class="qp-thumb"><video src="${URL.createObjectURL(qpVideoFile)}" muted></video><button type="button" class="qp-thumb-x" data-vid aria-label="Remove">×</button></div></div>`;
+  if(qpVoiceBlob)html+=`<div class="qp-voice-chip"><audio controls src="${URL.createObjectURL(qpVoiceBlob)}"></audio><button type="button" class="qp-thumb-x" data-voice aria-label="Remove">×</button></div>`;
+  if(!html){wrap.classList.add('hidden');wrap.innerHTML='';return;}
+  wrap.innerHTML=html;wrap.classList.remove('hidden');
+  wrap.querySelectorAll('.qp-thumb-x').forEach(b=>b.addEventListener('click',()=>{
+    if(b.dataset.photo!=null){qpPhotos.splice(+b.dataset.photo,1);$('#qp-photo-file').value='';}
+    else if(b.hasAttribute('data-vid')){qpVideoFile=null;$('#qp-video-file').value='';}
+    else if(b.hasAttribute('data-voice')){qpVoiceBlob=null;qpVoiceTranscript='';}
+    qpRenderPreview();
+  }));
 }
+function qpSetupSR(){const S=window.SpeechRecognition||window.webkitSpeechRecognition;if(!S)return null;const r=new S();r.continuous=true;r.interimResults=true;r.lang='en-US';let ft='';r.onresult=e=>{for(let x=e.resultIndex;x<e.results.length;x++){if(e.results[x].isFinal)ft+=e.results[x][0].transcript+' ';}qpVoiceTranscript=ft.trim();};r.onerror=()=>{};return r;}
 function qpGoStep(n){
   qpStep=n;
   $('#qp-step1').classList.toggle('hidden',n!==1);
@@ -64,7 +70,7 @@ function openQuickPost(){
   $('#qp-rating').value=7;$('#qp-rating-val').textContent='7.0';qpLastRate=7;
   $$('#qp-tags .qp-tag').forEach(b=>b.classList.remove('on'));
   $('#qp-tags .qp-tag[data-type="surfed"]')?.classList.add('on');
-  qpVideoFile=null;qpPhotoFile=null;qpVoiceBlob=null;$('#qp-video-file').value='';$('#qp-photo-file').value='';qpRenderPreview();
+  qpVideoFile=null;qpPhotos=[];qpVoiceBlob=null;qpVoiceTranscript='';$('#qp-video-file').value='';$('#qp-photo-file').value='';qpRenderPreview();
   qpGoStep(1);
   $('#quickpost').classList.remove('hidden');
   setTimeout(()=>$('#qp-text').focus(),50);
@@ -79,9 +85,9 @@ $('#qp-tags')?.addEventListener('click',e=>{const b=e.target.closest('.qp-tag');
   else b.classList.toggle('on');
 });
 $('#qp-photo-btn')?.addEventListener('click',()=>$('#qp-photo-file').click());
-$('#qp-photo-file')?.addEventListener('change',e=>{qpPhotoFile=e.target.files[0]||null;if(qpPhotoFile){qpVideoFile=null;qpVoiceBlob=null;}qpRenderPreview();});
+$('#qp-photo-file')?.addEventListener('change',e=>{const sel=Array.from(e.target.files||[]);if(sel.length){qpPhotos=[...qpPhotos,...sel].slice(0,4);qpVideoFile=null;}e.target.value='';qpRenderPreview();});
 $('#qp-video-btn')?.addEventListener('click',()=>$('#qp-video-file').click());
-$('#qp-video-file')?.addEventListener('change',e=>{qpVideoFile=e.target.files[0]||null;if(qpVideoFile){qpPhotoFile=null;qpVoiceBlob=null;}qpRenderPreview();});
+$('#qp-video-file')?.addEventListener('change',e=>{qpVideoFile=e.target.files[0]||null;if(qpVideoFile)qpPhotos=[];qpRenderPreview();});
 $('#qp-voice-btn')?.addEventListener('click',()=>{qpRec?.state==='recording'?qpStopVoice():qpStartVoice();});
 async function qpStartVoice(){
   try{
@@ -90,13 +96,14 @@ async function qpStartVoice(){
     qpRecChunks=[];const mime=MediaRecorder.isTypeSupported('audio/webm;codecs=opus')?'audio/webm;codecs=opus':'audio/mp4';
     qpRec=new MediaRecorder(s,{mimeType:mime});
     qpRec.ondataavailable=e=>{if(e.data.size>0)qpRecChunks.push(e.data);};
-    qpRec.onstop=()=>{s.getTracks().forEach(t=>t.stop());qpVoiceBlob=new Blob(qpRecChunks,{type:mime});qpVoiceBlob._ext=mime.includes('mp4')?'m4a':'webm';qpPhotoFile=null;qpVideoFile=null;qpRenderPreview();};
+    qpRec.onstop=()=>{s.getTracks().forEach(t=>t.stop());qpVoiceBlob=new Blob(qpRecChunks,{type:mime});qpVoiceBlob._ext=mime.includes('mp4')?'m4a':'webm';qpRenderPreview();};
     qpRec.start(100);qpRecSecs=0;
+    qpVoiceTranscript='';qpSR=qpSetupSR();if(qpSR)try{qpSR.start();}catch{}
     $('#qp-voice-btn').classList.add('recording');const t=$('#qp-rec-time');t.classList.remove('hidden');t.textContent='0:00';
     qpRecTimer=setInterval(()=>{qpRecSecs++;t.textContent=`${Math.floor(qpRecSecs/60)}:${String(qpRecSecs%60).padStart(2,'0')}`;},1000);
   }catch{toast('Mic denied','error');}
 }
-function qpStopVoice(){if(!qpRec||qpRec.state!=='recording')return;qpRec.stop();clearInterval(qpRecTimer);$('#qp-voice-btn')?.classList.remove('recording');$('#qp-rec-time')?.classList.add('hidden');}
+function qpStopVoice(){if(!qpRec||qpRec.state!=='recording')return;qpRec.stop();if(qpSR){try{qpSR.stop();}catch{}qpSR=null;}clearInterval(qpRecTimer);$('#qp-voice-btn')?.classList.remove('recording');$('#qp-rec-time')?.classList.add('hidden');}
 async function doQuickPost(){
   if(!currentUser)return;
   const spotId=$('#qp-spot').value;if(!spotId)return toast('Pick a spot','error');
@@ -114,9 +121,9 @@ async function doQuickPost(){
   };
   const btn=$('#qp-right');btn.disabled=true;btn.textContent='Posting…';
   try{
-    if(qpPhotoFile){const u=await uploadToBlossom(qpPhotoFile);if(u)data.photo_url=u;else{const r=new FileReader();data.photo_base64=await new Promise(res=>{r.onloadend=()=>res(r.result.split(',')[1]);r.readAsDataURL(qpPhotoFile);});data.photo_ext=(qpPhotoFile.name.split('.').pop()||'jpg').toLowerCase();}}
+    if(qpPhotos.length){data.photos=[];data.photos_base64=[];for(const f of qpPhotos){const u=await uploadToBlossom(f);if(u)data.photos.push(u);else{const r=new FileReader();const b64=await new Promise(res=>{r.onloadend=()=>res(r.result.split(',')[1]);r.readAsDataURL(f);});data.photos_base64.push(b64);}}}
     if(qpVideoFile){const u=await uploadToBlossom(qpVideoFile);if(u)data.video_url=u;else{const r=new FileReader();data.video_base64=await new Promise(res=>{r.onloadend=()=>res(r.result.split(',')[1]);r.readAsDataURL(qpVideoFile);});}}
-    if(qpVoiceBlob){const ext=qpVoiceBlob._ext||'webm';const vf=new File([qpVoiceBlob],`voice.${ext}`,{type:ext==='m4a'?'audio/mp4':'audio/webm'});const u=await uploadToBlossom(vf);if(u)data.voice_url=u;else{const r=new FileReader();data.voice_memo_base64=await new Promise(res=>{r.onloadend=()=>res(r.result.split(',')[1]);r.readAsDataURL(qpVoiceBlob);});data.voice_ext=ext;}}
+    if(qpVoiceBlob){const ext=qpVoiceBlob._ext||'webm';const vf=new File([qpVoiceBlob],`voice.${ext}`,{type:ext==='m4a'?'audio/mp4':'audio/webm'});const u=await uploadToBlossom(vf);if(u)data.voice_url=u;else{const r=new FileReader();data.voice_memo_base64=await new Promise(res=>{r.onloadend=()=>res(r.result.split(',')[1]);r.readAsDataURL(qpVoiceBlob);});data.voice_ext=ext;}data.voice_transcript=qpVoiceTranscript||null;}
     const res=await fetch(API_BASE+'/api/sessions',{method:'POST',headers:{'Content-Type':'application/json','X-Nostr-Pubkey':currentUser.pubkey},body:JSON.stringify(data)});
     if(!res.ok)throw new Error('post failed');
     closeQuickPost();toast('Posted!');
@@ -1052,9 +1059,12 @@ function renderSessionCard(s,showSpot){
   const cap=capText?`<div class="pcard-caption">${escapeHtml(capText)}</div>`:'';
   const av=s.avatar_path?`<img src="${s.avatar_path}" class="pcard-av${ringCls(s)}" alt="">`:`<div class="pcard-av-ph${ringCls(s)}">${(s.display_name||'?')[0].toUpperCase()}</div>`;
   const spotChip=showSpot&&s.__spot?`<span class="pcard-spot">${escapeHtml(s.__spot)}</span>`:'';
+  const imgs=(s.photos&&s.photos.length)?s.photos:(s.photo_path?[s.photo_path]:[]);
   let media='';
   if(s.video_path)media=`<div class="pcard-media" onclick="event.stopPropagation()"><video src="${s.video_path}#t=0.1" preload="metadata" muted playsinline onloadedmetadata="snVideoMeta(this)"></video><button class="pcard-play" onclick="snPlayVideo(this)" aria-label="Play"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></button></div>`;
-  else if(s.photo_path)media=`<div class="pcard-media"><img src="${s.photo_path}" alt="" onload="snImgMeta(this)"></div>`;
+  else if(imgs.length===1)media=`<div class="pcard-media"><img src="${imgs[0]}" alt="" onload="snImgMeta(this)"></div>`;
+  else if(imgs.length>1)media=`<div class="pcard-gallery g${imgs.length}">${imgs.map(p=>`<img src="${p}" alt="">`).join('')}</div>`;
+  const voice=s.voice_memo_path?`<audio class="pcard-audio" controls preload="none" src="${s.voice_memo_path}" onclick="event.stopPropagation()"></audio>`:'';
   const score=s.rating?`<div class="rbadge ${getRatingClass(s.rating)}">${fmtRating(s.rating)}</div>`:'<div class="rbadge">—</div>';
   const cmts=(s.comments||[]).map(renderInlineComment).join('');
   const more=(s.comment_count||0)>(s.comments||[]).length?`<button class="cmt-more" onclick="event.stopPropagation();openSession(${s.id})">View all ${s.comment_count} comments</button>`:'';
@@ -1063,7 +1073,7 @@ function renderSessionCard(s,showSpot){
     <div class="pcard-top"><a class="pcard-who" href="${primalLink(s.pubkey)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${av}<span class="pcard-id"><span class="pcard-name">${escapeHtml(s.display_name||'Anon')}</span><span class="pcard-time">· ${formatTOD(s.time_of_day)}</span></span></a>${spotChip}</div>
     ${cap}
     ${tags.length?`<div class="pcard-tags">${tags.join('')}</div>`:''}
-    ${media}
+    ${media}${voice}
     <div class="pcard-foot"><span class="foot-date">${dateStr}</span>${score}</div>
     <div class="pcard-comments">${cmts}${more}${composer}</div>
   </div>`;
@@ -1139,7 +1149,7 @@ async function loadSessions(){return loadFeed();}
 async function openSession(id){try{const{session:s,comments}=await(await fetch(`${API_BASE}/api/sessions/${id}`)).json();const d=new Date(s.session_date+'T12:00:00');const ds=d.toLocaleDateString('en',{weekday:'long',year:'numeric',month:'long',day:'numeric'});const sw=JSON.parse(s.swells_json||'[]');const swH=sw.map((x,i)=>`<div class="detail-block"><h4>${i?'Secondary':'Primary'} Swell</h4><p>${x.height_ft}ft ${x.period_s}s ${x.direction_compass} ${x.direction_deg}° <small style="opacity:.5">(${x.impact}%)</small></p></div>`).join('');
 // Check if user can delete (own session or spot admin)
 const canDelete=currentUser&&(s.pubkey===currentUser.pubkey||(currentSpot?.members?.some(m=>m.pubkey===currentUser.pubkey&&m.role==='admin')));
-$('#session-detail').innerHTML=`<h2>${ds}</h2><p class="muted"><a href="${primalLink(s.pubkey)}" target="_blank" rel="noopener" class="user-link-inline">${escapeHtml(s.display_name||'Anon')}</a> · ${formatTOD(s.time_of_day)}</p><div style="margin:.75rem 0"><div class="rbadge ${getRatingClass(s.rating)}" style="width:52px;height:52px;font-size:1.2rem;display:inline-flex">${fmtRating(s.rating)}/10</div></div><div class="detail-grid"><div class="detail-block"><h4>Surf</h4><p>${s.surf_height_min_ft||'?'}–${s.surf_height_max_ft||'?'} ft</p></div>${swH}<div class="detail-block"><h4>Wind</h4><p>${s.wind_speed_mph||'?'} mph ${s.wind_type?'('+s.wind_type+')':''}</p></div><div class="detail-block"><h4>Tide</h4><p>${s.tide_height_ft||'?'} ft</p></div>${s.wave_shape?`<div class="detail-block"><h4>Shape</h4><p style="text-transform:capitalize">${s.wave_shape}</p></div>`:''}${s.barrels>0?`<div class="detail-block"><h4>Tubes</h4><p>🤿 ${s.barrels}</p></div>`:''}</div>${s.photo_path?`<div class="detail-photo"><img src="${s.photo_path}" alt=""></div>`:''}${s.video_path?`<div class="detail-video"><video controls src="${s.video_path}" preload="metadata"></video></div>`:''}${s.voice_memo_path?`<div class="detail-voice"><audio controls src="${s.voice_memo_path}" style="width:100%;height:36px"></audio>${s.voice_transcript?`<div class="detail-transcript">"${escapeHtml(s.voice_transcript)}"</div>`:''}</div>`:''}${s.notes?`<div class="detail-notes">${escapeHtml(s.notes)}</div>`:''}${canDelete?`<button class="btn-delete-session" onclick="deleteSession(${s.id})">Delete Log</button>`:''}${currentUser&&s.pubkey!==currentUser.pubkey?`<div class="detail-actions"><button class="btn-report" onclick="reportContent('session','${s.id}')">Report</button><button class="btn-report" onclick="blockUser('${s.pubkey}')">Block User</button></div>`:''}`;
+$('#session-detail').innerHTML=`<h2>${ds}</h2><p class="muted"><a href="${primalLink(s.pubkey)}" target="_blank" rel="noopener" class="user-link-inline">${escapeHtml(s.display_name||'Anon')}</a> · ${formatTOD(s.time_of_day)}</p><div style="margin:.75rem 0"><div class="rbadge ${getRatingClass(s.rating)}" style="width:52px;height:52px;font-size:1.2rem;display:inline-flex">${fmtRating(s.rating)}/10</div></div><div class="detail-grid"><div class="detail-block"><h4>Surf</h4><p>${s.surf_height_min_ft||'?'}–${s.surf_height_max_ft||'?'} ft</p></div>${swH}<div class="detail-block"><h4>Wind</h4><p>${s.wind_speed_mph||'?'} mph ${s.wind_type?'('+s.wind_type+')':''}</p></div><div class="detail-block"><h4>Tide</h4><p>${s.tide_height_ft||'?'} ft</p></div>${s.wave_shape?`<div class="detail-block"><h4>Shape</h4><p style="text-transform:capitalize">${s.wave_shape}</p></div>`:''}${s.barrels>0?`<div class="detail-block"><h4>Tubes</h4><p>🤿 ${s.barrels}</p></div>`:''}</div>${((s.photos&&s.photos.length)?s.photos:(s.photo_path?[s.photo_path]:[])).map(p=>`<div class="detail-photo"><img src="${p}" alt=""></div>`).join('')}${s.video_path?`<div class="detail-video"><video controls src="${s.video_path}" preload="metadata"></video></div>`:''}${s.voice_memo_path?`<div class="detail-voice"><audio controls src="${s.voice_memo_path}" style="width:100%;height:36px"></audio>${s.voice_transcript?`<div class="detail-transcript">"${escapeHtml(s.voice_transcript)}"</div>`:''}</div>`:''}${s.notes?`<div class="detail-notes">${escapeHtml(s.notes)}</div>`:''}${canDelete?`<button class="btn-delete-session" onclick="deleteSession(${s.id})">Delete Log</button>`:''}${currentUser&&s.pubkey!==currentUser.pubkey?`<div class="detail-actions"><button class="btn-report" onclick="reportContent('session','${s.id}')">Report</button><button class="btn-report" onclick="blockUser('${s.pubkey}')">Block User</button></div>`:''}`;
 $('#comments-list').innerHTML=comments.length?comments.map(c=>`<div class="comment"><div class="comment-meta"><a href="${primalLink(c.pubkey)}" target="_blank" rel="noopener" class="user-link-inline">${escapeHtml(c.display_name||'Anon')}</a> · ${new Date(c.created_at*1000).toLocaleDateString()}${currentUser&&c.pubkey!==currentUser.pubkey?` · <button class="btn-report-inline" onclick="event.stopPropagation();reportContent('comment','${c.id}')">Report</button>`:''}</div><div class="comment-body">${escapeHtml(c.body)}</div></div>`).join(''):'<p class="muted" style="font-size:.82rem">No comments yet</p>';
 $('#comment-form').onsubmit=async e=>{e.preventDefault();if(!currentUser)return;const b=$('#comment-body').value.trim();if(!b)return;await fetch(`${API_BASE}/api/sessions/${id}/comments`,{method:'POST',headers:{'Content-Type':'application/json','X-Nostr-Pubkey':currentUser.pubkey},body:JSON.stringify({body:b})});$('#comment-body').value='';openSession(id);};
 $('#session-modal').classList.remove('hidden');}catch{toast('Error','error');}}

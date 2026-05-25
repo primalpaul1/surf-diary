@@ -82,6 +82,7 @@ async function initDB(){
   try{await db.exec('ALTER TABLE users ADD COLUMN is_pro INTEGER DEFAULT 0');}catch{}
   try{await db.exec('ALTER TABLE users ADD COLUMN show_pro_ring INTEGER DEFAULT 1');}catch{}
   try{await db.exec('ALTER TABLE sessions ADD COLUMN photo_path TEXT');}catch{}
+  try{await db.exec('ALTER TABLE sessions ADD COLUMN photos_json TEXT');}catch{}
   try{await db.exec('ALTER TABLE spots ADD COLUMN description TEXT');}catch{}
   try{await db.exec('ALTER TABLE spots ADD COLUMN region TEXT');}catch{}
   try{await db.exec('ALTER TABLE users ADD COLUMN nip05 TEXT');}catch{}
@@ -186,7 +187,7 @@ app.post('/api/upload',requireAuth,async(req,res)=>{
 
 // Make media paths absolute so Capacitor local mode can resolve them
 function absUrl(p,req){if(!p||p.startsWith('http'))return p;const host=req?.headers?.origin||`http://localhost:${PORT}`;return`https://swellnotes.com${p}`;}
-function absSession(s,req){if(!s)return s;if(s.voice_memo_path)s.voice_memo_path=absUrl(s.voice_memo_path,req);if(s.video_path)s.video_path=absUrl(s.video_path,req);if(s.photo_path)s.photo_path=absUrl(s.photo_path,req);if(s.avatar_path)s.avatar_path=absUrl(s.avatar_path,req);return s;}
+function absSession(s,req){if(!s)return s;if(s.voice_memo_path)s.voice_memo_path=absUrl(s.voice_memo_path,req);if(s.video_path)s.video_path=absUrl(s.video_path,req);if(s.photo_path)s.photo_path=absUrl(s.photo_path,req);if(s.avatar_path)s.avatar_path=absUrl(s.avatar_path,req);let ph=[];try{if(s.photos_json)ph=JSON.parse(s.photos_json);}catch{}if(!ph.length&&s.photo_path)ph=[s.photo_path];s.photos=ph.map(p=>absUrl(p,req));return s;}
 function absUser(u,req){if(!u)return u;if(u.avatar_path)u.avatar_path=absUrl(u.avatar_path,req);return u;}
 
 // ===== NIP-05 =====
@@ -556,10 +557,10 @@ app.delete('/api/users',requireAuth,async(req,res)=>{
     const pk=req.pubkey;
     const user=await db.get('SELECT avatar_path FROM users WHERE pubkey=$1',[pk]);
     if(!user)return res.status(404).json({error:'Not found'});
-    const mediaRows=await db.query('SELECT voice_memo_path,video_path,photo_path FROM sessions WHERE pubkey=$1',[pk]);
+    const mediaRows=await db.query('SELECT voice_memo_path,video_path,photo_path,photos_json FROM sessions WHERE pubkey=$1',[pk]);
     const filesToRemove=[];
     if(user.avatar_path)filesToRemove.push(user.avatar_path);
-    for(const r of mediaRows){if(r.voice_memo_path)filesToRemove.push(r.voice_memo_path);if(r.video_path)filesToRemove.push(r.video_path);if(r.photo_path)filesToRemove.push(r.photo_path);}
+    for(const r of mediaRows){if(r.voice_memo_path)filesToRemove.push(r.voice_memo_path);if(r.video_path)filesToRemove.push(r.video_path);if(r.photo_path)filesToRemove.push(r.photo_path);try{if(r.photos_json)filesToRemove.push(...JSON.parse(r.photos_json));}catch{}}
     filesToRemove.forEach(p=>{if(p&&p.startsWith('/'))try{fs.unlinkSync(path.join(__dirname,p));}catch{}});
     await db.run('DELETE FROM comments WHERE pubkey=$1',[pk]);
     await db.run('DELETE FROM sessions WHERE pubkey=$1',[pk]);
@@ -640,23 +641,32 @@ app.post('/api/sessions',requireAuth,async(req,res)=>{
   let surflineSpotId='5842041f4e65fad6a7708b9c';
   if(b.spot_id){const spot=await db.get('SELECT surfline_spot_id FROM spots WHERE id=$1',[b.spot_id]);if(spot)surflineSpotId=spot.surfline_spot_id;}
   try{c=getConditions(await getForecast(surflineSpotId),b.session_date,b.time_of_day);}catch{}
-  let voicePath=b.voice_url||null,videoPath=b.video_url||null,photoPath=b.photo_url||null;
+  let voicePath=b.voice_url||null,videoPath=b.video_url||null;
   if(!voicePath&&b.voice_memo_base64)voicePath=saveFile(b.voice_memo_base64,'audio',b.voice_ext||'webm');
   if(!videoPath&&b.video_base64)videoPath=saveFile(b.video_base64,'videos','mp4');
-  if(!photoPath&&b.photo_base64)photoPath=saveFile(b.photo_base64,'photos',b.photo_ext||'jpg');
-  const r=await db.run('INSERT INTO sessions(pubkey,spot_id,session_date,time_of_day,swells_json,surf_height_min_ft,surf_height_max_ft,wind_speed_mph,wind_direction_deg,wind_type,wind_gust_mph,tide_height_ft,rating,wave_shape,session_type,notes,voice_memo_path,voice_transcript,video_path,photo_path,barrels)VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)',
-    [req.pubkey,b.spot_id||null,b.session_date,b.time_of_day,JSON.stringify(c.swells||[]),c.surf_height_min_ft??null,c.surf_height_max_ft??null,c.wind_speed_mph??null,c.wind_direction_deg??null,c.wind_type??null,c.wind_gust_mph??null,c.tide_height_ft??null,b.rating,b.wave_shape||null,b.session_type||'surfed',b.notes||null,voicePath,b.voice_transcript||null,videoPath,photoPath,b.barrels||0]);
+  // Photos: accept single (legacy) + arrays (urls and base64), cap at 4
+  let photos=[];
+  if(b.photo_url)photos.push(b.photo_url);
+  if(b.photo_base64)photos.push(saveFile(b.photo_base64,'photos',b.photo_ext||'jpg'));
+  if(Array.isArray(b.photos))photos.push(...b.photos.filter(Boolean));
+  if(Array.isArray(b.photos_base64))for(const x of b.photos_base64){if(x)photos.push(saveFile(x,'photos','jpg'));}
+  photos=photos.slice(0,4);
+  const photoPath=photos[0]||null;
+  const photosJson=photos.length?JSON.stringify(photos):null;
+  const r=await db.run('INSERT INTO sessions(pubkey,spot_id,session_date,time_of_day,swells_json,surf_height_min_ft,surf_height_max_ft,wind_speed_mph,wind_direction_deg,wind_type,wind_gust_mph,tide_height_ft,rating,wave_shape,session_type,notes,voice_memo_path,voice_transcript,video_path,photo_path,photos_json,barrels)VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)',
+    [req.pubkey,b.spot_id||null,b.session_date,b.time_of_day,JSON.stringify(c.swells||[]),c.surf_height_min_ft??null,c.surf_height_max_ft??null,c.wind_speed_mph??null,c.wind_direction_deg??null,c.wind_type??null,c.wind_gust_mph??null,c.tide_height_ft??null,b.rating,b.wave_shape||null,b.session_type||'surfed',b.notes||null,voicePath,b.voice_transcript||null,videoPath,photoPath,photosJson,b.barrels||0]);
   res.json({ok:true,id:r.lastID,conditions:c});
 });
 
 app.delete('/api/sessions/:id',requireAuth,async(req,res)=>{
-  const s=await db.get('SELECT pubkey,spot_id,voice_memo_path,video_path,photo_path FROM sessions WHERE id=$1',[req.params.id]);
+  const s=await db.get('SELECT pubkey,spot_id,voice_memo_path,video_path,photo_path,photos_json FROM sessions WHERE id=$1',[req.params.id]);
   if(!s)return res.status(404).json({error:'Not found'});
   // Allow delete if: own session OR admin of the spot
   let allowed=s.pubkey===req.pubkey;
   if(!allowed&&s.spot_id){const mem=await db.get('SELECT role FROM spot_members WHERE spot_id=$1 AND pubkey=$2',[s.spot_id,req.pubkey]);if(mem?.role==='admin')allowed=true;}
   if(!allowed)return res.status(403).json({error:'Forbidden'});
-  [s.voice_memo_path,s.video_path,s.photo_path].forEach(p=>{if(p&&p.startsWith('/'))try{fs.unlinkSync(path.join(__dirname,p));}catch{}});
+  let delPhotos=[];try{if(s.photos_json)delPhotos=JSON.parse(s.photos_json);}catch{}
+  [s.voice_memo_path,s.video_path,s.photo_path,...delPhotos].forEach(p=>{if(p&&p.startsWith('/'))try{fs.unlinkSync(path.join(__dirname,p));}catch{}});
   await db.run('DELETE FROM sessions WHERE id=$1',[req.params.id]);res.json({ok:true});
 });
 
