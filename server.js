@@ -83,6 +83,8 @@ async function initDB(){
   try{await db.exec('ALTER TABLE users ADD COLUMN show_pro_ring INTEGER DEFAULT 1');}catch{}
   try{await db.exec('ALTER TABLE sessions ADD COLUMN photo_path TEXT');}catch{}
   try{await db.exec('ALTER TABLE sessions ADD COLUMN photos_json TEXT');}catch{}
+  try{await db.exec('ALTER TABLE users ADD COLUMN pro_expires_at INTEGER');}catch{}
+  try{await db.exec('ALTER TABLE users ADD COLUMN pro_original_txn_id TEXT');}catch{}
   try{await db.exec('ALTER TABLE spots ADD COLUMN description TEXT');}catch{}
   try{await db.exec('ALTER TABLE spots ADD COLUMN region TEXT');}catch{}
   try{await db.exec('ALTER TABLE users ADD COLUMN nip05 TEXT');}catch{}
@@ -483,9 +485,39 @@ app.get('/api/nip46/init',async(req,res)=>{try{const{generateSecretKey,getPublic
 
 // ===== AUTH =====
 // Pro subscription
+const PRO_PRODUCT_ID='com.swellnotes.pro.monthly';
+const PRO_BUNDLE_ID='com.swellnotes.app';
+let _appleVerifiers=null;
+async function getAppleVerifiers(){
+  if(_appleVerifiers)return _appleVerifiers;
+  const lib=await import('@apple/app-store-server-library');
+  const {SignedDataVerifier,Environment}=lib;
+  const certDir=path.join(__dirname,'certs');
+  const roots=fs.existsSync(certDir)?fs.readdirSync(certDir).filter(f=>f.endsWith('.cer')).map(f=>fs.readFileSync(path.join(certDir,f))):[];
+  if(!roots.length)throw new Error('no Apple root certs');
+  const appAppleId=process.env.APP_APPLE_ID?Number(process.env.APP_APPLE_ID):undefined;
+  const vs=[new SignedDataVerifier(roots,false,Environment.SANDBOX,PRO_BUNDLE_ID,appAppleId)];
+  if(appAppleId)vs.push(new SignedDataVerifier(roots,false,Environment.PRODUCTION,PRO_BUNDLE_ID,appAppleId));
+  _appleVerifiers=vs;return vs;
+}
+// Cryptographically verify a StoreKit 2 signed transaction (JWS) against Apple's roots.
+async function verifyProTransaction(jws){
+  if(!jws)return{ok:false,reason:'missing'};
+  let verifiers;try{verifiers=await getAppleVerifiers();}catch(e){console.error('IAP verifier init:',e.message);return{ok:false,reason:'verifier_unavailable'};}
+  for(const v of verifiers){
+    try{
+      const t=await v.verifyAndDecodeTransaction(jws);
+      if(t.productId!==PRO_PRODUCT_ID)return{ok:false,reason:'wrong_product'};
+      const exp=t.expiresDate||0; // ms
+      return{ok:exp>Date.now(),reason:exp>Date.now()?'ok':'expired',expiresMs:exp||null,originalTransactionId:t.originalTransactionId||null};
+    }catch(e){/* wrong environment or invalid signature — try next verifier */}
+  }
+  return{ok:false,reason:'invalid'};
+}
 app.get('/api/pro/status',requireAuth,async(req,res)=>{
-  const user=await db.get('SELECT is_pro,show_pro_ring FROM users WHERE pubkey=$1',[req.pubkey]);
-  res.json({isPro:!!(user?.is_pro),showRing:user?.show_pro_ring??1});
+  const user=await db.get('SELECT is_pro,show_pro_ring,pro_expires_at FROM users WHERE pubkey=$1',[req.pubkey]);
+  const active=!!(user?.is_pro)&&(!user?.pro_expires_at||user.pro_expires_at>Date.now());
+  res.json({isPro:active,showRing:user?.show_pro_ring??1});
 });
 app.post('/api/pro/ring',requireAuth,async(req,res)=>{
   const show=req.body.show?1:0;
@@ -493,9 +525,11 @@ app.post('/api/pro/ring',requireAuth,async(req,res)=>{
   res.json({ok:true,showRing:show});
 });
 app.post('/api/pro/activate',requireAuth,async(req,res)=>{
-  // Called from client after StoreKit verifies the purchase
-  await db.run('UPDATE users SET is_pro=1 WHERE pubkey=$1',[req.pubkey]);
-  res.json({ok:true,isPro:true});
+  // Grant Pro only after server-side verification of Apple's signed transaction
+  const v=await verifyProTransaction(req.body?.jws);
+  if(!v.ok)return res.status(403).json({error:'invalid_receipt',reason:v.reason});
+  await db.run('UPDATE users SET is_pro=1,pro_expires_at=$1,pro_original_txn_id=$2 WHERE pubkey=$3',[v.expiresMs||null,v.originalTransactionId||null,req.pubkey]);
+  res.json({ok:true,isPro:true,expiresAt:v.expiresMs||null});
 });
 app.post('/api/pro/deactivate',requireAuth,async(req,res)=>{
   await db.run('UPDATE users SET is_pro=0 WHERE pubkey=$1',[req.pubkey]);

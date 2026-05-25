@@ -1281,18 +1281,22 @@ function renderProTab(){
 
 async function checkProStatus(){
   if(!currentUser)return;
-  // Native StoreKit is authoritative on iOS; auto-activate server-side on a match
+  // Native StoreKit reports the signed entitlement; the server verifies it before granting
   if(IS_CAPACITOR&&window.Capacitor?.Plugins?.StoreKit){
-    try{const r=await window.Capacitor.Plugins.StoreKit.getStatus();if(r.isPro){isPro=true;await fetch(API_BASE+'/api/pro/activate',{method:'POST',headers:{'X-Nostr-Pubkey':currentUser.pubkey}});}}catch{}
+    try{const r=await window.Capacitor.Plugins.StoreKit.getStatus();if(r.isPro&&r.jws)await activatePro(r.jws);}catch{}
   }
-  // Server returns authoritative Pro flag + ring preference
-  try{const r=await(await fetch(API_BASE+'/api/pro/status',{headers:{'X-Nostr-Pubkey':currentUser.pubkey}})).json();if(r.isPro)isPro=true;currentUser.show_pro_ring=r.showRing??1;}catch{}
+  // Server is authoritative for Pro flag (verified + unexpired) + ring preference
+  try{const r=await(await fetch(API_BASE+'/api/pro/status',{headers:{'X-Nostr-Pubkey':currentUser.pubkey}})).json();isPro=!!r.isPro;currentUser.show_pro_ring=r.showRing??1;}catch{}
   currentUser.is_pro=isPro?1:0;saveUser(currentUser);
   updateOwnAvatarRing();renderProTab();fetchProPrice();
 }
 
 function showProModal(){$('#pro-modal').classList.remove('hidden');applyProPrice();fetchProPrice();}
 function requirePro(feature){if(isPro)return true;showProModal();return false;}
+// Send Apple's signed transaction to the server, which verifies before granting Pro
+async function activatePro(jws){
+  try{const r=await fetch(API_BASE+'/api/pro/activate',{method:'POST',headers:{'Content-Type':'application/json','X-Nostr-Pubkey':currentUser.pubkey},body:JSON.stringify({jws})});if(!r.ok)return false;const j=await r.json();return !!j.isPro;}catch{return false;}
+}
 
 // Shared purchase / restore — used by both the Pro tab and the upsell modal
 async function doProPurchase(btn){
@@ -1302,7 +1306,8 @@ async function doProPurchase(btn){
     if(btn){btn.disabled=true;btn.textContent='Processing...';}
     const r=await window.Capacitor.Plugins.StoreKit.purchase();
     if(r.success){
-      await fetch(API_BASE+'/api/pro/activate',{method:'POST',headers:{'X-Nostr-Pubkey':currentUser.pubkey}});
+      const ok=await activatePro(r.jws);
+      if(!ok){toast('Could not verify purchase','error');return;}
       isPro=true;currentUser.is_pro=1;currentUser.show_pro_ring=currentUser.show_pro_ring??1;saveUser(currentUser);
       toast('Welcome to Pro!');$('#pro-modal').classList.add('hidden');
       updateOwnAvatarRing();renderProTab();
@@ -1315,8 +1320,7 @@ async function doProRestore(){
   if(!(IS_CAPACITOR&&window.Capacitor?.Plugins?.StoreKit)){toast('Restore is only available in the iOS app','error');return;}
   try{
     const r=await window.Capacitor.Plugins.StoreKit.restorePurchases();
-    if(r.isPro){
-      await fetch(API_BASE+'/api/pro/activate',{method:'POST',headers:{'X-Nostr-Pubkey':currentUser.pubkey}});
+    if(r.isPro&&r.jws&&await activatePro(r.jws)){
       isPro=true;currentUser.is_pro=1;saveUser(currentUser);
       toast('Pro restored!');$('#pro-modal').classList.add('hidden');
       updateOwnAvatarRing();renderProTab();

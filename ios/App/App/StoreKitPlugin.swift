@@ -52,6 +52,7 @@ class StoreKitPlugin: CAPPlugin, CAPBridgedPlugin {
                         "transactionId": String(transaction.id),
                         "productId": transaction.productID,
                         "originalTransactionId": String(transaction.originalID),
+                        "jws": verification.jwsRepresentation,
                     ])
                 case .userCancelled:
                     call.resolve(["success": false, "cancelled": true])
@@ -70,8 +71,8 @@ class StoreKitPlugin: CAPPlugin, CAPBridgedPlugin {
         Task {
             do {
                 try await AppStore.sync()
-                let isPro = await checkProStatus()
-                call.resolve(["isPro": isPro])
+                let jws = await currentEntitlementJWS()
+                call.resolve(["isPro": jws != nil, "jws": jws ?? ""])
             } catch {
                 call.reject("Restore failed: \(error.localizedDescription)")
             }
@@ -80,20 +81,21 @@ class StoreKitPlugin: CAPPlugin, CAPBridgedPlugin {
 
     @objc func getStatus(_ call: CAPPluginCall) {
         Task {
-            let isPro = await checkProStatus()
-            call.resolve(["isPro": isPro])
+            let jws = await currentEntitlementJWS()
+            call.resolve(["isPro": jws != nil, "jws": jws ?? ""])
         }
     }
 
-    private func checkProStatus() async -> Bool {
+    // The Apple-signed JWS for the active Pro entitlement, or nil if none
+    private func currentEntitlementJWS() async -> String? {
         for await result in Transaction.currentEntitlements {
             if case .verified(let transaction) = result {
                 if transaction.productID == productId && transaction.revocationDate == nil {
-                    return true
+                    return result.jwsRepresentation
                 }
             }
         }
-        return false
+        return nil
     }
 
     private func checkVerified<T>(_ result: VerificationResult<T>) throws -> T {
