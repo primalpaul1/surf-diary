@@ -6,6 +6,8 @@ const RELAYS=['wss://relay.primal.net','wss://relay.damus.io','wss://nos.lol'];
 const AUTOFOLLOW_NPUB='npub1spdnfacgsd7lk0nlqkq443tkq4jx9z6c6ksvaquuewmw7d3qltpslcq6j7';
 const IS_CAPACITOR=!!window.Capacitor;
 const API_BASE=IS_CAPACITOR?'https://swellnotes.com':'';
+// Custom native plugins must be registered on the JS side (they're not auto-added to Capacitor.Plugins)
+const StoreKit=IS_CAPACITOR?(window.Capacitor.registerPlugin?window.Capacitor.registerPlugin('StoreKit'):(window.Capacitor.Plugins&&window.Capacitor.Plugins.StoreKit)||null):null;
 const PRIMAL_APP_STORE_HTTPS='https://apps.apple.com/app/id1673134518';
 const PRIMAL_APP_STORE_ITMS='itms-apps://apps.apple.com/app/id1673134518';
 // Normalize an avatar URL (Blossom URL or server-relative path) to an absolute https URL
@@ -1261,8 +1263,8 @@ $('#members-modal .modal-close').addEventListener('click',()=>$('#members-modal'
 // ===== PRO SUBSCRIPTION =====
 let proPriceStr='$2.99';  // overwritten with live StoreKit price when available
 async function fetchProPrice(){
-  if(IS_CAPACITOR&&window.Capacitor?.Plugins?.StoreKit){
-    try{const r=await window.Capacitor.Plugins.StoreKit.getProducts();const p=r?.products?.[0];if(p?.displayPrice)proPriceStr=p.displayPrice;}catch{}
+  if(StoreKit){
+    try{const r=await StoreKit.getProducts();const p=r?.products?.[0];if(p?.displayPrice)proPriceStr=p.displayPrice;}catch{}
   }
   applyProPrice();
 }
@@ -1282,8 +1284,8 @@ function renderProTab(){
 async function checkProStatus(){
   if(!currentUser)return;
   // Native StoreKit reports the signed entitlement; the server verifies it before granting
-  if(IS_CAPACITOR&&window.Capacitor?.Plugins?.StoreKit){
-    try{const r=await window.Capacitor.Plugins.StoreKit.getStatus();if(r.isPro&&r.jws)await activatePro(r.jws);}catch{}
+  if(StoreKit){
+    try{const r=await StoreKit.getStatus();if(r.isPro&&r.jws)await activatePro(r.jws);}catch{}
   }
   // Server is authoritative for Pro flag (verified + unexpired) + ring preference
   try{const r=await(await fetch(API_BASE+'/api/pro/status',{headers:{'X-Nostr-Pubkey':currentUser.pubkey}})).json();isPro=!!r.isPro;currentUser.show_pro_ring=r.showRing??1;}catch{}
@@ -1300,11 +1302,11 @@ async function activatePro(jws){
 
 // Shared purchase / restore — used by both the Pro tab and the upsell modal
 async function doProPurchase(btn){
-  if(!(IS_CAPACITOR&&window.Capacitor?.Plugins?.StoreKit)){toast('In-app purchases are only available in the iOS app','error');return;}
+  if(!StoreKit){toast('In-app purchases are only available in the iOS app','error');return;}
   const orig=btn?btn.innerHTML:'';
   try{
     if(btn){btn.disabled=true;btn.textContent='Processing...';}
-    const r=await window.Capacitor.Plugins.StoreKit.purchase();
+    const r=await StoreKit.purchase();
     if(r.success){
       const ok=await activatePro(r.jws);
       if(!ok){toast('Could not verify purchase','error');return;}
@@ -1317,9 +1319,9 @@ async function doProPurchase(btn){
   finally{if(btn){btn.disabled=false;btn.innerHTML=orig;}}
 }
 async function doProRestore(){
-  if(!(IS_CAPACITOR&&window.Capacitor?.Plugins?.StoreKit)){toast('Restore is only available in the iOS app','error');return;}
+  if(!StoreKit){toast('Restore is only available in the iOS app','error');return;}
   try{
-    const r=await window.Capacitor.Plugins.StoreKit.restorePurchases();
+    const r=await StoreKit.restorePurchases();
     if(r.isPro&&r.jws&&await activatePro(r.jws)){
       isPro=true;currentUser.is_pro=1;saveUser(currentUser);
       toast('Pro restored!');$('#pro-modal').classList.add('hidden');
