@@ -711,7 +711,16 @@ textarea { resize: vertical; }
 .qp-media { display: flex; gap: 0.8rem; align-items: center; }
 .qp-media-btn { background: none; border: none; cursor: pointer; color: var(--teal); padding: 0; }
 .qp-media-btn svg { width: 24px; height: 24px; }
+.qp-media-btn.recording { color: var(--coral); animation: qp-pulse 1s ease-in-out infinite; }
+@keyframes qp-pulse { 0%,100%{opacity:1;} 50%{opacity:0.4;} }
+.qp-rec-time { font: 700 0.82rem var(--font-body); color: var(--coral); }
 .qp-media-label { font: 600 0.8rem var(--font-body); color: var(--text-muted); }
+.qp-step-dots { display: flex; gap: 0.4rem; }
+.qp-dot { width: 7px; height: 7px; border-radius: 50%; background: #d6dee8; }
+.qp-dot.on { background: var(--ocean-dark); }
+.qp-step2-head { padding: 1.1rem 1rem 0.3rem; font: 600 1.05rem var(--font-body); color: var(--text); }
+#qp-step2 .qp-tags { padding: 0.6rem 1rem 1.2rem; }
+.qp-preview audio { width: 100%; }
 .settings-section { margin-top: 1.25rem; }
 .settings-profile { display: flex; align-items: center; gap: 0.75rem; }
 .settings-avatar-wrap { position: relative; cursor: pointer; flex-shrink: 0; }

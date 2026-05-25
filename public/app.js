@@ -30,16 +30,28 @@ function updateReportFab(){const onHistory=$('.nav-btn.active')?.dataset?.view==
 function syncHero(){const v=$('.nav-btn.active')?.dataset?.view;const show=!!currentSpot&&(v==='log'||v==='surfers'||v==='analysis');$('#hero')?.classList.toggle('hidden',!show);}
 $('#report-fab')?.addEventListener('click',openQuickPost);
 
-// ===== QUICK POST (Twitter-style composer) =====
-let qpVideoFile=null,qpPhotoFile=null;
+// ===== QUICK POST (Twitter-style composer, 2 steps) =====
+let qpVideoFile=null,qpPhotoFile=null,qpVoiceBlob=null,qpStep=1,qpLastRate=7;
+let qpRec=null,qpRecChunks=[],qpRecTimer=null,qpRecSecs=0;
 function nowTimeOfDay(){let h=new Date().getHours();if(h<5)h=5;if(h>18)h=18;if(h<12)return h+'am';if(h===12)return '12pm';return (h-12)+'pm';}
 function qpRenderPreview(){
   const wrap=$('#qp-preview');if(!wrap)return;
-  if(!qpPhotoFile&&!qpVideoFile){wrap.classList.add('hidden');wrap.innerHTML='';return;}
-  const url=URL.createObjectURL(qpPhotoFile||qpVideoFile);
-  wrap.innerHTML=(qpPhotoFile?`<img src="${url}" alt="">`:`<video src="${url}" muted></video>`)+`<button type="button" class="qp-preview-x" id="qp-preview-x" aria-label="Remove">×</button>`;
+  if(qpPhotoFile){wrap.innerHTML=`<img src="${URL.createObjectURL(qpPhotoFile)}" alt="">`;}
+  else if(qpVideoFile){wrap.innerHTML=`<video src="${URL.createObjectURL(qpVideoFile)}" muted></video>`;}
+  else if(qpVoiceBlob){wrap.innerHTML=`<audio controls src="${URL.createObjectURL(qpVoiceBlob)}"></audio>`;}
+  else{wrap.classList.add('hidden');wrap.innerHTML='';return;}
+  wrap.insertAdjacentHTML('beforeend',`<button type="button" class="qp-preview-x" id="qp-preview-x" aria-label="Remove">×</button>`);
   wrap.classList.remove('hidden');
-  $('#qp-preview-x').addEventListener('click',()=>{qpPhotoFile=null;qpVideoFile=null;$('#qp-photo-file').value='';$('#qp-video-file').value='';qpRenderPreview();});
+  $('#qp-preview-x').addEventListener('click',()=>{qpPhotoFile=null;qpVideoFile=null;qpVoiceBlob=null;$('#qp-photo-file').value='';$('#qp-video-file').value='';qpRenderPreview();});
+}
+function qpGoStep(n){
+  qpStep=n;
+  $('#qp-step1').classList.toggle('hidden',n!==1);
+  $('#qp-step2').classList.toggle('hidden',n!==2);
+  $('#qp-dot1').classList.toggle('on',n===1);
+  $('#qp-dot2').classList.toggle('on',n===2);
+  $('#qp-left').textContent=n===1?'Cancel':'Back';
+  $('#qp-right').textContent=n===1?'Next':'Post';
 }
 function openQuickPost(){
   if(!currentUser)return;
@@ -49,26 +61,43 @@ function openQuickPost(){
   if(currentSpot&&mySpots.some(s=>s.id===currentSpot.id))sel.value=currentSpot.id;
   const av=$('#qp-av');if(currentUser.avatar_path){av.src=currentUser.avatar_path;av.style.visibility='';}else av.style.visibility='hidden';
   $('#qp-text').value='';
-  $('#qp-rating').value=7;$('#qp-rating-val').textContent='7.0';
+  $('#qp-rating').value=7;$('#qp-rating-val').textContent='7.0';qpLastRate=7;
   $$('#qp-tags .qp-tag').forEach(b=>b.classList.remove('on'));
   $('#qp-tags .qp-tag[data-type="surfed"]')?.classList.add('on');
-  qpVideoFile=null;qpPhotoFile=null;$('#qp-video-file').value='';$('#qp-photo-file').value='';qpRenderPreview();
+  qpVideoFile=null;qpPhotoFile=null;qpVoiceBlob=null;$('#qp-video-file').value='';$('#qp-photo-file').value='';qpRenderPreview();
+  qpGoStep(1);
   $('#quickpost').classList.remove('hidden');
   setTimeout(()=>$('#qp-text').focus(),50);
 }
-function closeQuickPost(){$('#quickpost').classList.add('hidden');}
-$('#qp-cancel')?.addEventListener('click',closeQuickPost);
+function closeQuickPost(){if(qpRec?.state==='recording')qpStopVoice();$('#quickpost').classList.add('hidden');}
+$('#qp-left')?.addEventListener('click',()=>{qpStep===1?closeQuickPost():qpGoStep(1);});
+$('#qp-right')?.addEventListener('click',()=>{qpStep===1?qpGoStep(2):doQuickPost();});
 $('#quickpost')?.addEventListener('click',e=>{if(e.target.id==='quickpost')closeQuickPost();});
-$('#qp-rating')?.addEventListener('input',e=>{$('#qp-rating-val').textContent=(+e.target.value).toFixed(1);});
+$('#qp-rating')?.addEventListener('input',e=>{const v=+e.target.value;$('#qp-rating-val').textContent=v.toFixed(1);const iv=Math.round(v);if(iv!==qpLastRate){hapticTick(v>=8?'HEAVY':v>=5?'MEDIUM':'LIGHT');qpLastRate=iv;}});
 $('#qp-tags')?.addEventListener('click',e=>{const b=e.target.closest('.qp-tag');if(!b)return;
   if(b.dataset.type){$$('#qp-tags .qp-tag[data-type]').forEach(x=>x.classList.remove('on'));b.classList.add('on');}
   else b.classList.toggle('on');
 });
 $('#qp-photo-btn')?.addEventListener('click',()=>$('#qp-photo-file').click());
-$('#qp-photo-file')?.addEventListener('change',e=>{qpPhotoFile=e.target.files[0]||null;if(qpPhotoFile)qpVideoFile=null;qpRenderPreview();});
+$('#qp-photo-file')?.addEventListener('change',e=>{qpPhotoFile=e.target.files[0]||null;if(qpPhotoFile){qpVideoFile=null;qpVoiceBlob=null;}qpRenderPreview();});
 $('#qp-video-btn')?.addEventListener('click',()=>$('#qp-video-file').click());
-$('#qp-video-file')?.addEventListener('change',e=>{qpVideoFile=e.target.files[0]||null;if(qpVideoFile)qpPhotoFile=null;qpRenderPreview();});
-$('#qp-post')?.addEventListener('click',async()=>{
+$('#qp-video-file')?.addEventListener('change',e=>{qpVideoFile=e.target.files[0]||null;if(qpVideoFile){qpPhotoFile=null;qpVoiceBlob=null;}qpRenderPreview();});
+$('#qp-voice-btn')?.addEventListener('click',()=>{qpRec?.state==='recording'?qpStopVoice():qpStartVoice();});
+async function qpStartVoice(){
+  try{
+    if(IS_CAPACITOR){try{const Mic=window.Capacitor?.Plugins?.Microphone;if(Mic){const p=await Mic.requestPermissions();if(p.microphone!=='granted'){toast('Mic permission denied','error');return;}}}catch{}}
+    const s=await navigator.mediaDevices.getUserMedia({audio:true});
+    qpRecChunks=[];const mime=MediaRecorder.isTypeSupported('audio/webm;codecs=opus')?'audio/webm;codecs=opus':'audio/mp4';
+    qpRec=new MediaRecorder(s,{mimeType:mime});
+    qpRec.ondataavailable=e=>{if(e.data.size>0)qpRecChunks.push(e.data);};
+    qpRec.onstop=()=>{s.getTracks().forEach(t=>t.stop());qpVoiceBlob=new Blob(qpRecChunks,{type:mime});qpVoiceBlob._ext=mime.includes('mp4')?'m4a':'webm';qpPhotoFile=null;qpVideoFile=null;qpRenderPreview();};
+    qpRec.start(100);qpRecSecs=0;
+    $('#qp-voice-btn').classList.add('recording');const t=$('#qp-rec-time');t.classList.remove('hidden');t.textContent='0:00';
+    qpRecTimer=setInterval(()=>{qpRecSecs++;t.textContent=`${Math.floor(qpRecSecs/60)}:${String(qpRecSecs%60).padStart(2,'0')}`;},1000);
+  }catch{toast('Mic denied','error');}
+}
+function qpStopVoice(){if(!qpRec||qpRec.state!=='recording')return;qpRec.stop();clearInterval(qpRecTimer);$('#qp-voice-btn')?.classList.remove('recording');$('#qp-rec-time')?.classList.add('hidden');}
+async function doQuickPost(){
   if(!currentUser)return;
   const spotId=$('#qp-spot').value;if(!spotId)return toast('Pick a spot','error');
   const typeBtn=$('#qp-tags .qp-tag[data-type].on');
@@ -83,10 +112,11 @@ $('#qp-post')?.addEventListener('click',async()=>{
     notes:$('#qp-text').value.trim()||null,
     spot_id:spotId
   };
-  const btn=$('#qp-post');btn.disabled=true;btn.textContent='Posting…';
+  const btn=$('#qp-right');btn.disabled=true;btn.textContent='Posting…';
   try{
     if(qpPhotoFile){const u=await uploadToBlossom(qpPhotoFile);if(u)data.photo_url=u;else{const r=new FileReader();data.photo_base64=await new Promise(res=>{r.onloadend=()=>res(r.result.split(',')[1]);r.readAsDataURL(qpPhotoFile);});data.photo_ext=(qpPhotoFile.name.split('.').pop()||'jpg').toLowerCase();}}
     if(qpVideoFile){const u=await uploadToBlossom(qpVideoFile);if(u)data.video_url=u;else{const r=new FileReader();data.video_base64=await new Promise(res=>{r.onloadend=()=>res(r.result.split(',')[1]);r.readAsDataURL(qpVideoFile);});}}
+    if(qpVoiceBlob){const ext=qpVoiceBlob._ext||'webm';const vf=new File([qpVoiceBlob],`voice.${ext}`,{type:ext==='m4a'?'audio/mp4':'audio/webm'});const u=await uploadToBlossom(vf);if(u)data.voice_url=u;else{const r=new FileReader();data.voice_memo_base64=await new Promise(res=>{r.onloadend=()=>res(r.result.split(',')[1]);r.readAsDataURL(qpVoiceBlob);});data.voice_ext=ext;}}
     const res=await fetch(API_BASE+'/api/sessions',{method:'POST',headers:{'Content-Type':'application/json','X-Nostr-Pubkey':currentUser.pubkey},body:JSON.stringify(data)});
     if(!res.ok)throw new Error('post failed');
     closeQuickPost();toast('Posted!');
@@ -96,7 +126,7 @@ $('#qp-post')?.addEventListener('click',async()=>{
     loadFeed();
   }catch{toast('Post failed','error');}
   finally{btn.disabled=false;btn.textContent='Post';}
-});
+}
 
 // ===== TAB HINTS (first-run onboarding) =====
 const TAB_HINTS_KEY='swellnotes_seen_tabs';
