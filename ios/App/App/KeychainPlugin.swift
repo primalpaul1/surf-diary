@@ -10,6 +10,7 @@ class KeychainPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "save", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "load", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "clear", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "list", returnType: CAPPluginReturnPromise),
     ]
 
     private let service = "com.swellnotes.app"
@@ -84,5 +85,41 @@ class KeychainPlugin: CAPPlugin, CAPBridgedPlugin {
         ]
         let status = SecItemDelete(query as CFDictionary)
         call.resolve(["cleared": status == errSecSuccess || status == errSecItemNotFound])
+    }
+
+    // List all (synchronizable) items whose account starts with `prefix`.
+    // Used to enumerate encrypted key backups in iCloud Keychain on a new device.
+    @objc func list(_ call: CAPPluginCall) {
+        let prefix = call.getString("prefix") ?? ""
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrSynchronizable as String: kSecAttrSynchronizableAny,
+            kSecReturnAttributes as String: kCFBooleanTrue!,
+            kSecReturnData as String: kCFBooleanTrue!,
+            kSecMatchLimit as String: kSecMatchLimitAll,
+        ]
+        var result: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        if status == errSecItemNotFound {
+            call.resolve(["items": []])
+            return
+        }
+        guard status == errSecSuccess, let items = result as? [[String: Any]] else {
+            call.reject("Keychain list failed (status \(status))")
+            return
+        }
+        var out: [[String: String]] = []
+        for item in items {
+            guard let account = item[kSecAttrAccount as String] as? String else { continue }
+            if !prefix.isEmpty && !account.hasPrefix(prefix) { continue }
+            var entry: [String: String] = ["account": account]
+            if let data = item[kSecValueData as String] as? Data,
+               let str = String(data: data, encoding: .utf8) {
+                entry["value"] = str
+            }
+            out.append(entry)
+        }
+        call.resolve(["items": out])
     }
 }

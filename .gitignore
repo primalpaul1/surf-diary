@@ -16,3 +16,6 @@ error.log
 *.db-wal
 .gstack/
 screenshots/
+
+# OAuth login secrets (do not commit)
+public/oauth-config.js

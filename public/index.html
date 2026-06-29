@@ -13,6 +13,8 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="apple-touch-icon" href="/sn-logo.png">
   <link rel="icon" type="image/png" href="/sn-logo.png">
+  <!-- OAuth client ids (gitignored). Must load before app.js modules. -->
+  <script src="/oauth-config.js"></script>
 </head>
 <body>
   <!-- LANDING PAGE (shown when not logged in) -->
@@ -32,18 +34,12 @@
         <p class="landing-sub">Know your spot.</p>
       </div>
       <div class="landing-form-area">
-        <form id="landing-create-form">
-          <div class="landing-avatar-row" id="landing-avatar-upload">
-            <div class="landing-avatar" id="landing-avatar-preview">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-            </div>
-            <input type="text" id="landing-create-name" class="landing-input" placeholder="Surfer Name" required maxlength="30">
-            <input type="file" id="landing-avatar-file" accept="image/*" class="hidden">
-          </div>
-          <button type="submit" class="landing-btn landing-btn-create" id="landing-submit-btn">Create Account <span class="landing-arrow">&rarr;</span></button>
-          <div id="landing-loading" class="modal-loading hidden"><div class="spinner" style="border-top-color:#fff"></div><span style="color:#fff">Creating your account...</span></div>
-        </form>
-        <button id="landing-primal-btn" class="landing-btn landing-btn-primal" style="margin-top:0.6rem"><img src="/primal-logo.png" alt="" class="btn-icon">Log in with Primal</button>
+        <div class="landing-group-label">New here</div>
+        <button id="landing-apple-btn" class="landing-btn landing-btn-apple hidden"><svg class="apple-ic" viewBox="0 0 24 24"><path d="M17.05 12.04c-.03-2.6 2.12-3.85 2.22-3.91-1.21-1.77-3.1-2.01-3.77-2.04-1.6-.16-3.13.94-3.94.94-.81 0-2.07-.92-3.4-.9-1.75.03-3.36 1.02-4.26 2.58-1.82 3.16-.47 7.83 1.3 10.4.86 1.26 1.89 2.67 3.24 2.62 1.3-.05 1.79-.84 3.36-.84 1.57 0 2.01.84 3.39.81 1.4-.02 2.29-1.28 3.15-2.55.99-1.46 1.4-2.87 1.42-2.94-.03-.01-2.73-1.05-2.76-4.17zM14.6 4.6c.72-.87 1.2-2.08 1.07-3.29-1.03.04-2.28.69-3.02 1.56-.66.77-1.24 2-1.09 3.18 1.15.09 2.32-.58 3.04-1.45z"/></svg>Continue with Apple</button>
+        <button id="landing-create-btn" class="landing-btn landing-btn-ghost">Create Account <span class="landing-arrow">&rarr;</span></button>
+        <div class="landing-group-label">Already on Nostr</div>
+        <button id="landing-primal-btn" class="landing-btn landing-btn-primal"><img src="/primal-logo.png" alt="" class="btn-icon">Log in with Primal</button>
+        <button id="landing-nostr-btn" class="landing-btn landing-btn-nostr"><img class="nostr-ic" src="/nostrich-clear.webp" alt="">Continue with Nostr</button>
         <div id="landing-primal-status" class="hidden" style="margin-top:0.5rem;font-size:0.8rem;color:rgba(255,255,255,0.7);display:flex;align-items:center;justify-content:center;gap:0.4rem"><div class="spinner" style="width:16px;height:16px;border-width:2px;border-color:rgba(255,255,255,0.2);border-top-color:#fff"></div><span id="landing-primal-status-text">Waiting for Primal...</span></div>
         <a href="#" id="landing-primal-appstore" class="primal-store-link">Don't have Primal? Get it on the App Store &rarr;</a>
       </div>
@@ -75,6 +71,7 @@
           <button id="logout-btn" class="btn-outline btn-sm">Logout</button>
         </div>
       </div>
+      <div id="feed-chips" class="feed-chips"></div>
     </div>
   </header>
 
@@ -86,8 +83,13 @@
       <h2 class="hero-title" id="hero-title">Find Your Spot</h2>
       <p class="hero-sub" id="hero-sub">Search any surf break worldwide</p>
     </div>
-    <button id="hero-cover-btn" class="hero-cover-btn hidden">📷 Change Cover</button>
+    <button id="hero-cover-btn" class="hero-cover-btn hidden" aria-label="Change cover photo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></button>
     <input type="file" id="hero-cover-file" accept="image/*" class="hidden">
+    <button id="hero-spot-picker" class="hero-spot-picker hidden">
+      <span id="hero-spot-picker-name">Spot</span>
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M8 9l4-4 4 4M8 15l4 4 4-4"/></svg>
+    </button>
+    <div id="hero-spot-menu" class="hero-spot-menu hidden"></div>
   </div>
 
   <!-- SPOT PICKER (shown when no spot selected) -->
@@ -124,7 +126,7 @@
       <h2>Create a Crew</h2>
       <p class="modal-sub" id="create-spot-name"></p>
       <form id="create-spot-form">
-        <div class="field"><label>Spot name</label><input type="text" id="spot-name" placeholder="Name this spot" maxlength="60" required><div class="field-note">Visible to everyone. The real surf break stays private — it's only used to pull forecasts.</div></div>
+        <div class="field"><label>Spot name</label><input type="text" id="spot-name" placeholder="Name this spot" maxlength="60" required><div class="field-note">Visible to everyone. The real surf break stays private, it's only used to pull forecasts.</div></div>
         <div class="field"><label>Description <span class="muted">(optional)</span></label><textarea id="spot-description" rows="2" placeholder="What's this crew about?"></textarea></div>
         <div class="toggle-row">
           <label class="toggle-label">Private (request to join)</label>
@@ -188,6 +190,72 @@
     </div>
   </div>
 
+  <!-- PIN MODAL (Apple key backup) -->
+  <div id="pin-modal" class="modal hidden">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content pin-modal-content">
+      <button class="modal-close" id="pin-modal-close">&times;</button>
+      <h2 id="pin-title">Set a backup PIN</h2>
+      <p class="muted" id="pin-subtitle">This PIN encrypts your account key in your own cloud. You'll need it to log in on another device. Choose 4-8 digits.</p>
+      <input type="password" id="pin-input" class="pin-input" inputmode="numeric" autocomplete="off" maxlength="8" placeholder="••••">
+      <input type="password" id="pin-confirm" class="pin-input" inputmode="numeric" autocomplete="off" maxlength="8" placeholder="Confirm PIN">
+      <div id="pin-error" class="pin-error hidden"></div>
+      <button id="pin-submit" class="btn-solid btn-block">Continue</button>
+      <div id="pin-loading" class="modal-loading hidden"><div class="spinner"></div><span id="pin-loading-text">Working…</span></div>
+    </div>
+  </div>
+
+  <!-- ACCOUNT CHOOSER (multiple keys under one login) -->
+  <div id="chooser-modal" class="modal hidden">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content">
+      <button class="modal-close" id="chooser-modal-close">&times;</button>
+      <h2>Choose an account</h2>
+      <p class="muted">More than one nostr key is backed up under this login.</p>
+      <div id="chooser-list" class="chooser-list"></div>
+    </div>
+  </div>
+
+  <!-- PROFILE SETUP / EDIT MODAL -->
+  <div id="profile-modal" class="modal hidden">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content modal-sm">
+      <button class="modal-close" id="profile-modal-close">&times;</button>
+      <h2 id="profile-modal-title">Set up your profile</h2>
+      <p class="muted" id="profile-modal-sub">Pick a surfer name and photo. You can change these later in Settings.</p>
+      <div class="profile-avatar-wrap" id="profile-avatar-upload">
+        <img id="profile-avatar-img" class="profile-avatar" alt="">
+        <div class="profile-avatar-ph" id="profile-avatar-ph">+</div>
+        <div class="profile-avatar-edit">Photo</div>
+        <input type="file" id="profile-avatar-file" accept="image/*" class="hidden">
+      </div>
+      <input type="text" id="profile-name-input" class="profile-name-input" placeholder="Surfer name" maxlength="30" autocomplete="off">
+      <div id="profile-error" class="pin-error hidden"></div>
+      <button id="profile-submit" class="btn-solid btn-block">Continue</button>
+      <div id="profile-loading" class="modal-loading hidden"><div class="spinner"></div><span id="profile-loading-text">Saving…</span></div>
+    </div>
+  </div>
+
+  <!-- LOG IN WITH NOSTR -->
+  <div id="nostr-modal" class="nostr-modal hidden">
+    <button class="nostr-back" id="nostr-back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M15 18l-6-6 6-6"/></svg> Back</button>
+    <div class="nostr-hero"><div class="nostr-glow"></div><img src="/nostrich-clear.webp" alt="nostrich"></div>
+    <div class="nostr-body">
+      <h2 class="nostr-title">Log in with Nostr</h2>
+      <p class="nostr-sub">Paste your nsec. It stays on this device, we never see it.</p>
+      <div class="nostr-label">Private key</div>
+      <div class="nostr-field-wrap">
+        <input id="nostr-nsec" class="nostr-field" type="password" inputmode="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="nsec1…">
+        <button class="nostr-eye" id="nostr-eye" aria-label="Show key"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></button>
+      </div>
+      <div id="nostr-error" class="nostr-error hidden"></div>
+      <div class="nostr-safe"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg> Stored only on this device, never uploaded.</div>
+      <div class="nostr-spacer"></div>
+      <button id="nostr-submit" class="nostr-cta"><img class="nostr-cta-ic" src="/nostrich-clear.webp" alt="">Continue with Nostr</button>
+      <div id="nostr-loading" class="modal-loading hidden" style="justify-content:center;margin-top:0.6rem"><div class="spinner"></div><span style="color:#fff">Logging in…</span></div>
+    </div>
+  </div>
+
   <!-- LOGIN MODAL -->
   <div id="login-modal" class="modal hidden">
     <div class="modal-backdrop"></div>
@@ -244,7 +312,7 @@
         <button id="share-messages-btn" class="btn-share btn-messages">Messages</button>
         <button id="share-native-btn" class="btn-share btn-native">More...</button>
       </div>
-      <button id="share-post-btn" class="btn-solid btn-block" style="margin-top:0.75rem"><img src="/primal-logo.png" alt="" class="btn-icon">Post to Primal</button>
+      <button id="share-post-btn" class="btn-primal-dark btn-block" style="margin-top:0.75rem"><img src="/primal-logo.png" alt="" class="btn-icon">Post to Primal</button>
       <button id="share-skip-btn" class="link-btn" style="display:block;text-align:center;margin-top:0.75rem;color:var(--text-muted)">No thanks</button>
     </div>
   </div>
@@ -274,18 +342,24 @@
   <!-- PRO UPGRADE MODAL -->
   <div id="pro-modal" class="modal hidden">
     <div class="modal-backdrop"></div>
-    <div class="modal-content modal-sm" style="text-align:center">
-      <button class="modal-close">&times;</button>
-      <div style="font-size:2rem;margin:0.5rem 0">🏄‍♂️</div>
-      <h2>Swellnotes Pro</h2>
-      <p class="muted" style="margin:0.5rem 0 1rem">Unlock the full experience.</p>
-      <div class="pro-features">
-        <div class="pro-feature">Create unlimited crews</div>
-        <div class="pro-feature">Priority support</div>
-        <div class="pro-feature">Support indie development</div>
+    <div class="modal-content pro-card">
+      <button class="modal-close pro-close">&times;</button>
+      <div class="pro-card-ring">🏄‍♂️</div>
+      <div class="pro-eyebrow">Swellnotes Pro</div>
+      <h2 class="pro-title">Unlock the full experience</h2>
+      <div class="pro-feats">
+        <div class="pro-feat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 13l4 4L19 7"/></svg><span>Create unlimited crews</span></div>
+        <div class="pro-feat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 13l4 4L19 7"/></svg><span>Priority support</span></div>
+        <div class="pro-feat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 13l4 4L19 7"/></svg><span>Support indie development</span></div>
       </div>
-      <button id="pro-purchase-btn" class="btn-solid btn-block" style="margin-top:1.25rem">Upgrade — <span id="pro-price">$2.99/mo</span></button>
-      <button id="pro-restore-btn" class="link-btn" style="display:block;text-align:center;margin-top:0.75rem;color:var(--text-muted)">Restore Purchase</button>
+      <button id="pro-purchase-btn" class="pro-upgrade-btn">Go Pro <span class="pro-dot">·</span> <span id="pro-price">$2.99/mo</span></button>
+      <button id="pro-restore-btn" class="pro-restore">Restore Purchase</button>
+      <div class="pro-modal-terms">
+        Swellnotes Pro is a monthly auto-renewing subscription (<span id="pro-modal-price">$2.99</span>/month). Your Apple ID is charged at confirmation and renews automatically unless turned off at least 24 hours before the period ends. Cancel anytime in Apple ID settings.
+        <div class="pro-modal-legal">
+          <a href="https://www.apple.com/legal/internet-services/itunes/dev/stdeula/" target="_blank" rel="noopener">Terms of Use (EULA)</a> · <a href="https://swellnotes.com/privacy.html" target="_blank" rel="noopener">Privacy Policy</a>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -303,8 +377,9 @@
             <div class="settings-avatar-edit">Edit</div>
             <input type="file" id="settings-avatar-file" accept="image/*" class="hidden">
           </div>
-          <div>
+          <div class="settings-name-row">
             <div id="settings-name" class="settings-name"></div>
+            <button id="settings-edit-name" class="btn-outline btn-sm" title="Edit name">Edit</button>
           </div>
         </div>
       </div>
@@ -430,7 +505,7 @@
 
     <!-- FEED -->
     <section id="view-history" class="view active">
-      <div class="feed-bar">
+      <div class="feed-bar hidden">
         <select id="feed-filter" class="feed-filter" aria-label="Filter reports by spot"></select>
         <button id="browse-spots-btn" class="btn-outline btn-sm">Browse Crews</button>
       </div>
@@ -473,8 +548,13 @@
     <!-- FORECAST MATCH + SWELL SEARCH -->
     <section id="view-analysis" class="view">
       <div class="card">
-        <h2>Forecast Match</h2>
+        <h2 class="fm-heading">Forecast Match <button id="fm-info-btn" class="fm-info-btn" aria-label="How Forecast Match works">i</button></h2>
         <p class="muted">How will the incoming swell compare to past sessions?</p>
+        <div id="fm-info-pop" class="fm-info-pop hidden">
+          <strong>How it works</strong>
+          <p>For each time slot we read the incoming swell (size, period, direction, and wind), then find your past sessions that surfed in similar conditions. The score is the average rating of those matches, so you get a feel for it before you paddle out.</p>
+          <p>Log more sessions at this spot to sharpen the predictions.</p>
+        </div>
         <div id="forecast-match"></div>
       </div>
       <div class="card" style="margin-top:1rem">
@@ -514,7 +594,7 @@
     <section id="view-pipeline" class="view">
       <div class="card">
         <h2>Start a Crew</h2>
-        <p class="muted">Search any surf break worldwide to start a new crew — or your own personal Swellnotes to track a spot solo.</p>
+        <p class="muted">Search any surf break worldwide to start a new crew, or your own personal Swellnotes to track a spot solo.</p>
         <div class="field" style="margin:0.75rem 0">
           <input type="text" id="pipeline-spot-search" placeholder="Search surf breaks... (e.g. Pipeline, Uluwatu)" autocomplete="off">
         </div>

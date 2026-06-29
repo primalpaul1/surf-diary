@@ -1,15 +1,20 @@
 import{generateSecretKey,getPublicKey,nip19,finalizeEvent,Relay,getConversationKey,decrypt as nip44Decrypt,encrypt as nip44Encrypt,BunkerSigner,bytesToHex,hexToBytes,sha256}from'/nostr-bundle.js';
+import * as authBackup from '/auth-backup.js';
 let currentUser=null,currentSpot=null,mySpots=[],followingSet=new Set(),voiceBlob=null,voiceTranscript='',mediaRecorder=null,recordingChunks=[],recordingTimer=null,recordingSeconds=0,nip46Data=null,speechRecognition=null,videoFile=null,avatarFile=null,coverFile=null,pendingSpotData=null,isPro=false;
 const $=s=>document.querySelector(s),$$=s=>document.querySelectorAll(s);
 const BLOSSOM='https://blossom.primal.net';
 const RELAYS=['wss://relay.primal.net','wss://relay.damus.io','wss://nos.lol'];
 const AUTOFOLLOW_NPUB='npub1spdnfacgsd7lk0nlqkq443tkq4jx9z6c6ksvaquuewmw7d3qltpslcq6j7';
 const IS_CAPACITOR=!!window.Capacitor;
-const API_BASE=IS_CAPACITOR?'https://swellnotes.com':'';
+// Under Capacitor live-reload the page is served over http(s) from the dev
+// server, so relative API calls hit the local backend. A real bundled build
+// loads over capacitor:// and must target production.
+const IS_LIVE_RELOAD=IS_CAPACITOR&&location.protocol.startsWith('http');
+const API_BASE=(IS_CAPACITOR&&!IS_LIVE_RELOAD)?'https://swellnotes.com':'';
 // Resolve a native plugin. This no-bundler app never loads @capacitor/core, so
 // registerPlugin() and Capacitor.Plugins are NOT available for app-local plugins.
 // The injected native bridge does expose nativePromise(plugin, method, opts),
-// which is exactly what registerPlugin's proxy calls under the hood — so we build
+// which is exactly what registerPlugin's proxy calls under the hood, so we build
 // the shim from that and route straight to the native StoreKitPlugin by name.
 function resolveNativePlugin(name,methods){
   const C=window.Capacitor;if(!C)return null;
@@ -28,19 +33,33 @@ function absAvatarUrl(p){if(!p)return null;if(p.startsWith('http'))return p;retu
 // window.location.href backgrounds the app harder and iOS kills the relay socket).
 async function launchPrimal(deepLink){if(IS_CAPACITOR&&window.Capacitor?.Plugins?.Browser){try{await window.Capacitor.Plugins.Browser.open({url:deepLink});return;}catch{}}window.location.href=deepLink;}
 async function openPrimalAppStore(){const url=IS_CAPACITOR?PRIMAL_APP_STORE_ITMS:PRIMAL_APP_STORE_HTTPS;if(IS_CAPACITOR&&window.Capacitor?.Plugins?.Browser){try{await window.Capacitor.Plugins.Browser.open({url});return;}catch{}}window.location.href=url;}
+// In the iOS app the WebView ignores target="_blank", so external links (Terms of Use, Privacy
+// Policy, primal.net profiles) would silently do nothing, a non-functional link per App Store
+// 3.1.2(c). Route every http(s) link to the in-app Safari view. (mailto:/tel: fall through to iOS.)
+if(IS_CAPACITOR){document.addEventListener('click',e=>{
+  const a=e.target?.closest?.('a[href]');if(!a)return;
+  const href=a.getAttribute('href')||'';
+  if(/^https?:\/\//i.test(href)){e.preventDefault();
+    try{window.Capacitor?.Plugins?.Browser?.open({url:href});}catch{try{window.open(href,'_system');}catch{}}}
+},true);}
 const KEYCHAIN_USER_KEY='swellnotes_user';
-function saveUser(u){const json=JSON.stringify(u);localStorage.setItem(KEYCHAIN_USER_KEY,json);try{window.Capacitor?.Plugins?.Keychain?.save({key:KEYCHAIN_USER_KEY,value:json});}catch(e){console.warn('[Keychain] save failed',e);}}
+function saveUser(u){const json=JSON.stringify(u);localStorage.setItem(KEYCHAIN_USER_KEY,json);
+  if(u.source==='nsec')return; // nsec login is device-only, never sync the key to iCloud Keychain
+  try{window.Capacitor?.Plugins?.Keychain?.save({key:KEYCHAIN_USER_KEY,value:json});}catch(e){console.warn('[Keychain] save failed',e);}}
 function clearUser(){localStorage.removeItem(KEYCHAIN_USER_KEY);try{window.Capacitor?.Plugins?.Keychain?.clear({key:KEYCHAIN_USER_KEY});}catch(e){}}
+// A brand-new account is a fresh user: reset the once-per-device onboarding flags so
+// they see the spot picker + guided tour (and first-run tab hints).
+function markFreshAccount(){localStorage.setItem(TAB_HINTS_KEY,'[]');localStorage.removeItem('swellnotes_onboarded');localStorage.removeItem('swellnotes_tour_v1');}
 const DEFAULT_COVERS=['/covers/cover1.jpg','/covers/cover2.jpg','/covers/cover3.jpg','/covers/cover4.jpg'];
 function defaultCover(id){return DEFAULT_COVERS[Math.abs([...((id||'')+'x')].reduce((h,c)=>((h<<5)-h)+c.charCodeAt(0),0))%DEFAULT_COVERS.length];}
 
 // Nav
-$$('.nav-btn[data-view]').forEach(b=>{b.addEventListener('click',()=>{$$('.nav-btn').forEach(x=>x.classList.remove('active'));b.classList.add('active');$$('.view').forEach(v=>v.classList.remove('active'));$(`#view-${b.dataset.view}`).classList.add('active');document.body.classList.toggle('pro-immersive',b.dataset.view==='pro');window.scrollTo(0,0);if(b.dataset.view==='history')loadFeed();if(b.dataset.view==='surfers')loadSurfers();if(b.dataset.view==='analysis')loadAnalysis();if(b.dataset.view==='pipeline')loadPipeline();if(b.dataset.view==='pro')renderProTab();if(b.dataset.view==='forecast')loadForecast();updateReportFab();syncHero();maybeShowTabHint(b.dataset.view);});});
+$$('.nav-btn[data-view]').forEach(b=>{b.addEventListener('click',()=>{$$('.nav-btn').forEach(x=>x.classList.remove('active'));b.classList.add('active');$$('.view').forEach(v=>v.classList.remove('active'));$(`#view-${b.dataset.view}`).classList.add('active');document.body.classList.toggle('pro-immersive',b.dataset.view==='pro');window.scrollTo(0,0);if(b.dataset.view==='history')loadFeed();if(b.dataset.view==='surfers')loadSurfers();if(b.dataset.view==='analysis')loadAnalysis();if(b.dataset.view==='pipeline')loadPipeline();if(b.dataset.view==='pro')renderProTab();if(b.dataset.view==='forecast')loadForecast();updateReportFab();syncHero();});});
 
-// Floating "new report" button — visible on the Reports tab, jumps to the Log form
+// Floating "new report" button, visible on the Reports tab, jumps to the Log form
 function updateReportFab(){const onHistory=$('.nav-btn.active')?.dataset?.view==='history';$('#report-fab')?.classList.toggle('hidden',!(onHistory&&currentUser));}
-// The spot cover hero shows only on Log/Surfers/Analysis — never on the Reports feed
-function syncHero(){const v=$('.nav-btn.active')?.dataset?.view;const show=!!currentSpot&&(v==='forecast'||v==='surfers'||v==='analysis');$('#hero')?.classList.toggle('hidden',!show);}
+// The spot cover hero shows only on Log/Surfers/Analysis, never on the Reports feed
+function syncHero(){const v=$('.nav-btn.active')?.dataset?.view;const show=!!currentSpot&&(v==='forecast'||v==='surfers'||v==='analysis');$('#hero')?.classList.toggle('hidden',!show);updateSpotNav();}
 $('#report-fab')?.addEventListener('click',openQuickPost);
 
 // ===== QUICK POST (Twitter-style composer, 2 steps) =====
@@ -77,7 +96,9 @@ function openQuickPost(){
   if(!mySpots.length){toast('Join or create a crew first','error');return;}
   const sel=$('#qp-spot');
   sel.innerHTML=mySpots.map(s=>`<option value="${s.id}">${escapeHtml(s.name||'Spot')}</option>`).join('');
-  if(currentSpot&&mySpots.some(s=>s.id===currentSpot.id))sel.value=currentSpot.id;
+  // Default to the active Reports chip, else the current spot, else the first crew.
+  const has=id=>id&&mySpots.some(s=>s.id===id);
+  sel.value=has(feedFilter)?feedFilter:(has(currentSpot?.id)?currentSpot.id:mySpots[0].id);
   const av=$('#qp-av');if(currentUser.avatar_path){av.src=currentUser.avatar_path;av.style.visibility='';}else av.style.visibility='hidden';
   $('#qp-text').value='';
   $('#qp-rating').value=7;$('#qp-rating-val').textContent='7.0';qpLastRate=7;
@@ -139,11 +160,12 @@ async function doQuickPost(){
     if(qpVoiceBlob){const ext=qpVoiceBlob._ext||'webm';const vf=new File([qpVoiceBlob],`voice.${ext}`,{type:ext==='m4a'?'audio/mp4':'audio/webm'});const u=await uploadToBlossom(vf);if(u)data.voice_url=u;else{const r=new FileReader();data.voice_memo_base64=await new Promise(res=>{r.onloadend=()=>res(r.result.split(',')[1]);r.readAsDataURL(qpVoiceBlob);});data.voice_ext=ext;}data.voice_transcript=qpVoiceTranscript||null;}
     const res=await fetch(API_BASE+'/api/sessions',{method:'POST',headers:{'Content-Type':'application/json','X-Nostr-Pubkey':currentUser.pubkey},body:JSON.stringify(data)});
     if(!res.ok)throw new Error('post failed');
+    const result=await res.json().catch(()=>({}));
+    const spot=mySpots.find(s=>s.id===spotId);
     closeQuickPost();toast('Posted!');
-    $$('.nav-btn').forEach(x=>x.classList.remove('active'));$('.nav-btn[data-view="history"]')?.classList.add('active');
-    $$('.view').forEach(v=>v.classList.remove('active'));$('#view-history')?.classList.add('active');
-    document.body.classList.remove('pro-immersive');syncHero();updateReportFab();window.scrollTo(0,0);
-    loadFeed();
+    document.body.classList.remove('pro-immersive');updateReportFab();
+    // Offer to share to Nostr/Primal + WhatsApp (closing the share step lands on the feed)
+    showShareModal({rating:data.rating,session_type:data.session_type,wave_shape:data.wave_shape,notes:data.notes,video_url:data.video_url||null,conditions:result.conditions||{},spot_name:spot?.name||currentSpot?.name||'Spot',sessionUrl:`https://swellnotes.com/session/${result.id||''}`});
   }catch{toast('Post failed','error');}
   finally{btn.disabled=false;btn.textContent='Post';}
 }
@@ -159,7 +181,7 @@ const TAB_HINTS={
 };
 function getSeenTabs(){try{return JSON.parse(localStorage.getItem(TAB_HINTS_KEY)||'[]');}catch{return[];}}
 function markTabSeen(v){const s=getSeenTabs();if(!s.includes(v)){s.push(v);localStorage.setItem(TAB_HINTS_KEY,JSON.stringify(s));}renderTabDots();}
-function renderTabDots(){const s=getSeenTabs();$$('.nav-btn[data-view]').forEach(btn=>{const v=btn.dataset.view;const ex=btn.querySelector('.nav-tip-dot');if(!v||v==='pro'||v==='forecast'||s.includes(v)){ex?.remove();}else if(!ex){btn.insertAdjacentHTML('beforeend','<span class="nav-tip-dot"></span>');}});}
+function renderTabDots(){$$('.nav-tip-dot').forEach(d=>d.remove());} // tab-hint bubbles retired, the guided tour replaces them
 function maybeShowTabHint(v){const h=TAB_HINTS[v];if(!h)return;const seen=getSeenTabs();if(seen.includes(v))return;document.querySelector('.tab-hint')?.remove();const el=document.createElement('div');el.className='tab-hint';el.innerHTML=`<div class="tab-hint-body"><div class="tab-hint-title">${h.title}</div><div class="tab-hint-text">${h.body}</div></div><button class="tab-hint-close" aria-label="Dismiss">×</button>`;document.body.appendChild(el);const remove=()=>{el.classList.add('tab-hint-out');setTimeout(()=>el.remove(),200);};el.querySelector('.tab-hint-close').addEventListener('click',remove);setTimeout(remove,6000);markTabSeen(v);}
 function initTabHints(){
   // If we've never tracked seen-tabs before AND a user is already logged in, mark all seen
@@ -173,7 +195,7 @@ function initTabHints(){
 function toast(m,t='success'){const e=document.createElement('div');e.className=`toast toast-${t}`;e.textContent=m;document.body.appendChild(e);setTimeout(()=>e.remove(),3000);}
 function escapeHtml(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML;}
 function getRatingClass(r){if(!r)return'';return r<=3?'r-low':r<=5?'r-mid':r<=7?'r-high':'r-epic';}
-function fmtRating(r){if(r==null)return'—';const n=Math.round(r*10)/10;return Number.isInteger(n)?String(n):n.toFixed(1);}
+function fmtRating(r){if(r==null)return'-';const n=Math.round(r*10)/10;return Number.isInteger(n)?String(n):n.toFixed(1);}
 function formatTOD(t){return{'5am':'5 AM','6am':'6 AM','7am':'7 AM','8am':'8 AM','9am':'9 AM','10am':'10 AM','11am':'11 AM','12pm':'12 PM','1pm':'1 PM','2pm':'2 PM','3pm':'3 PM','4pm':'4 PM','5pm':'5 PM','6pm':'6 PM',dawn:'Dawn',morning:'AM',midday:'Midday',afternoon:'PM',evening:'Eve'}[t]||t;}
 function ringCls(u){return (u&&u.is_pro&&((u.show_pro_ring??1)))?' pro-ring':'';}
 function avatarHTML(path,name,cls='feed-avatar',pro=false){const rc=pro?' pro-ring':'';if(path)return`<img src="${path}" class="${cls}${rc}" alt="">`;const i=(name||'?')[0].toUpperCase();return`<div class="${cls}-placeholder${rc}">${i}</div>`;}
@@ -227,18 +249,73 @@ async function loadMySpots(){
   if(!currentUser)return;
   try{mySpots=await(await fetch(API_BASE+'/api/spots',{headers:{'X-Nostr-Pubkey':currentUser.pubkey}})).json();updateSpotSwitcher();}catch{}
 }
+// After a fresh login, drop into the first crew if none is active so the hero,
+// forecast, and spot context populate (matches the Primal/completeLogin flow).
+async function selectFirstSpotIfNone(){
+  await loadMySpots();
+  if(mySpots.length>0&&!currentSpot){
+    try{const sp=await(await fetch(`${API_BASE}/api/spots/${mySpots[0].id}`,{headers:{'X-Nostr-Pubkey':currentUser.pubkey}})).json();if(sp&&!sp.error)selectSpot(sp);}catch{}
+  }
+}
 
 function updateSpotSwitcher(){
-  if(mySpots.length<=1){$('#spot-switcher').classList.add('hidden');return;}
-  $('#spot-switcher').classList.remove('hidden');
+  // The old dropdown above the tabs is gone, switching happens via the Reports
+  // chip row and the hero top-right picker. Keep #spot-select (hidden) populated
+  // for the change handler, and refresh the new spot-nav UI.
+  $('#spot-switcher')?.classList.add('hidden');
   const sel=$('#spot-select');
-  sel.innerHTML=mySpots.map(s=>`<option value="${s.id}" ${currentSpot?.id===s.id?'selected':''}>${s.name}</option>`).join('');
+  if(sel)sel.innerHTML=mySpots.map(s=>`<option value="${s.id}" ${currentSpot?.id===s.id?'selected':''}>${s.name}</option>`).join('');
+  renderFeedChips();updateSpotNav();
 }
 
 $('#spot-select').addEventListener('change',async e=>{
   const spot=mySpots.find(s=>s.id===e.target.value);
   if(spot){const full=await(await fetch(`${API_BASE}/api/spots/${spot.id}`,{headers:currentUser?{'X-Nostr-Pubkey':currentUser.pubkey}:{}})).json();selectSpot(full);}
 });
+
+// ----- Spot nav: Reports chip row + hero top-right picker -----
+async function switchSpot(id){
+  const s=(mySpots||[]).find(x=>x.id===id);if(!s)return;
+  try{const full=await(await fetch(`${API_BASE}/api/spots/${id}`,{headers:currentUser?{'X-Nostr-Pubkey':currentUser.pubkey}:{}})).json();selectSpot(full&&!full.error?full:s);}
+  catch{selectSpot(s);}
+}
+function renderFeedChips(){
+  const el=$('#feed-chips');if(!el)return;
+  const spots=(mySpots||[]).slice().sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+  // Drop a remembered filter whose spot no longer exists
+  if(feedFilter!=='__all'&&!spots.some(s=>s.id===feedFilter)){feedFilter='__all';localStorage.removeItem('swellnotes_feed_filter');}
+  const chips=[{id:'__all',name:'All spots'},...spots];
+  el.innerHTML=chips.map(c=>`<button class="feed-chip${c.id===feedFilter?' active':''}" data-spot="${c.id}">${escapeHtml(c.name)}</button>`).join('');
+  el.querySelectorAll('.feed-chip').forEach(b=>b.addEventListener('click',()=>{
+    feedFilter=b.dataset.spot;
+    if(feedFilter==='__all')localStorage.removeItem('swellnotes_feed_filter');else localStorage.setItem('swellnotes_feed_filter',feedFilter);
+    el.querySelectorAll('.feed-chip').forEach(x=>x.classList.remove('active'));b.classList.add('active');
+    renderReportFeed();
+  }));
+}
+function updateHeroPicker(){
+  const v=$('.nav-btn.active')?.dataset?.view;
+  const show=!!currentSpot&&(v==='forecast'||v==='surfers'||v==='analysis');
+  const btn=$('#hero-spot-picker');if(btn){btn.classList.toggle('hidden',!show);if(show)$('#hero-spot-picker-name').textContent=currentSpot.name||'Spot';}
+  if(!show)$('#hero-spot-menu')?.classList.add('hidden');
+}
+function updateSpotNav(){
+  const v=$('.nav-btn.active')?.dataset?.view;
+  const onReports=v==='history'&&!!currentUser;
+  $('#feed-chips')?.classList.toggle('hidden',!onReports);
+  updateHeroPicker();
+}
+$('#hero-spot-picker')?.addEventListener('click',e=>{
+  e.stopPropagation();
+  const menu=$('#hero-spot-menu');if(!menu)return;
+  if(!menu.classList.contains('hidden')){menu.classList.add('hidden');return;}
+  const spots=(mySpots||[]).slice().sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+  menu.innerHTML=spots.map(s=>`<button data-spot="${s.id}" class="${currentSpot?.id===s.id?'active':''}">${escapeHtml(s.name)}</button>`).join('')+`<button data-spot="__browse">+ Find a crew</button>`;
+  menu.querySelectorAll('button').forEach(b=>b.addEventListener('click',ev=>{ev.stopPropagation();menu.classList.add('hidden');
+    if(b.dataset.spot==='__browse'){$('.nav-btn[data-view="pipeline"]')?.click();return;}switchSpot(b.dataset.spot);}));
+  menu.classList.remove('hidden');
+});
+document.addEventListener('click',()=>$('#hero-spot-menu')?.classList.add('hidden'));
 
 // ===== SPOT SEARCH =====
 let searchTimeout;
@@ -277,21 +354,33 @@ async function showMySpots(){
   `).join('');
 }
 window.joinExistingSpot=async id=>{localStorage.setItem('swellnotes_onboarded','1');const spot=await(await fetch(`${API_BASE}/api/spots/${id}`,{headers:currentUser?{'X-Nostr-Pubkey':currentUser.pubkey}:{}})).json();selectSpot(spot);};
+// Let users dismiss the "Select a spot" overlay, they can pick one later from Search.
+window.dismissOnboard=()=>{localStorage.setItem('swellnotes_onboarded','1');document.getElementById('onboard-overlay')?.remove();};
+// Jump to the Search tab where you find / create / select a spot (used by empty-state links).
+window.goToSpotPicker=()=>{document.querySelector('.nav-btn[data-view="pipeline"]')?.click();};
+// Tapping your name/avatar in the header opens your Primal profile.
+$('.user-pill')?.addEventListener('click',()=>{
+  if(!currentUser?.pubkey)return;
+  const url=primalLink(currentUser.pubkey);
+  if(IS_CAPACITOR&&window.Capacitor?.Plugins?.Browser){window.Capacitor.Plugins.Browser.open({url});}
+  else{window.open(url,'_blank');}
+});
 
 // ===== CREATE SPOT =====
 // Hero cover photo (admin only)
 $('#hero-cover-btn').addEventListener('click',()=>$('#hero-cover-file').click());
+$('#fm-info-btn')?.addEventListener('click',()=>$('#fm-info-pop')?.classList.toggle('hidden'));
 $('#hero-cover-file').addEventListener('change',async e=>{
   const file=e.target.files[0];if(!file||!currentUser||!currentSpot)return;
   try{
-    $('#hero-cover-btn').textContent='Uploading...';$('#hero-cover-btn').disabled=true;
+    $('#hero-cover-btn').classList.add('loading');$('#hero-cover-btn').disabled=true;
     let url=await uploadToBlossom(file);
     if(!url){url=await uploadToServer(file);if(!url){toast('Upload failed','error');return;}}
     await fetch(`${API_BASE}/api/spots/${currentSpot.id}`,{method:'PUT',headers:{'Content-Type':'application/json','X-Nostr-Pubkey':currentUser.pubkey},body:JSON.stringify({cover_image_url:url})});
     $('#hero-img').src=url;currentSpot.cover_image_url=url;
     toast('Cover updated!');
   }catch{toast('Failed','error');}
-  finally{$('#hero-cover-btn').textContent='📷 Change Cover';$('#hero-cover-btn').disabled=false;}
+  finally{$('#hero-cover-btn').classList.remove('loading');$('#hero-cover-btn').disabled=false;}
 });
 
 $('#create-spot-form').addEventListener('submit',async e=>{
@@ -439,34 +528,11 @@ async function autoFollowDefault(){
 }
 
 // ===== LANDING PAGE AUTH =====
-let landingAvatarFile=null;
-$('#landing-avatar-preview').addEventListener('click',e=>{e.stopPropagation();$('#landing-avatar-file').click();});
-$('#landing-avatar-file').addEventListener('change',e=>{landingAvatarFile=e.target.files[0];if(!landingAvatarFile)return;const r=new FileReader();r.onload=ev=>{$('#landing-avatar-preview').innerHTML=`<img src="${ev.target.result}">`};r.readAsDataURL(landingAvatarFile);});
 $('#landing-primal-btn').addEventListener('click',openLoginModal);
-
-$('#landing-create-form').addEventListener('submit',async e=>{
-  e.preventDefault();const name=$('#landing-create-name').value.trim();if(!name)return;
-  $('#landing-submit-btn').disabled=true;$('#landing-submit-btn').classList.add('hidden');$('#landing-loading').classList.remove('hidden');
-  try{/* generateSecretKey,getPublicKey,bytesToHex from bundle */
+// Create Account: generate a fresh local key, then collect name + photo in the profile step.
+$('#landing-create-btn')?.addEventListener('click',()=>{
   const sk=generateSecretKey(),secretKey=bytesToHex(sk),pubkey=getPublicKey(sk);
-  let avatarUrl=null;if(landingAvatarFile)avatarUrl=await uploadToBlossom(landingAvatarFile);
-  const body={pubkey,display_name:name};if(avatarUrl)body.avatar_url=avatarUrl;
-  else if(landingAvatarFile){const r=new FileReader();body.avatar_base64=await new Promise(res=>{r.onloadend=()=>res(r.result.split(',')[1]);r.readAsDataURL(landingAvatarFile);});}
-  const res=await fetch(API_BASE+'/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-  const data=await res.json();
-  if(!res.ok){
-    if(data?.error==='name_taken')toast(data.message||'That name is taken. Pick another.','error');
-    else toast(data?.error||'Failed','error');
-    return;
-  }
-  currentUser={pubkey,secretKey,display_name:name,avatar_path:absAvatarUrl(data.avatar_path)||avatarUrl};
-  saveUser(currentUser);
-  localStorage.setItem(TAB_HINTS_KEY,'[]'); // new account → show first-run tab hints
-  await publishProfile(name,avatarUrl||absAvatarUrl(data.avatar_path),data.nip05_full);
-  autoFollowDefault();
-  updateAuthUI();landingAvatarFile=null;toast(`Welcome, ${name}!`);
-  }catch(err){toast('Failed: '+err.message,'error');console.error('Account create error:',err);}
-  finally{$('#landing-submit-btn').disabled=false;$('#landing-submit-btn').classList.remove('hidden');$('#landing-loading').classList.add('hidden');}
+  openProfileSetup({pubkey,secretKey,npub:nip19.npubEncode(pubkey)});
 });
 
 // ===== AUTH =====
@@ -495,10 +561,10 @@ $('#create-form').addEventListener('submit',async e=>{
   }
   currentUser={pubkey,secretKey,display_name:name,avatar_path:absAvatarUrl(data.avatar_path)||avatarUrl};
   saveUser(currentUser);
-  localStorage.setItem(TAB_HINTS_KEY,'[]'); // new account → show first-run tab hints
+  markFreshAccount(); // new account → show first-run tab hints
   await publishProfile(name,avatarUrl||absAvatarUrl(data.avatar_path),data.nip05_full);
   autoFollowDefault();
-  updateAuthUI();$('#create-modal').classList.add('hidden');avatarFile=null;toast(`Welcome, ${name}!`);
+  updateAuthUI();$('#create-modal').classList.add('hidden');avatarFile=null;toast(`Welcome, ${name}!`);maybeStartTour(700);
   }catch{toast('Failed','error');}
   finally{$('#create-submit-btn').disabled=false;$('#create-submit-btn').classList.remove('hidden');$('#create-loading').classList.add('hidden');}
 });
@@ -523,7 +589,7 @@ async function openLoginModal(){
     if(!nip46Data.mobileURI||!nip46Data.secretKey)throw new Error('Invalid NIP-46 response');
     if(isMobile||IS_CAPACITOR){
       localStorage.setItem('nip46_pending',JSON.stringify({localSecretKey:nip46Data.secretKey,localPublicKey:nip46Data.publicKey,secret:nip46Data.secret,timestamp:Date.now()}));
-      // Start relay listener BEFORE redirecting — so it's ready when user returns
+      // Start relay listener BEFORE redirecting, so it's ready when user returns
       waitForNIP46();
       // Small delay to let listener start, then redirect to Primal
       setTimeout(()=>{
@@ -536,7 +602,7 @@ async function openLoginModal(){
     }
   }catch(err){
     console.error('Login init error:',err);
-    toast('Login failed — please try again','error');
+    toast('Login failed, please try again','error');
     if(!isMobile)$('#login-modal').classList.add('hidden');
     else{$('#landing-primal-btn').disabled=false;$('#landing-primal-btn').style.opacity='';const st=$('#landing-primal-status');if(st){st.classList.add('hidden');st.style.display='';}}
   }
@@ -578,7 +644,7 @@ async function waitForNIP46(){
               const rpcEvent=finalizeEvent({kind:24133,created_at:Math.floor(Date.now()/1000),tags:[['p',bunkerPubkey]],content:encPayload},skb);
               await relay.publish(rpcEvent);
               console.log('[NIP46] get_public_key RPC sent, waiting for response...');
-              // Response will come as another event — set a timeout fallback
+              // Response will come as another event, set a timeout fallback
               const timeout=setTimeout(()=>{if(nip46Data._waitingForPubkey){console.log('[NIP46] get_public_key timeout, using bunker pubkey');nip46Data._waitingForPubkey=false;relay.close();completeLogin(bunkerPubkey);}},8000);
               // Override the event handler won't work since we're inside it,
               // but the subscription is still active so the next event will hit this handler
@@ -623,7 +689,7 @@ async function completeLogin(pk){
   currentUser={pubkey:pk,display_name:name,avatar_path:picture};
   if(localSk&&bunkerPk)currentUser.nip46={localSecretKey:localSk,bunkerPubkey:bunkerPk};
   saveUser(currentUser);
-  if(wasNewUser)localStorage.setItem(TAB_HINTS_KEY,'[]'); // first-time Primal login on this device → show hints
+  if(wasNewUser)markFreshAccount(); // first-time Primal login on this device → show hints
   // Reset mobile login UI
   $('#landing-primal-btn').disabled=false;$('#landing-primal-btn').style.opacity='';
   const st=$('#landing-primal-status');if(st){st.classList.add('hidden');st.style.display='';}
@@ -704,7 +770,7 @@ $('#settings-modal .modal-close').addEventListener('click',()=>$('#settings-moda
 $('#delete-account-btn').addEventListener('click',async()=>{
   if(!currentUser)return;
   if(!confirm('Delete your account?\n\nThis permanently removes your sessions, comments, follows, and profile from Swellnotes. This cannot be undone.'))return;
-  if(!confirm('Last chance — really delete your account and all your sessions?'))return;
+  if(!confirm('Last chance, really delete your account and all your sessions?'))return;
   try{
     const res=await fetch(API_BASE+'/api/users',{method:'DELETE',headers:{'X-Nostr-Pubkey':currentUser.pubkey}});
     if(!res.ok)throw new Error('Delete failed');
@@ -726,13 +792,13 @@ $('#logout-btn').addEventListener('click',async()=>{
     catch{keyDisplay=currentUser.secretKey;}
   }
   const msg=keyDisplay
-    ?`⚠️ Save your secret key before logging out!\n\nYour key:\n${keyDisplay}\n\nCopy it somewhere safe — you cannot recover your account without it.\n\nAre you sure you want to log out?`
+    ?`⚠️ Save your secret key before logging out!\n\nYour key:\n${keyDisplay}\n\nCopy it somewhere safe, you cannot recover your account without it.\n\nAre you sure you want to log out?`
     :'⚠️ Are you sure you want to log out?';
   if(!confirm(msg))return;
   // Copy key to clipboard if available
   if(keyDisplay)try{await navigator.clipboard?.writeText(keyDisplay);toast('Key copied to clipboard');}catch{}
   // Step 2: Final confirmation
-  if(!confirm('Last chance — are you really sure? You will lose access to this account if you haven\'t saved your key.'))return;
+  if(!confirm('Last chance, are you really sure? You will lose access to this account if you haven\'t saved your key.'))return;
   currentUser=null;currentSpot=null;mySpots=[];followingSet.clear();clearUser();localStorage.removeItem('swellnotes_spot');updateAuthUI();location.reload();
 });
 
@@ -744,7 +810,7 @@ function updateAuthUI(){
     $('#app-header').classList.remove('hidden');
     $('#auth-buttons').classList.add('hidden');$('#user-info').classList.remove('hidden');$('#spot-picker-auth')?.classList.add('hidden');$('#user-name').textContent=currentUser.display_name;const av=$('#user-avatar');if(currentUser.avatar_path){av.src=currentUser.avatar_path;av.style.display='';}else av.style.display='none';av.classList.toggle('pro-ring',!!ringCls(currentUser));$('#submit-btn').disabled=false;$('#submit-btn').textContent='Log Session';$('#comment-form')?.classList.remove('hidden');checkProStatus();
     if(!currentSpot){
-      // No crew selected — show main app with Search tab active
+      // No crew selected, show main app with Search tab active
       $('#spot-picker')?.classList.add('hidden');$('#main-content')?.classList.remove('hidden');
       $('#hero').classList.add('hidden');$('#app-header').classList.remove('hidden');
       $$('.nav-btn').forEach(x=>x.classList.remove('active'));$$('.nav-btn[data-view="pipeline"]').forEach(x=>x.classList.add('active'));
@@ -815,7 +881,7 @@ async function loadSurfers(){
     params=`?crew_id=${$('#surfer-crew-select').dataset.crewId}`;
   }else{
     crewSearch.classList.add('hidden');
-    if(!currentSpot){$('#surfers-list').innerHTML='<div class="empty-state"><p>Join a crew to see its members.</p></div>';desc.textContent='';return;}
+    if(!currentSpot){$('#surfers-list').innerHTML='<div class="empty-state"><p>Select a spot to see its surfers.</p><button class="btn-select-spot" onclick="window.goToSpotPicker()">Select a spot</button></div>';desc.textContent='';return;}
     params=`?spot_id=${currentSpot.id}`;
     desc.textContent='Members of this crew. Follow to see their reports & analysis.';
   }
@@ -834,7 +900,7 @@ async function fetchConditions(){const d=$('#session_date').value,t=$('#time_of_
   const condHeaders=currentUser?{'X-Nostr-Pubkey':currentUser.pubkey}:{};
   try{const c=await(await fetch(`${API_BASE}/api/conditions?date=${d}&time_of_day=${t}${spotParam}`,{headers:condHeaders})).json();if(!c.surf_height_min_ft&&!c.swells?.length){p.innerHTML='<div class="cond-loading">No forecast data.</div>';return;}
   const sw=(c.swells||[]).map(s=>`<div class="swell-item"><span class="swell-compass">${s.direction_compass}</span><span class="swell-detail">${s.height_ft}ft ${s.period_s}s</span><span class="swell-meta">${s.direction_deg}°</span></div>`).join('');
-  p.innerHTML=`<div class="cond-grid"><div class="cond-block"><h4>Surf</h4><div class="cond-val">${c.surf_height_min_ft||'?'}-${c.surf_height_max_ft||'?'} ft</div></div><div class="cond-block"><h4>Swells (${c.swells?.length||0})</h4><div class="swells-list">${sw||'—'}</div></div><div class="cond-block"><h4>Wind</h4><div class="cond-val">${c.wind_speed_mph||0} mph</div><div class="cond-sub">${c.wind_type||''} ${c.wind_gust_mph?'gusts '+c.wind_gust_mph:''}</div></div><div class="cond-block"><h4>Tide</h4><div class="cond-val">${c.tide_height_ft||'?'} ft</div></div></div>`;}catch{p.innerHTML='<div class="cond-loading">Could not fetch.</div>';}}
+  p.innerHTML=`<div class="cond-grid"><div class="cond-block"><h4>Surf</h4><div class="cond-val">${c.surf_height_min_ft||'?'}-${c.surf_height_max_ft||'?'} ft</div></div><div class="cond-block"><h4>Swells (${c.swells?.length||0})</h4><div class="swells-list">${sw||'-'}</div></div><div class="cond-block"><h4>Wind</h4><div class="cond-val">${c.wind_speed_mph||0} mph</div><div class="cond-sub">${c.wind_type||''} ${c.wind_gust_mph?'gusts '+c.wind_gust_mph:''}</div></div><div class="cond-block"><h4>Tide</h4><div class="cond-val">${c.tide_height_ft||'?'} ft</div></div></div>`;}catch{p.innerHTML='<div class="cond-loading">Could not fetch.</div>';}}
 $('#session_date').addEventListener('change',fetchConditions);$('#time_of_day').addEventListener('change',fetchConditions);
 
 // ===== TABS =====
@@ -929,14 +995,15 @@ $('#share-post-btn').addEventListener('click',async()=>{if(!pendingShareData)ret
   let ev;
   if(currentUser?.secretKey){ev=finalizeEvent({kind:1,created_at:Math.floor(Date.now()/1000),tags,content},hexToBytes(currentUser.secretKey));}
   else if(currentUser?.nip46){ev=await nip46Sign({kind:1,created_at:Math.floor(Date.now()/1000),tags,content,pubkey:currentUser.pubkey});}
-  else{toast('Cannot sign — log in first','error');return;}
+  else{toast('Cannot sign, log in first','error');return;}
   for(const u of RELAYS){try{const r=await Relay.connect(u);await r.publish(ev);r.close();}catch{}}toast('Shared!');closeShareAndGoToFeed();}catch(err){console.error('Share error:',err);toast('Share failed','error');}finally{$('#share-post-btn').disabled=false;$('#share-post-btn').textContent='Share';}});
 
 // ===== MULTI-SPOT FEED =====
 let spotFollowingSet=new Set();
 
 let feedGroups=[];
-// Unified reports feed — most recent reports across your crews, filterable by spot
+let feedFilter=localStorage.getItem('swellnotes_feed_filter')||'__all'; // remembered Reports spot filter
+// Unified reports feed, most recent reports across your crews, filterable by spot
 async function loadFeed(){
   const feedEl=$('#report-feed');if(!feedEl)return;
   if(!currentUser){feedEl.innerHTML='<div class="empty-state"><p>Log in to see reports.</p></div>';return;}
@@ -957,7 +1024,7 @@ async function loadFeed(){
 }
 function renderReportFeed(){
   const feedEl=$('#report-feed');if(!feedEl)return;
-  const sel=$('#feed-filter')?.value||'__all';
+  const sel=feedFilter;
   const multi=(mySpots?.length||0)>1;
   const items=[];
   for(const g of (feedGroups||[])){
@@ -965,7 +1032,9 @@ function renderReportFeed(){
     for(const s of g.sessions)items.push({...s,__spot:g.spot.name});
   }
   items.sort((a,b)=>(b.session_date||'').localeCompare(a.session_date||'')||((b.created_at||0)-(a.created_at||0)));
-  if(!items.length){feedEl.innerHTML='<div class="empty-state"><p>No reports yet.</p><p class="muted">Tap the + button to log one.</p></div>';return;}
+  if(!items.length){feedEl.innerHTML=(!mySpots||!mySpots.length)
+    ?'<div class="empty-state"><p>No spots yet.</p><p class="muted">Select a spot to start logging and see reports.</p><button class="btn-select-spot" onclick="window.goToSpotPicker()">Select a spot</button></div>'
+    :'<div class="empty-state"><p>No reports yet.</p><p class="muted">Tap the + button to log one.</p></div>';return;}
   feedEl.innerHTML=items.map(s=>renderSessionCard(s,multi&&sel==='__all')).join('');
   feedEl.querySelectorAll('.pcard').forEach(c=>c.addEventListener('click',()=>openSession(c.dataset.id)));
 }
@@ -983,7 +1052,7 @@ function fcNearest(arr,t){let best=null,bd=1/0;for(const a of arr){const d=Math.
 let fcData=null,fcDay=0;
 async function loadForecast(){
   const el=$('#forecast-body');if(!el)return;
-  if(!currentSpot){el.innerHTML='<div class="empty-state"><p>Join a crew to see its forecast.</p></div>';return;}
+  if(!currentSpot){el.innerHTML='<div class="empty-state"><p>Select a spot to see its forecast.</p><button class="btn-select-spot" onclick="window.goToSpotPicker()">Select a spot</button></div>';return;}
   el.innerHTML='<div class="cond-loading">Loading forecast…</div>';
   try{
     const headers=currentUser?{'X-Nostr-Pubkey':currentUser.pubkey}:{};
@@ -1026,7 +1095,7 @@ function renderForecastDay(){
   const wave=f.wave.filter(w=>w.t>=start&&w.t<end&&w.max!=null);
   const en=f.wave.filter(w=>w.t>=start&&w.t<end&&w.power!=null);
   const maxSurf=Math.max(1,...wave.map(w=>w.max));
-  const bars=wave.map(w=>{const pct=Math.max(6,Math.round((w.max/maxSurf)*100));const sw=(w.swells||[])[0];const swHTML=sw?`<span class="fc-sw"><span class="fc-sw-arrow" style="transform:rotate(${Math.round(sw.dir+180)}deg)">↑</span>${sw.p}s</span>`:'<span class="fc-sw">—</span>';return`<div class="fc-col"><div class="fc-track"><div class="fc-bar" style="height:${pct}%"></div></div><div class="fc-num">${w.min!=null?w.min+'-':''}${w.max}</div>${swHTML}<div class="fc-time">${fcHourLabel(fcLocalHour(w.t,off))}</div></div>`;}).join('');
+  const bars=wave.map(w=>{const pct=Math.max(6,Math.round((w.max/maxSurf)*100));const sw=(w.swells||[])[0];const swHTML=sw?`<span class="fc-sw"><span class="fc-sw-arrow" style="transform:rotate(${Math.round(sw.dir+180)}deg)">↑</span>${sw.p}s</span>`:'<span class="fc-sw">-</span>';return`<div class="fc-col"><div class="fc-track"><div class="fc-bar" style="height:${pct}%"></div></div><div class="fc-num">${w.min!=null?w.min+'-':''}${w.max}</div>${swHTML}<div class="fc-time">${fcHourLabel(fcLocalHour(w.t,off))}</div></div>`;}).join('');
   const axis=`<div class="fc-axis">${[start,start+21600,start+43200,start+64800,end-1].map(t=>`<span>${fcHourLabel(fcLocalHour(t,off))}</span>`).join('')}</div>`;
   // Tide chart (scrubber)
   const tide=f.tides.filter(t=>t.t>=start-7200&&t.t<end+7200);
@@ -1046,7 +1115,7 @@ function renderForecastDay(){
       <svg viewBox="0 0 ${W} ${H}" class="fc-svg" preserveAspectRatio="none"><path d="${c.area}" fill="rgba(56,189,248,0.14)"/><path d="${c.line}" fill="none" stroke="var(--cyan)" stroke-width="2"/><line id="fc-energy-cursor" x1="0" y1="0" x2="0" y2="${H}" class="fc-cursor"/></svg>${axis}</div>`;
   }
   el.innerHTML=`<div class="fc-days">${tabs}</div>
-    <div class="fc-head"><div class="fc-head-big" id="fc-head-big">—</div><div class="fc-head-sub" id="fc-head-sub"></div></div>
+    <div class="fc-head"><div class="fc-head-big" id="fc-head-big">-</div><div class="fc-head-sub" id="fc-head-sub"></div></div>
     <div class="fc-card"><div class="fc-card-label">Surf height</div><div class="fc-bars">${bars||'<span class="muted">No data</span>'}</div></div>
     <div class="fc-card"><div class="fc-card-head"><span class="fc-card-label">Swell</span><span class="fc-card-now" id="fc-scrub-time"></span></div><div id="fc-swell-body"></div></div>
     ${tideHTML}${enHTML}`;
@@ -1077,7 +1146,7 @@ function renderSessionCard(s,showSpot){
   else if(imgs.length===1)media=`<div class="pcard-media"><img src="${imgs[0]}" alt="" onload="snImgMeta(this)"></div>`;
   else if(imgs.length>1)media=`<div class="pcard-gallery g${imgs.length}">${imgs.map(p=>`<img src="${p}" alt="">`).join('')}</div>`;
   const voice=s.voice_memo_path?`<audio class="pcard-audio" controls preload="none" src="${s.voice_memo_path}" onclick="event.stopPropagation()"></audio>`:'';
-  const score=s.rating?`<div class="rbadge ${getRatingClass(s.rating)}">${fmtRating(s.rating)}</div>`:'<div class="rbadge">—</div>';
+  const score=s.rating?`<div class="rbadge ${getRatingClass(s.rating)}">${fmtRating(s.rating)}</div>`:'<div class="rbadge">-</div>';
   const cmts=(s.comments||[]).map(renderInlineComment).join('');
   const more=(s.comment_count||0)>(s.comments||[]).length?`<button class="cmt-more" onclick="event.stopPropagation();openSession(${s.id})">View all ${s.comment_count} comments</button>`:'';
   const composer=currentUser?`<div class="cmt-compose" onclick="event.stopPropagation()">${smallAvatar(currentUser,'cmt-av')}<input class="cmt-input" type="text" placeholder="Add a comment…" onkeydown="if(event.key==='Enter')postInlineComment(${s.id},this)"><button class="cmt-send" onclick="postInlineComment(${s.id},this)">Post</button></div>`:'';
@@ -1154,14 +1223,14 @@ window.toggleSpotFollow=async id=>{
   loadFeed();
 };
 
-// Kept as an alias — the unified reports feed replaced the per-spot session list
+// Kept as an alias, the unified reports feed replaced the per-spot session list
 async function loadSessions(){return loadFeed();}
 
 // ===== DETAIL =====
 async function openSession(id){try{const{session:s,comments}=await(await fetch(`${API_BASE}/api/sessions/${id}`)).json();const d=new Date(s.session_date+'T12:00:00');const ds=d.toLocaleDateString('en',{weekday:'long',year:'numeric',month:'long',day:'numeric'});const sw=JSON.parse(s.swells_json||'[]');const swH=sw.map((x,i)=>`<div class="detail-block"><h4>${i?'Secondary':'Primary'} Swell</h4><p>${x.height_ft}ft ${x.period_s}s ${x.direction_compass} ${x.direction_deg}° <small style="opacity:.5">(${x.impact}%)</small></p></div>`).join('');
 // Check if user can delete (own session or spot admin)
 const canDelete=currentUser&&(s.pubkey===currentUser.pubkey||(currentSpot?.members?.some(m=>m.pubkey===currentUser.pubkey&&m.role==='admin')));
-$('#session-detail').innerHTML=`<h2>${ds}</h2><p class="muted"><a href="${primalLink(s.pubkey)}" target="_blank" rel="noopener" class="user-link-inline">${escapeHtml(s.display_name||'Anon')}</a> · ${formatTOD(s.time_of_day)}</p><div style="margin:.75rem 0"><div class="rbadge ${getRatingClass(s.rating)}" style="width:52px;height:52px;font-size:1.2rem;display:inline-flex">${fmtRating(s.rating)}/10</div></div><div class="detail-grid"><div class="detail-block"><h4>Surf</h4><p>${s.surf_height_min_ft||'?'}–${s.surf_height_max_ft||'?'} ft</p></div>${swH}<div class="detail-block"><h4>Wind</h4><p>${s.wind_speed_mph||'?'} mph ${s.wind_type?'('+s.wind_type+')':''}</p></div><div class="detail-block"><h4>Tide</h4><p>${s.tide_height_ft||'?'} ft</p></div>${s.wave_shape?`<div class="detail-block"><h4>Shape</h4><p style="text-transform:capitalize">${s.wave_shape}</p></div>`:''}${s.barrels>0?`<div class="detail-block"><h4>Tubes</h4><p>🤿 ${s.barrels}</p></div>`:''}</div>${((s.photos&&s.photos.length)?s.photos:(s.photo_path?[s.photo_path]:[])).map(p=>`<div class="detail-photo"><img src="${p}" alt=""></div>`).join('')}${s.video_path?`<div class="detail-video"><video controls src="${s.video_path}" preload="metadata"></video></div>`:''}${s.voice_memo_path?`<div class="detail-voice"><audio controls src="${s.voice_memo_path}" style="width:100%;height:36px"></audio>${s.voice_transcript?`<div class="detail-transcript">"${escapeHtml(s.voice_transcript)}"</div>`:''}</div>`:''}${s.notes?`<div class="detail-notes">${escapeHtml(s.notes)}</div>`:''}${canDelete?`<button class="btn-delete-session" onclick="deleteSession(${s.id})">Delete Log</button>`:''}${currentUser&&s.pubkey!==currentUser.pubkey?`<div class="detail-actions"><button class="btn-report" onclick="reportContent('session','${s.id}')">Report</button><button class="btn-report" onclick="blockUser('${s.pubkey}')">Block User</button></div>`:''}`;
+$('#session-detail').innerHTML=`<h2>${ds}</h2><p class="muted"><a href="${primalLink(s.pubkey)}" target="_blank" rel="noopener" class="user-link-inline">${escapeHtml(s.display_name||'Anon')}</a> · ${formatTOD(s.time_of_day)}</p><div style="margin:.75rem 0"><div class="rbadge ${getRatingClass(s.rating)}" style="width:52px;height:52px;font-size:1.2rem;display:inline-flex">${fmtRating(s.rating)}/10</div></div><div class="detail-grid"><div class="detail-block"><h4>Surf</h4><p>${s.surf_height_min_ft||'?'}-${s.surf_height_max_ft||'?'} ft</p></div>${swH}<div class="detail-block"><h4>Wind</h4><p>${s.wind_speed_mph||'?'} mph ${s.wind_type?'('+s.wind_type+')':''}</p></div><div class="detail-block"><h4>Tide</h4><p>${s.tide_height_ft||'?'} ft</p></div>${s.wave_shape?`<div class="detail-block"><h4>Shape</h4><p style="text-transform:capitalize">${s.wave_shape}</p></div>`:''}${s.barrels>0?`<div class="detail-block"><h4>Tubes</h4><p>🤿 ${s.barrels}</p></div>`:''}</div>${((s.photos&&s.photos.length)?s.photos:(s.photo_path?[s.photo_path]:[])).map(p=>`<div class="detail-photo"><img src="${p}" alt=""></div>`).join('')}${s.video_path?`<div class="detail-video"><video controls src="${s.video_path}" preload="metadata"></video></div>`:''}${s.voice_memo_path?`<div class="detail-voice"><audio controls src="${s.voice_memo_path}" style="width:100%;height:36px"></audio>${s.voice_transcript?`<div class="detail-transcript">"${escapeHtml(s.voice_transcript)}"</div>`:''}</div>`:''}${s.notes?`<div class="detail-notes">${escapeHtml(s.notes)}</div>`:''}${canDelete?`<button class="btn-delete-session" onclick="deleteSession(${s.id})">Delete Log</button>`:''}${currentUser&&s.pubkey!==currentUser.pubkey?`<div class="detail-actions"><button class="btn-report" onclick="reportContent('session','${s.id}')">Report</button><button class="btn-report" onclick="blockUser('${s.pubkey}')">Block User</button></div>`:''}`;
 $('#comments-list').innerHTML=comments.length?comments.map(c=>`<div class="comment"><div class="comment-meta"><a href="${primalLink(c.pubkey)}" target="_blank" rel="noopener" class="user-link-inline">${escapeHtml(c.display_name||'Anon')}</a> · ${new Date(c.created_at*1000).toLocaleDateString()}${currentUser&&c.pubkey!==currentUser.pubkey?` · <button class="btn-report-inline" onclick="event.stopPropagation();reportContent('comment','${c.id}')">Report</button>`:''}</div><div class="comment-body">${escapeHtml(c.body)}</div></div>`).join(''):'<p class="muted" style="font-size:.82rem">No comments yet</p>';
 $('#comment-form').onsubmit=async e=>{e.preventDefault();if(!currentUser)return;const b=$('#comment-body').value.trim();if(!b)return;await fetch(`${API_BASE}/api/sessions/${id}/comments`,{method:'POST',headers:{'Content-Type':'application/json','X-Nostr-Pubkey':currentUser.pubkey},body:JSON.stringify({body:b})});$('#comment-body').value='';openSession(id);};
 $('#session-modal').classList.remove('hidden');}catch{toast('Error','error');}}
@@ -1214,12 +1283,12 @@ $('#session-modal .modal-close').addEventListener('click',()=>$('#session-modal'
 $('#search-btn').addEventListener('click',runSearch);$('#search-clear').addEventListener('click',()=>{['search-dir-min','search-dir-max','search-height-min','search-height-max','search-period-min','search-period-max','search-rating-min','search-rating-max','search-date-from','search-date-to'].forEach(id=>$(`#${id}`).value='');$('#search-results').innerHTML='';});
 async function runSearch(){const p=new URLSearchParams();if(currentUser)p.set('pubkey',currentUser.pubkey);if(currentSpot)p.set('spot_id',currentSpot.id);const fields={dir_min:'search-dir-min',dir_max:'search-dir-max',height_min:'search-height-min',height_max:'search-height-max',period_min:'search-period-min',period_max:'search-period-max',rating_min:'search-rating-min',rating_max:'search-rating-max',date_from:'search-date-from',date_to:'search-date-to'};Object.entries(fields).forEach(([k,id])=>{const v=$(`#${id}`).value;if(v)p.set(k,v);});
 try{const{sessions,summary}=await(await fetch(`${API_BASE}/api/search?${p}`)).json();const sr=$('#search-results');if(!sessions.length){sr.innerHTML='<div class="empty-state"><p>No matches.</p></div>';return;}
-sr.innerHTML=`<div class="search-summary"><div class="search-stat"><span class="search-stat-label">Sessions</span><span class="search-stat-value">${summary.count}</span></div><div class="search-stat"><span class="search-stat-label">Avg</span><span class="search-stat-value">${summary.avg_rating||'—'}/10</span></div><div class="search-stat"><span class="search-stat-label">Best</span><span class="search-stat-value">${summary.best_rating||'—'}</span></div><div class="search-stat"><span class="search-stat-label">Worst</span><span class="search-stat-value">${summary.worst_rating||'—'}</span></div></div><div class="search-result-list">${sessions.map(s=>{const d=new Date(s.session_date+'T12:00:00'),sw=JSON.parse(s.swells_json||'[]');return`<div class="feed-card" onclick="openSession(${s.id})"><div class="feed-date"><div class="day">${d.getDate()}</div><div class="mo">${d.toLocaleString('en',{month:'short'})}</div></div><div class="feed-body"><div class="feed-user">${avatarHTML(s.avatar_path,s.display_name,'feed-avatar',!!ringCls(s))}<span class="feed-name">${escapeHtml(s.display_name||'Anon')}</span></div><div class="feed-tags">${sw.map(x=>`<span class="tag tag-swell">${x.height_ft}ft ${x.period_s}s ${x.direction_compass}</span>`).join('')}</div></div><div class="feed-rating">${s.rating?`<div class="rbadge ${getRatingClass(s.rating)}">${s.rating}</div>`:''}</div></div>`;}).join('')}</div>`;}catch{$('#search-results').innerHTML='<div class="empty-state">Failed</div>';}}
+sr.innerHTML=`<div class="search-summary"><div class="search-stat"><span class="search-stat-label">Sessions</span><span class="search-stat-value">${summary.count}</span></div><div class="search-stat"><span class="search-stat-label">Avg</span><span class="search-stat-value">${summary.avg_rating||'-'}/10</span></div><div class="search-stat"><span class="search-stat-label">Best</span><span class="search-stat-value">${summary.best_rating||'-'}</span></div><div class="search-stat"><span class="search-stat-label">Worst</span><span class="search-stat-value">${summary.worst_rating||'-'}</span></div></div><div class="search-result-list">${sessions.map(s=>{const d=new Date(s.session_date+'T12:00:00'),sw=JSON.parse(s.swells_json||'[]');return`<div class="feed-card" onclick="openSession(${s.id})"><div class="feed-date"><div class="day">${d.getDate()}</div><div class="mo">${d.toLocaleString('en',{month:'short'})}</div></div><div class="feed-body"><div class="feed-user">${avatarHTML(s.avatar_path,s.display_name,'feed-avatar',!!ringCls(s))}<span class="feed-name">${escapeHtml(s.display_name||'Anon')}</span></div><div class="feed-tags">${sw.map(x=>`<span class="tag tag-swell">${x.height_ft}ft ${x.period_s}s ${x.direction_compass}</span>`).join('')}</div></div><div class="feed-rating">${s.rating?`<div class="rbadge ${getRatingClass(s.rating)}">${s.rating}</div>`:''}</div></div>`;}).join('')}</div>`;}catch{$('#search-results').innerHTML='<div class="empty-state">Failed</div>';}}
 
 // ===== FORECAST MATCH =====
 async function loadAnalysis(){
   const el=$('#forecast-match');
-  if(!currentSpot){el.innerHTML='<p class="empty-state">Select a crew to see forecast matches.</p>';return;}
+  if(!currentSpot){el.innerHTML='<div class="empty-state"><p>Select a spot to see forecast matches.</p><button class="btn-select-spot" onclick="window.goToSpotPicker()">Select a spot</button></div>';return;}
   el.innerHTML='<div class="cond-loading">Matching forecast to past sessions...</div>';
   try{
     const slots=await(await fetch(`${API_BASE}/api/analysis/forecast-match?spot_id=${currentSpot.id}`)).json();
@@ -1279,7 +1348,7 @@ async function fetchProPrice(){
   }
   applyProPrice();
 }
-function applyProPrice(){const t=$('#pro-tab-price');if(t)t.textContent=proPriceStr;const m=$('#pro-price');if(m)m.textContent=`${proPriceStr}/mo`;}
+function applyProPrice(){const t=$('#pro-tab-price');if(t)t.textContent=proPriceStr;const m=$('#pro-price');if(m)m.textContent=`${proPriceStr}/mo`;const mp=$('#pro-modal-price');if(mp)mp.textContent=proPriceStr;}
 
 function updateOwnAvatarRing(){const on=!!ringCls(currentUser);['#user-avatar','#settings-avatar'].forEach(sel=>{const el=$(sel);if(el)el.classList.toggle('pro-ring',on);});}
 
@@ -1314,7 +1383,7 @@ async function activatePro(jws){
 // Reject a native call if it hangs, so the button never sits on "Processing..." forever
 function withTimeout(p,ms,msg){return Promise.race([p,new Promise((_,rej)=>setTimeout(()=>rej(new Error(msg)),ms))]);}
 
-// Shared purchase / restore — used by both the Pro tab and the upsell modal
+// Shared purchase / restore, used by both the Pro tab and the upsell modal
 async function doProPurchase(btn){
   if(!StoreKit){toast('In-app purchases are only available in the iOS app','error');return;}
   const orig=btn?btn.innerHTML:'';
@@ -1326,7 +1395,7 @@ async function doProPurchase(btn){
     try{prods=await withTimeout(StoreKit.getProducts(),20000,'Could not reach the App Store (timed out).');}
     catch(e){throw new Error('Could not reach the App Store: '+(e.message||e));}
     if(!prods||!prods.products||!prods.products.length){
-      throw new Error('Pro isn’t available from the App Store yet. A new subscription can take a few hours to reach the sandbox — try again later.');
+      throw new Error('Pro isn’t available from the App Store yet. A new subscription can take a few hours to reach the sandbox, try again later.');
     }
     const r=await withTimeout(StoreKit.purchase(),120000,'The App Store didn’t respond. Try again in a bit.');
     if(r.success){
@@ -1336,7 +1405,7 @@ async function doProPurchase(btn){
       toast('Welcome to Pro!');$('#pro-modal').classList.add('hidden');
       updateOwnAvatarRing();renderProTab();
     }else if(r.cancelled){toast('Purchase cancelled','error');}
-    else if(r.pending){toast('Purchase pending — check back soon');}
+    else if(r.pending){toast('Purchase pending, check back soon');}
   }catch(e){toast('Purchase failed: '+e.message,'error');}
   finally{if(btn){btn.disabled=false;btn.innerHTML=orig;}}
 }
@@ -1433,8 +1502,9 @@ async function loadPipeline(q=''){
       const overlay=document.createElement('div');
       overlay.id='onboard-overlay';
       overlay.className='onboard-overlay';
-      overlay.innerHTML=`<div class="card">
-        <h2>Start a Crew</h2>
+      overlay.innerHTML=`<div class="card" style="position:relative">
+        <button class="onboard-close" onclick="window.dismissOnboard()" aria-label="Close">&times;</button>
+        <h2>Select a spot</h2>
         <p class="muted">Search for any surf break worldwide to create a new crew.</p>
         <div class="field" style="margin:0.75rem 0">
           <input type="text" id="onboard-spot-search" placeholder="Search surf breaks... (e.g. Pipeline, Uluwatu)" autocomplete="off">
@@ -1600,6 +1670,307 @@ $('#nav-add-crew')?.addEventListener('click',openNewCrewFlow);
 // ===== HIDE NAV ON SCROLL DOWN =====
 (()=>{const hdr=document.getElementById('app-header');if(!hdr)return;let lastY=window.scrollY,ticking=false;const onScroll=()=>{const y=window.scrollY;const dy=y-lastY;if(y<30){hdr.classList.remove('nav-hidden');}else if(dy>4){hdr.classList.add('nav-hidden');}else if(dy<-4){hdr.classList.remove('nav-hidden');}lastY=y;ticking=false;};window.addEventListener('scroll',()=>{if(!ticking){requestAnimationFrame(onScroll);ticking=true;}},{passive:true});})();
 
+// ===== GOOGLE / APPLE LOGIN (Wisp-style nostr key backup) =====
+const KeychainBackup=IS_CAPACITOR?resolveNativePlugin('Keychain',['save','load','clear','list']):null;
+let pinSubmitHandler=null;
+function showPinModal({title,subtitle,confirm,onSubmit}){
+  $('#pin-title').textContent=title;$('#pin-subtitle').textContent=subtitle;
+  $('#pin-confirm').classList.toggle('hidden',!confirm);
+  $('#pin-input').value='';$('#pin-confirm').value='';
+  $('#pin-error').classList.add('hidden');$('#pin-loading').classList.add('hidden');
+  $('#pin-submit').classList.remove('hidden');
+  $('#pin-modal').classList.remove('hidden');$('#pin-input').focus();
+  pinSubmitHandler=onSubmit;
+}
+function hidePinModal(){$('#pin-modal').classList.add('hidden');pinSubmitHandler=null;}
+function pinError(msg){const e=$('#pin-error');e.textContent=msg;e.classList.remove('hidden');pinBusy(false);}
+function pinBusy(b,text){$('#pin-loading-text').textContent=text||'Working…';$('#pin-loading').classList.toggle('hidden',!b);$('#pin-submit').classList.toggle('hidden',b);}
+function validPin(p){return /^[0-9]{4,8}$/.test(p);}
+$('#pin-submit')?.addEventListener('click',()=>{pinSubmitHandler&&pinSubmitHandler();});
+$('#pin-modal-close')?.addEventListener('click',hidePinModal);
+$('#pin-modal .modal-backdrop')?.addEventListener('click',hidePinModal);
+$('#chooser-modal-close')?.addEventListener('click',()=>$('#chooser-modal').classList.add('hidden'));
+$('#chooser-modal .modal-backdrop')?.addEventListener('click',()=>$('#chooser-modal').classList.add('hidden'));
+
+async function finishOAuthLogin(account,isNew){
+  let name=null,avatar=null;
+  try{const u=await(await fetch(`${API_BASE}/api/users/${account.pubkey}`)).json();if(u&&!u.error&&u.display_name){name=u.display_name;avatar=u.avatar_path;}}catch{}
+  if(!name){
+    name='surfer-'+account.pubkey.slice(0,6);
+    try{await fetch(`${API_BASE}/api/auth/login`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pubkey:account.pubkey,display_name:name})});}catch{}
+  }
+  currentUser={pubkey:account.pubkey,secretKey:account.secretKey,display_name:name,avatar_path:absAvatarUrl(avatar)};
+  saveUser(currentUser);
+  if(isNew){markFreshAccount();autoFollowDefault();}
+  updateAuthUI();hidePinModal();$('#chooser-modal').classList.add('hidden');
+  $('.landing-page')?.classList.add('hidden');$('#login-modal')?.classList.add('hidden');
+  await selectFirstSpotIfNone();
+  toast(`Welcome${isNew?'':' back'}, ${name}!`);
+  if(isNew)maybeStartTour(700);
+}
+function showChooser(accounts){
+  const list=$('#chooser-list');list.innerHTML='';
+  accounts.forEach(a=>{const b=document.createElement('button');b.className='chooser-item';
+    b.innerHTML=`<span class="chooser-name">${escapeHtml(a.npub.slice(0,16))}…</span><span class="chooser-npub">${escapeHtml(a.npub)}</span>`;
+    b.onclick=()=>finishOAuthLogin(a,false);list.appendChild(b);});
+  $('#chooser-modal').classList.remove('hidden');
+}
+
+// ---- Profile setup / edit modal (name + photo) ----
+let profileAvatarFile=null,profileSubmitHandler=null;
+function openProfileModal({title,sub,name,submitLabel,onSubmit}){
+  $('#profile-modal-title').textContent=title;$('#profile-modal-sub').textContent=sub;
+  $('#profile-name-input').value=name||'';$('#profile-submit').textContent=submitLabel||'Continue';
+  $('#profile-error').classList.add('hidden');$('#profile-loading').classList.add('hidden');$('#profile-submit').classList.remove('hidden');
+  profileAvatarFile=null;
+  const img=$('#profile-avatar-img'),ph=$('#profile-avatar-ph');
+  if(currentUser?.avatar_path&&name){img.src=currentUser.avatar_path;img.style.display='';ph.style.display='none';}
+  else{img.style.display='none';ph.style.display='';}
+  profileSubmitHandler=onSubmit;
+  $('#profile-modal').classList.remove('hidden'); // no autofocus: keeps title clear of the notch until they tap
+}
+function closeProfileModal(){$('#profile-modal').classList.add('hidden');profileSubmitHandler=null;profileAvatarFile=null;}
+function profileError(msg){const e=$('#profile-error');e.textContent=msg;e.classList.remove('hidden');profileBusy(false);}
+function profileBusy(b,text){$('#profile-loading-text').textContent=text||'Saving…';$('#profile-loading').classList.toggle('hidden',!b);$('#profile-submit').classList.toggle('hidden',b);}
+$('#profile-modal-close')?.addEventListener('click',closeProfileModal);
+$('#profile-avatar-upload')?.addEventListener('click',()=>$('#profile-avatar-file').click());
+$('#profile-avatar-file')?.addEventListener('change',e=>{const f=e.target.files[0];if(!f)return;profileAvatarFile=f;
+  const img=$('#profile-avatar-img'),ph=$('#profile-avatar-ph');const r=new FileReader();r.onload=()=>{img.src=r.result;img.style.display='';ph.style.display='none';};r.readAsDataURL(f);});
+$('#profile-submit')?.addEventListener('click',()=>{profileSubmitHandler&&profileSubmitHandler();});
+
+// Build the avatar portion of an /api/auth/login body (Blossom URL, else base64).
+async function avatarBody(file){
+  if(!file)return {body:{},url:null};
+  const url=await uploadToBlossom(file);
+  if(url)return {body:{avatar_url:url},url};
+  const r=new FileReader();const b64=await new Promise(res=>{r.onloadend=()=>res(r.result.split(',')[1]);r.readAsDataURL(file);});
+  return {body:{avatar_base64:b64},url:null};
+}
+
+// New Apple account → collect name + photo, register, log in.
+function openProfileSetup(account){
+  openProfileModal({title:'Set up your profile',sub:'Pick a surfer name and photo. You can change these later in Settings.',name:'',submitLabel:'Start surfing',
+    onSubmit:async()=>{
+      const name=$('#profile-name-input').value.trim();
+      if(name.length<2)return profileError('Pick a name (at least 2 characters)');
+      profileBusy(true,'Creating your profile…');
+      try{
+        const {body:ab,url:abUrl}=await avatarBody(profileAvatarFile);
+        const res=await fetch(`${API_BASE}/api/auth/login`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pubkey:account.pubkey,display_name:name,...ab})});
+        const data=await res.json();
+        if(!res.ok)return profileError(data?.error==='name_taken'?(data.message||'That name is taken. Try another.'):(data?.error||'Failed'));
+        const avatarUrl=absAvatarUrl(data.avatar_path)||abUrl||null;
+        currentUser={pubkey:account.pubkey,secretKey:account.secretKey,display_name:name,avatar_path:avatarUrl};
+        saveUser(currentUser);markFreshAccount();autoFollowDefault();
+        await publishProfile(name,avatarUrl,data.nip05_full);
+        updateAuthUI();closeProfileModal();$('.landing-page')?.classList.add('hidden');$('#login-modal')?.classList.add('hidden');
+        toast(`Welcome, ${name}!`);maybeStartTour(700);
+      }catch(e){profileError(e.message||'Failed');}
+    }});
+}
+
+// Edit name + photo from Settings.
+function openProfileEdit(){
+  if(!currentUser)return;
+  openProfileModal({title:'Edit profile',sub:'Update your surfer name or photo.',name:currentUser.display_name||'',submitLabel:'Save',
+    onSubmit:async()=>{
+      const name=$('#profile-name-input').value.trim();
+      if(name.length<2)return profileError('Pick a name (at least 2 characters)');
+      profileBusy(true,'Saving…');
+      try{
+        const {body:ab,url:abUrl}=await avatarBody(profileAvatarFile);
+        const body={pubkey:currentUser.pubkey,display_name:name,...ab};
+        if(!profileAvatarFile&&currentUser.avatar_path)body.avatar_url=currentUser.avatar_path;
+        const res=await fetch(`${API_BASE}/api/auth/login`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+        const data=await res.json();
+        if(!res.ok)return profileError(data?.error==='name_taken'?(data.message||'That name is taken. Try another.'):(data?.error||'Failed'));
+        const avatarUrl=absAvatarUrl(data.avatar_path)||abUrl||currentUser.avatar_path||null;
+        currentUser.display_name=name;currentUser.avatar_path=avatarUrl;saveUser(currentUser);
+        await publishProfile(name,avatarUrl,null);
+        $('#settings-name').textContent=name;
+        if(avatarUrl){$('#settings-avatar').src=avatarUrl;$('#settings-avatar').style.display='';}
+        if($('#user-avatar')&&avatarUrl)$('#user-avatar').src=avatarUrl;
+        updateAuthUI();closeProfileModal();toast('Profile updated!');
+      }catch(e){profileError(e.message||'Failed');}
+    }});
+}
+$('#settings-edit-name')?.addEventListener('click',openProfileEdit);
+async function startOAuthLogin(){
+  if(!IS_CAPACITOR){toast('Use the app to sign in with Apple','error');return;}
+  try{
+    const {ctx,mode}=await authBackup.beginSignIn(KeychainBackup);
+    if(mode==='setup'){
+      showPinModal({title:'Set a backup PIN',subtitle:'This PIN encrypts your account key in your own cloud, you\'ll need it to log in on another device. Pick 4-8 digits.',confirm:true,
+        onSubmit:async()=>{const p=$('#pin-input').value,c=$('#pin-confirm').value;
+          if(!validPin(p))return pinError('PIN must be 4-8 digits');
+          if(p!==c)return pinError('PINs don\'t match');
+          pinBusy(true,'Creating your account…');
+          try{const acct=await authBackup.createAccount(ctx,p);hidePinModal();openProfileSetup(acct);}catch(e){pinError(e.message||'Failed');}}});
+    }else{
+      showPinModal({title:'Enter your PIN',subtitle:'Enter the PIN you set when you first created your account.',confirm:false,
+        onSubmit:async()=>{const p=$('#pin-input').value;
+          if(!validPin(p))return pinError('PIN must be 4-8 digits');
+          pinBusy(true,'Restoring…');
+          try{const accts=await authBackup.restoreWithPin(ctx,p);
+            if(accts.length===1)await finishOAuthLogin(accts[0],false);
+            else{hidePinModal();showChooser(accts);}
+          }catch(e){pinError(e.message||'Incorrect PIN');}}});
+    }
+  }catch(e){console.error('[oauth]',e);toast(e.message||'Sign-in failed','error');}
+}
+if(authBackup.appleConfigured())$('#landing-apple-btn')?.classList.remove('hidden');
+$('#landing-apple-btn')?.addEventListener('click',()=>startOAuthLogin());
+
+// ===== LOG IN WITH NOSTR (paste nsec, device-only) =====
+// Parse an nsec (bech32) or 64-char hex private key → {secretKey, pubkey}, or null.
+function parseNsec(input){
+  const t=(input||'').trim();
+  let skHex=null;
+  if(/^nsec1[0-9a-z]+$/i.test(t)){try{const d=nip19.decode(t);if(d.type==='nsec')skHex=bytesToHex(d.data);}catch{}}
+  else if(/^[0-9a-fA-F]{64}$/.test(t))skHex=t.toLowerCase();
+  if(!skHex)return null;
+  try{const pubkey=getPublicKey(hexToBytes(skHex));return{secretKey:skHex,pubkey};}catch{return null;}
+}
+function openNostrModal(){
+  $('#nostr-nsec').value='';$('#nostr-nsec').type='password';
+  $('#nostr-error').classList.add('hidden');$('#nostr-loading').classList.add('hidden');$('#nostr-submit').classList.remove('hidden');
+  $('#nostr-modal').classList.remove('hidden');
+}
+function closeNostrModal(){$('#nostr-modal').classList.add('hidden');}
+function nostrError(m){const e=$('#nostr-error');e.textContent=m;e.classList.remove('hidden');$('#nostr-loading').classList.add('hidden');$('#nostr-submit').classList.remove('hidden');}
+function nostrBusy(b){$('#nostr-loading').classList.toggle('hidden',!b);$('#nostr-submit').classList.toggle('hidden',b);}
+$('#landing-nostr-btn')?.addEventListener('click',openNostrModal);
+$('#nostr-back')?.addEventListener('click',closeNostrModal);
+$('#nostr-eye')?.addEventListener('click',()=>{const f=$('#nostr-nsec');f.type=f.type==='password'?'text':'password';});
+$('#nostr-submit')?.addEventListener('click',async()=>{
+  const acct=parseNsec($('#nostr-nsec').value);
+  if(!acct)return nostrError("That doesn't look like a valid nsec or hex private key.");
+  nostrBusy(true);
+  try{
+    // Resolve a display name/photo: server first, then the Nostr profile, else a default.
+    let name=null,avatar=null;
+    try{const u=await(await fetch(`${API_BASE}/api/users/${acct.pubkey}`)).json();if(u&&!u.error&&u.display_name){name=u.display_name;avatar=u.avatar_path;}}catch{}
+    if(!name){try{const p=await fetchProfile(acct.pubkey);if(p&&(p.name||p.display_name)){name=p.name||p.display_name;avatar=p.picture||null;}}catch{}}
+    const isNew=!name; // no profile anywhere → brand-new Nostr identity
+    // First time this nsec logs into Swellnotes on this device (even an established
+    // Nostr account) → treat as a fresh onboarding: reset flags + fire the tour.
+    const seen=JSON.parse(localStorage.getItem('swellnotes_accounts')||'[]');
+    const firstTime=!seen.includes(acct.pubkey);
+    if(firstTime){seen.push(acct.pubkey);localStorage.setItem('swellnotes_accounts',JSON.stringify(seen));markFreshAccount();}
+    if(!name){name='surfer-'+acct.pubkey.slice(0,6);
+      try{await fetch(`${API_BASE}/api/auth/login`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pubkey:acct.pubkey,display_name:name})});}catch{}}
+    currentUser={pubkey:acct.pubkey,secretKey:acct.secretKey,display_name:name,avatar_path:absAvatarUrl(avatar),source:'nsec'};
+    saveUser(currentUser); // device-only (no iCloud sync)
+    if(isNew)autoFollowDefault();
+    updateAuthUI();closeNostrModal();$('.landing-page')?.classList.add('hidden');$('#login-modal')?.classList.add('hidden');
+    await selectFirstSpotIfNone();
+    toast(`Welcome, ${name}!`);if(firstTime)maybeStartTour(700);
+  }catch(e){nostrError(e.message||'Login failed');}
+});
+
+// ===== GUIDED WALKTHROUGH (spotlight tour over the real UI) =====
+const WALK_KEY='swellnotes_tour_v1';
+const TOUR_STEPS=[
+  {view:'pipeline', target:'#pipeline-spot-search', demo:'Pipeline', title:'Start a crew',
+   text:'Search any surf break on earth and start a crew, a private feed for everyone who surfs that spot.'},
+  {view:'history', target:'#report-fab', fallback:'.nav-btn[data-view="history"]', title:'File a report',
+   text:'After a surf, tap ＋ to log it. Swell, wind and tide for that moment are saved automatically.'},
+  {view:'analysis', target:'.nav-btn[data-view="analysis"]', title:'Read the swell',
+   text:'Analysis shows which conditions have scored best, so you know exactly when to paddle out.'},
+  {view:'surfers', target:'.nav-btn[data-view="surfers"]', title:'Find your crew',
+   text:'See who else surfs your break and follow them to build a shared logbook together.'},
+  {view:'forecast', target:'.nav-btn[data-view="forecast"]', title:'Check the forecast',
+   text:'Live swell, wind and tide for your break. Scrub the tide chart to plan the perfect window.'}
+];
+let tourIdx=0, tourPrev=null, tourEls=null;
+function switchTourView(v){
+  $$('.nav-btn').forEach(x=>x.classList.remove('active'));
+  $(`.nav-btn[data-view="${v}"]`)?.classList.add('active');
+  $$('.view').forEach(x=>x.classList.remove('active'));
+  $(`#view-${v}`)?.classList.add('active');
+  window.scrollTo(0,0);
+}
+function tourTarget(step){
+  let el=step.target&&$(step.target);
+  if(!el||el.getBoundingClientRect().width<2)el=step.fallback?$(step.fallback):null;
+  if(!el||el.getBoundingClientRect().width<2)el=$(`.nav-btn[data-view="${step.view}"]`);
+  return el;
+}
+function positionTour(){
+  if(!tourEls)return;
+  const step=TOUR_STEPS[tourIdx],el=tourTarget(step),{spot,tip}=tourEls;
+  if(!el){spot.style.opacity='0';return;}
+  // Fill the spotlighted input with demo text (forced dark, it renders light on its white bg)
+  if(step.demo&&el.tagName==='INPUT'){el.value=step.demo;el.style.setProperty('color','#0f1729','important');}
+  const r=el.getBoundingClientRect(),pad=8;
+  const x=r.left-pad,y=r.top-pad,w=r.width+pad*2,h=r.height+pad*2;
+  spot.style.cssText=`left:${x}px;top:${y}px;width:${w}px;height:${h}px;opacity:1`;
+  const vh=window.innerHeight,roomBelow=vh-(y+h);
+  if(roomBelow>230){tip.style.top=(y+h+14)+'px';tip.style.bottom='';}
+  else{tip.style.bottom=(vh-y+14)+'px';tip.style.top='';}
+}
+function renderTip(){
+  const step=TOUR_STEPS[tourIdx],last=tourIdx===TOUR_STEPS.length-1,{tip}=tourEls;
+  tip.innerHTML=`
+    <div class="wt-top"><div class="wt-dots">${TOUR_STEPS.map((_,i)=>`<span class="wt-dot${i===tourIdx?' active':''}"></span>`).join('')}</div><button class="wt-skip">Skip</button></div>
+    <div class="wt-step-no">Step ${tourIdx+1} of ${TOUR_STEPS.length}</div>
+    <div class="wt-title">${step.title}</div>
+    <div class="wt-text">${step.text}</div>
+    <div class="wt-nav"><button class="wt-back" ${tourIdx===0?'disabled':''} aria-label="Back">‹</button><button class="wt-next">${last?'Start surfing 🤙':'Next'}</button></div>`;
+  tip.querySelector('.wt-skip').onclick=closeTour;
+  tip.querySelector('.wt-back').onclick=()=>{if(tourIdx>0)tourStep(tourIdx-1);};
+  tip.querySelector('.wt-next').onclick=()=>last?closeTour():tourStep(tourIdx+1);
+}
+function tourStep(i){
+  tourIdx=i;switchTourView(TOUR_STEPS[i].view);renderTip();
+  // Clear any prior demo text when entering a non-demo step
+  if(!TOUR_STEPS[i].demo)['#pipeline-spot-search','#onboard-spot-search'].forEach(sel=>{const el=$(sel);if(el){el.value='';el.style.removeProperty('color');}});
+  // Scroll the target to just below the nav header (not under it), then position the spotlight
+  const place=()=>{
+    document.getElementById('onboard-overlay')?.remove(); // drop the competing duplicate search field
+    const el=tourTarget(TOUR_STEPS[tourIdx]);
+    if(el){
+      const hdr=document.getElementById('app-header');
+      const headerBottom=(hdr&&!hdr.classList.contains('hidden'))?Math.max(0,hdr.getBoundingClientRect().bottom):0;
+      const want=headerBottom+18;
+      const r=el.getBoundingClientRect();
+      if(r.top>want+24)window.scrollBy(0,r.top-want);
+    }
+    positionTour();
+  };
+  requestAnimationFrame(()=>requestAnimationFrame(place));
+  setTimeout(place,250);setTimeout(place,650);
+}
+function startTour(){
+  if(tourEls)return;
+  // Reveal the real app chrome so the tour can drive actual nav + views
+  tourPrev={header:$('#app-header')?.classList.contains('hidden'),main:$('#main-content')?.classList.contains('hidden'),view:$('.nav-btn.active')?.dataset.view};
+  $('#app-header')?.classList.remove('hidden','nav-hidden');
+  $('#main-content')?.classList.remove('hidden');
+  const back=document.createElement('div');back.className='tour-backdrop';
+  const spot=document.createElement('div');spot.className='tour-spot';
+  const tip=document.createElement('div');tip.className='tour-tip';
+  document.body.append(back,spot,tip);
+  tourEls={back,spot,tip};
+  window.addEventListener('resize',positionTour);
+  tourStep(0);
+}
+function closeTour(){
+  if(!tourEls)return;
+  ['#pipeline-spot-search','#onboard-spot-search'].forEach(sel=>{const el=$(sel);if(el){el.value='';el.style.removeProperty('color');}}); // clear demo
+  localStorage.setItem(WALK_KEY,'1');
+  window.removeEventListener('resize',positionTour);
+  Object.values(tourEls).forEach(e=>e.remove());tourEls=null;
+  if(tourPrev){
+    if(tourPrev.header)$('#app-header')?.classList.add('hidden');
+    if(tourPrev.main)$('#main-content')?.classList.add('hidden');
+    if(tourPrev.view)switchTourView(tourPrev.view);
+  }
+  tourPrev=null;
+}
+function maybeStartTour(delay=500){if(!localStorage.getItem(WALK_KEY))setTimeout(startTour,delay);}
+window.startWalkthrough=startTour; // replay hook
+
 // ===== INIT =====
 const saved=localStorage.getItem('swellnotes_user');if(saved){try{currentUser=JSON.parse(saved);}catch{localStorage.removeItem('swellnotes_user');}}
 initTabHints();
@@ -1610,13 +1981,23 @@ const savedSpot=localStorage.getItem('swellnotes_spot');if(savedSpot){try{curren
 if(currentSpot&&currentUser){fetch(`${API_BASE}/api/spots/${currentSpot.id}`,{headers:{'X-Nostr-Pubkey':currentUser.pubkey}}).then(r=>r.json()).then(fresh=>{if(fresh&&!fresh.error&&fresh.name)selectSpot(fresh);}).catch(()=>{});}
 console.log('[Init] user:',currentUser?.display_name||'none','spot:',currentSpot?.name||'none');
 updateAuthUI();checkProStatus();checkCallback();checkInviteURL();
+// First-run guided walkthrough (once per device, for a logged-in user with a spot)
+if(currentUser&&currentSpot&&!localStorage.getItem(WALK_KEY)){maybeStartTour(700);}
 if(currentUser&&currentSpot){
   $$('.nav-btn').forEach(x=>x.classList.remove('active'));$$('.nav-btn[data-view="history"]').forEach(x=>x.classList.add('active'));
   $$('.view').forEach(v=>v.classList.remove('active'));$('#view-history').classList.add('active');
   fetchConditions();loadFeed();
 } else if(currentSpot){fetchConditions();}
 updateReportFab();syncHero();
-// Register service worker for PWA
-if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
+// Service worker: register for PWA in production, but stay out of the way under
+// live-reload (a cached SW serves stale assets and defeats hot reload during dev).
+if('serviceWorker' in navigator){
+  if(IS_LIVE_RELOAD){
+    navigator.serviceWorker.getRegistrations().then(rs=>rs.forEach(r=>r.unregister()));
+    if(window.caches)caches.keys().then(ks=>ks.forEach(k=>caches.delete(k)));
+  } else {
+    navigator.serviceWorker.register('/sw.js').catch(()=>{});
+  }
+}
 // Capacitor: listen for deep link returns (NIP-46 callback)
-if(IS_CAPACITOR){try{const CapApp=window.Capacitor.Plugins.App;if(CapApp)CapApp.addListener('appUrlOpen',data=>{if(!data.url)return;if(data.url.includes('login-callback')){checkCallback();return;}try{const u=new URL(data.url);const m=u.pathname.match(/^\/join\/(\w+)$/);if(m){history.replaceState(null,'',u.pathname);checkInviteURL();}}catch{}});}catch{}}
+if(IS_CAPACITOR){try{const CapApp=window.Capacitor.Plugins.App;if(CapApp)CapApp.addListener('appUrlOpen',data=>{if(!data.url)return;if(authBackup.handleOAuthRedirect(data.url))return;if(data.url.includes('login-callback')){checkCallback();return;}try{const u=new URL(data.url);const m=u.pathname.match(/^\/join\/(\w+)$/);if(m){history.replaceState(null,'',u.pathname);checkInviteURL();}}catch{}});}catch{}}
