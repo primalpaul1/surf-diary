@@ -43,8 +43,19 @@ if(IS_CAPACITOR){document.addEventListener('click',e=>{
     try{window.Capacitor?.Plugins?.Browser?.open({url:href});}catch{try{window.open(href,'_system');}catch{}}}
 },true);}
 const KEYCHAIN_USER_KEY='swellnotes_user';
-function saveUser(u){const json=JSON.stringify(u);localStorage.setItem(KEYCHAIN_USER_KEY,json);
-  if(u.source==='nsec')return; // nsec login is device-only, never sync the key to iCloud Keychain
+function saveUser(u){
+  // nsec is device-only: on iOS the secret goes ONLY into the ThisDeviceOnly Keychain
+  // (hardware-encrypted, never synced, backup-excluded, survives WebView storage eviction);
+  // localStorage keeps a secret-free stub for fast identity restore. On web (no Keychain
+  // plugin) the secret stays in localStorage since there's no better store there.
+  if(u.source==='nsec'&&IS_CAPACITOR&&window.Capacitor?.Plugins?.Keychain){
+    const stub={pubkey:u.pubkey,display_name:u.display_name,avatar_path:u.avatar_path,source:'nsec'};
+    localStorage.setItem(KEYCHAIN_USER_KEY,JSON.stringify(stub));
+    try{window.Capacitor.Plugins.Keychain.save({key:KEYCHAIN_USER_KEY,value:JSON.stringify(u),deviceOnly:true});}catch(e){console.warn('[Keychain] save failed',e);}
+    return;
+  }
+  const json=JSON.stringify(u);localStorage.setItem(KEYCHAIN_USER_KEY,json);
+  if(u.source==='nsec')return; // web/imported: keep on-device, never sync to iCloud
   try{window.Capacitor?.Plugins?.Keychain?.save({key:KEYCHAIN_USER_KEY,value:json});}catch(e){console.warn('[Keychain] save failed',e);}}
 function clearUser(){localStorage.removeItem(KEYCHAIN_USER_KEY);try{window.Capacitor?.Plugins?.Keychain?.clear({key:KEYCHAIN_USER_KEY});}catch(e){}}
 // A brand-new account is a fresh user: reset the once-per-device onboarding flags so
@@ -57,7 +68,7 @@ function defaultCover(id){return DEFAULT_COVERS[Math.abs([...((id||'')+'x')].red
 $$('.nav-btn[data-view]').forEach(b=>{b.addEventListener('click',()=>{$$('.nav-btn').forEach(x=>x.classList.remove('active'));b.classList.add('active');$$('.view').forEach(v=>v.classList.remove('active'));$(`#view-${b.dataset.view}`).classList.add('active');document.body.classList.toggle('pro-immersive',b.dataset.view==='pro');window.scrollTo(0,0);if(b.dataset.view==='history')loadFeed();if(b.dataset.view==='surfers')loadSurfers();if(b.dataset.view==='analysis')loadAnalysis();if(b.dataset.view==='pipeline')loadPipeline();if(b.dataset.view==='pro')renderProTab();if(b.dataset.view==='forecast')loadForecast();updateReportFab();syncHero();});});
 
 // Floating "new report" button, visible on the Reports tab, jumps to the Log form
-function updateReportFab(){const onHistory=$('.nav-btn.active')?.dataset?.view==='history';$('#report-fab')?.classList.toggle('hidden',!(onHistory&&currentUser));}
+function updateReportFab(){const onHistory=$('.nav-btn.active')?.dataset?.view==='history';const hasSpots=(typeof mySpots!=='undefined')&&mySpots.length>0;$('#report-fab')?.classList.toggle('hidden',!(onHistory&&currentUser&&hasSpots));}
 // The spot cover hero shows only on Log/Surfers/Analysis, never on the Reports feed
 function syncHero(){const v=$('.nav-btn.active')?.dataset?.view;const show=!!currentSpot&&(v==='forecast'||v==='surfers'||v==='analysis');$('#hero')?.classList.toggle('hidden',!show);updateSpotNav();}
 $('#report-fab')?.addEventListener('click',openQuickPost);
@@ -194,16 +205,25 @@ function initTabHints(){
 
 function toast(m,t='success'){const e=document.createElement('div');e.className=`toast toast-${t}`;e.textContent=m;document.body.appendChild(e);setTimeout(()=>e.remove(),3000);}
 function escapeHtml(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML;}
+// Escape a URL for safe use inside a double-quoted HTML attribute. Blocks script-y
+// schemes and neutralizes quote/angle breakout. Avatars, covers, and media URLs come
+// from other users' Nostr profiles / uploads, so they're attacker-controllable.
+function safeUrl(u){if(u==null)return'';const s=String(u);if(/^\s*(javascript|vbscript|data:text)/i.test(s))return'';return s.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 function getRatingClass(r){if(!r)return'';return r<=3?'r-low':r<=5?'r-mid':r<=7?'r-high':'r-epic';}
 function fmtRating(r){if(r==null)return'-';const n=Math.round(r*10)/10;return Number.isInteger(n)?String(n):n.toFixed(1);}
 function formatTOD(t){return{'5am':'5 AM','6am':'6 AM','7am':'7 AM','8am':'8 AM','9am':'9 AM','10am':'10 AM','11am':'11 AM','12pm':'12 PM','1pm':'1 PM','2pm':'2 PM','3pm':'3 PM','4pm':'4 PM','5pm':'5 PM','6pm':'6 PM',dawn:'Dawn',morning:'AM',midday:'Midday',afternoon:'PM',evening:'Eve'}[t]||t;}
 function ringCls(u){return (u&&u.is_pro&&((u.show_pro_ring??1)))?' pro-ring':'';}
-function avatarHTML(path,name,cls='feed-avatar',pro=false){const rc=pro?' pro-ring':'';if(path)return`<img src="${path}" class="${cls}${rc}" alt="">`;const i=(name||'?')[0].toUpperCase();return`<div class="${cls}-placeholder${rc}">${i}</div>`;}
+// Dead avatar URLs render a broken-image glyph; swap the img for an initials placeholder.
+window.__avErr=function(img,ch){const d=document.createElement('div');
+  d.className=img.className.replace(/\bsurfer-av\b/,'surfer-av-placeholder').replace(/\bpcard-av\b/,'pcard-av-ph').replace(/\bfeed-avatar\b/,'feed-avatar-placeholder').replace(/\bcmt-av\b/,'cmt-av-ph');
+  d.textContent=ch||'?';img.replaceWith(d);};
+function avInitial(name){const c=(name||'?').trim()[0]||'?';return c.toUpperCase().replace(/['"<>&]/g,'?');}
+function avatarHTML(path,name,cls='feed-avatar',pro=false){const rc=pro?' pro-ring':'';if(path)return`<img src="${safeUrl(path)}" class="${cls}${rc}" alt="" onerror="__avErr(this,'${avInitial(name)}')">`;return`<div class="${cls}-placeholder${rc}">${avInitial(name)}</div>`;}
 function primalLink(pubkey){return`https://primal.net/p/${pubkey}`;}
 function userLinkHTML(pubkey,name,avatarPath,cls='feed',pro=false){
   const url=primalLink(pubkey);
   const rc=pro?' pro-ring':'';
-  const av=avatarPath?`<img src="${avatarPath}" class="${cls}-avatar${rc}" alt="">`:`<div class="${cls}-avatar-placeholder${rc}">${(name||'?')[0].toUpperCase()}</div>`;
+  const av=avatarPath?`<img src="${safeUrl(avatarPath)}" class="${cls}-avatar${rc}" alt="">`:`<div class="${cls}-avatar-placeholder${rc}">${(name||'?')[0].toUpperCase()}</div>`;
   return`<a href="${url}" target="_blank" rel="noopener" class="user-link" onclick="event.stopPropagation()">${av}<span class="${cls}-name">${escapeHtml(name||'Anon')}</span></a>`;
 }
 
@@ -242,6 +262,7 @@ function selectSpot(spot){
   if(activeView==='analysis')loadAnalysis();
   if(activeView==='history')loadFeed();
   if(activeView==='surfers')loadSurfers();
+  if(activeView==='forecast')loadForecast();
   syncHero();
 }
 
@@ -265,7 +286,7 @@ function updateSpotSwitcher(){
   $('#spot-switcher')?.classList.add('hidden');
   const sel=$('#spot-select');
   if(sel)sel.innerHTML=mySpots.map(s=>`<option value="${s.id}" ${currentSpot?.id===s.id?'selected':''}>${s.name}</option>`).join('');
-  renderFeedChips();updateSpotNav();
+  renderFeedChips();updateSpotNav();updateReportFab();
 }
 
 $('#spot-select').addEventListener('change',async e=>{
@@ -314,6 +335,13 @@ $('#hero-spot-picker')?.addEventListener('click',e=>{
   menu.querySelectorAll('button').forEach(b=>b.addEventListener('click',ev=>{ev.stopPropagation();menu.classList.add('hidden');
     if(b.dataset.spot==='__browse'){$('.nav-btn[data-view="pipeline"]')?.click();return;}switchSpot(b.dataset.spot);}));
   menu.classList.remove('hidden');
+  // Anchor the fixed menu under the picker and cap its height to the viewport so
+  // it scrolls internally instead of being clipped by the hero's overflow:hidden.
+  const r=$('#hero-spot-picker').getBoundingClientRect();
+  menu.style.top=(r.bottom+8)+'px';
+  menu.style.left='auto';
+  menu.style.right=Math.max(8,window.innerWidth-r.right)+'px';
+  menu.style.maxHeight=Math.max(160,window.innerHeight-r.bottom-24)+'px';
 });
 document.addEventListener('click',()=>$('#hero-spot-menu')?.classList.add('hidden'));
 
@@ -348,12 +376,23 @@ async function showMySpots(){
   $('#my-spots-section').classList.remove('hidden');
   $('#my-spots-list').innerHTML=mySpots.map(s=>`
     <div class="spot-result" onclick="joinExistingSpot('${s.id}')">
-      <div class="spot-result-icon">${`<img src="${s.cover_image_url||defaultCover(s.id)}" style="width:36px;height:36px;border-radius:8px;object-fit:cover">`}</div>
+      <div class="spot-result-icon">${`<img src="${safeUrl(s.cover_image_url||defaultCover(s.id))}" style="width:36px;height:36px;border-radius:8px;object-fit:cover">`}</div>
       <div><div class="spot-result-name">${escapeHtml(s.name)}</div><div class="spot-result-loc">${s.member_count||'?'} members</div></div>
     </div>
   `).join('');
 }
-window.joinExistingSpot=async id=>{localStorage.setItem('swellnotes_onboarded','1');const spot=await(await fetch(`${API_BASE}/api/spots/${id}`,{headers:currentUser?{'X-Nostr-Pubkey':currentUser.pubkey}:{}})).json();selectSpot(spot);};
+window.joinExistingSpot=async id=>{localStorage.setItem('swellnotes_onboarded','1');const spot=await(await fetch(`${API_BASE}/api/spots/${id}`,{headers:currentUser?{'X-Nostr-Pubkey':currentUser.pubkey}:{}})).json();landInSpot(spot);};
+// Joining/selecting a spot should have a payoff: land in that spot's Reports feed,
+// not silently stay on Search. `welcome` also shows a one-time banner atop the feed.
+let justJoinedSpot=null;
+function landInSpot(spot,{welcome=false}={}){
+  if(!spot||spot.error)return;
+  selectSpot(spot);
+  if(welcome)justJoinedSpot={name:spot.name,members:spot.member_count};
+  document.querySelector('.nav-btn[data-view="history"]')?.click();
+  window.scrollTo(0,0);
+}
+window.dismissWelcome=()=>{justJoinedSpot=null;document.getElementById('welcome-banner')?.remove();};
 // Let users dismiss the "Select a spot" overlay, they can pick one later from Search.
 window.dismissOnboard=()=>{localStorage.setItem('swellnotes_onboarded','1');document.getElementById('onboard-overlay')?.remove();};
 // Jump to the Search tab where you find / create / select a spot (used by empty-state links).
@@ -425,7 +464,7 @@ $('#spot-settings-btn').addEventListener('click',()=>{
   $('#crew-settings-name').value=currentSpot.name||'';
   $('#crew-settings-description').value=currentSpot.description||'';
   $('#crew-settings-private').checked=!!currentSpot.is_private;
-  if(currentSpot.cover_image_url){$('#crew-cover-preview').innerHTML=`<img src="${currentSpot.cover_image_url}">`;}
+  if(currentSpot.cover_image_url){$('#crew-cover-preview').innerHTML=`<img src="${safeUrl(currentSpot.cover_image_url)}">`;}
   else{$('#crew-cover-preview').innerHTML='<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg><span>Change Cover Photo</span>';}
   crewCoverFile=null;
   $('#crew-settings-modal').classList.remove('hidden');
@@ -509,9 +548,9 @@ async function fetchProfile(pk){
   // Fallback: fetch from relay directly
   try{/* Relay from bundle */const relay=await Relay.connect(RELAYS[0]);return new Promise(r=>{let ev=null;relay.subscribe([{kinds:[0],authors:[pk],limit:1}],{onevent:e=>{if(!ev||e.created_at>ev.created_at)ev=e;},oneose:()=>{relay.close();try{r(ev?JSON.parse(ev.content):null);}catch{r(null);}}});setTimeout(()=>{try{relay.close();}catch{}r(null);},5000);});}catch{return null;}
 }
-async function publishProfile(name,pic,nip05){if(!currentUser?.secretKey)return;try{/* finalizeEvent from bundle *//* Relay from bundle *//* hexToBytes from bundle */const ex=await fetchProfile(currentUser.pubkey)||{};const p={...ex,name};if(pic)p.picture=pic;if(nip05)p.nip05=nip05;const ev=finalizeEvent({kind:0,created_at:Math.floor(Date.now()/1000),tags:[],content:JSON.stringify(p)},hexToBytes(currentUser.secretKey));for(const u of RELAYS){try{const r=await Relay.connect(u);await r.publish(ev);r.close();}catch{}}}catch{}}
+async function publishProfile(name,pic,nip05){if(!currentUser?.secretKey)return;try{/* finalizeEvent from bundle *//* Relay from bundle *//* hexToBytes from bundle */const ex=await fetchProfile(currentUser.pubkey);if(currentUser.source==='nsec'&&!ex)return;const p={...(ex||{}),name};if(pic)p.picture=pic;if(nip05)p.nip05=nip05;const ev=finalizeEvent({kind:0,created_at:Math.floor(Date.now()/1000),tags:[],content:JSON.stringify(p)},hexToBytes(currentUser.secretKey));for(const u of RELAYS){try{const r=await Relay.connect(u);await r.publish(ev);r.close();}catch{}}}catch{}}
 async function fetchKind3(pk){try{/* Relay from bundle */const relay=await Relay.connect(RELAYS[0]);return new Promise(r=>{let ev=null;relay.subscribe([{kinds:[3],authors:[pk],limit:1}],{onevent:e=>{if(!ev||e.created_at>ev.created_at)ev=e;},oneose:()=>{relay.close();r(ev);}});setTimeout(()=>{try{relay.close();}catch{}r(ev);},5000);});}catch{return null;}}
-async function publishKind3(pks){if(!currentUser?.secretKey)return;try{/* finalizeEvent from bundle *//* Relay from bundle *//* hexToBytes from bundle */const ev=finalizeEvent({kind:3,created_at:Math.floor(Date.now()/1000),tags:pks.map(p=>['p',p]),content:''},hexToBytes(currentUser.secretKey));for(const u of RELAYS){try{const r=await Relay.connect(u);await r.publish(ev);r.close();}catch{}}}catch{}}
+async function publishKind3(pks){if(!currentUser?.secretKey||currentUser.source==='nsec')return;try{/* imported keys: never broadcast a follow list (would wipe their real kind-3) *//* finalizeEvent from bundle *//* Relay from bundle *//* hexToBytes from bundle */const ev=finalizeEvent({kind:3,created_at:Math.floor(Date.now()/1000),tags:pks.map(p=>['p',p]),content:''},hexToBytes(currentUser.secretKey));for(const u of RELAYS){try{const r=await Relay.connect(u);await r.publish(ev);r.close();}catch{}}}catch{}}
 async function syncFollowsFromRelay(){if(!currentUser)return;const ev=await fetchKind3(currentUser.pubkey);if(!ev)return;const pks=ev.tags.filter(t=>t[0]==='p').map(t=>t[1]);followingSet=new Set(pks);for(const pk of pks){try{await fetch(`${API_BASE}/api/follows/${pk}`,{method:'POST',headers:{'X-Nostr-Pubkey':currentUser.pubkey}});}catch{}}}
 
 // Auto-follow the default Swellnotes npub for new signups (in-app + Nostr kind 3)
@@ -562,7 +601,7 @@ $('#create-form').addEventListener('submit',async e=>{
   currentUser={pubkey,secretKey,display_name:name,avatar_path:absAvatarUrl(data.avatar_path)||avatarUrl};
   saveUser(currentUser);
   markFreshAccount(); // new account → show first-run tab hints
-  await publishProfile(name,avatarUrl||absAvatarUrl(data.avatar_path),data.nip05_full);
+  publishProfile(name,avatarUrl||absAvatarUrl(data.avatar_path),data.nip05_full).catch(()=>{}); // fire-and-forget: relay publish must not block login
   autoFollowDefault();
   updateAuthUI();$('#create-modal').classList.add('hidden');avatarFile=null;toast(`Welcome, ${name}!`);maybeStartTour(700);
   }catch{toast('Failed','error');}
@@ -847,7 +886,7 @@ $('#surfer-crew-select')?.addEventListener('input',e=>{
     results.innerHTML=spots.map(s=>{
       const name=escapeHtml(s.name||s.region||'Unknown');
       return`<div class="spot-result" data-crew-id="${s.id}">
-        <div class="spot-result-icon">${`<img src="${s.cover_image_url||defaultCover(s.id)}" style="width:36px;height:36px;border-radius:8px;object-fit:cover">`}</div>
+        <div class="spot-result-icon">${`<img src="${safeUrl(s.cover_image_url||defaultCover(s.id))}" style="width:36px;height:36px;border-radius:8px;object-fit:cover">`}</div>
         <div><div class="spot-result-name">${name}</div><div class="spot-result-loc">${s.member_count} member${s.member_count!==1?'s':''}</div></div>
       </div>`;
     }).join('');
@@ -889,7 +928,7 @@ async function loadSurfers(){
   list.innerHTML=users.map(u=>{const me=currentUser?.pubkey===u.pubkey;const fol=followingSet.has(u.pubkey);let btn;if(me)btn='<button class="btn-follow is-you" disabled>You</button>';else if(!currentUser)btn='';else if(fol)btn=`<button class="btn-follow following" onclick="toggleFollow('${u.pubkey}')">Following</button>`;else btn=`<button class="btn-follow" onclick="toggleFollow('${u.pubkey}')">Follow</button>`;
   const isAdmin=currentSpot?.members?.some(m=>m.pubkey===currentUser?.pubkey&&m.role==='admin');
   const adminBtn=(!me&&isAdmin&&u.role!=='admin'&&currentSpot)?`<button class="btn-outline btn-xs" style="margin-left:0.3rem" onclick="event.stopPropagation();makeAdmin('${currentSpot.id}','${u.pubkey}')">Make Admin</button>`:'';
-  return`<div class="surfer-card"><a href="${primalLink(u.pubkey)}" target="_blank" rel="noopener" class="surfer-profile-link" onclick="event.stopPropagation()">${u.avatar_path?`<img src="${u.avatar_path}" class="surfer-av${ringCls(u)}">`:`<div class="surfer-av-placeholder${ringCls(u)}">${(u.display_name||'?')[0].toUpperCase()}</div>`}</a><div class="surfer-info"><a href="${primalLink(u.pubkey)}" target="_blank" rel="noopener" class="surfer-name-link">${escapeHtml(u.display_name||'Anon')}</a></div><div class="surfer-meta">${u.session_count} session${u.session_count!==1?'s':''}${u.total_barrels>0?` · 🤿 ${u.total_barrels} tube${u.total_barrels>1?'s':''}`:''}${u.role==='admin'?' · admin':''}</div></div><div style="display:flex;align-items:center">${btn}${adminBtn}</div></div>`;}).join('');}catch{}}
+  return`<div class="surfer-card"><a href="${primalLink(u.pubkey)}" target="_blank" rel="noopener" class="surfer-profile-link" onclick="event.stopPropagation()">${u.avatar_path?`<img src="${safeUrl(u.avatar_path)}" class="surfer-av${ringCls(u)}" onerror="__avErr(this,'${avInitial(u.display_name)}')">`:`<div class="surfer-av-placeholder${ringCls(u)}">${avInitial(u.display_name)}</div>`}</a><div class="surfer-info"><a href="${primalLink(u.pubkey)}" target="_blank" rel="noopener" class="surfer-name-link">${escapeHtml(u.display_name||'Anon')}</a><div class="surfer-meta">${u.session_count} session${u.session_count!==1?'s':''}${u.total_barrels>0?` · 🤿 ${u.total_barrels} tube${u.total_barrels>1?'s':''}`:''}${u.role==='admin'?' · admin':''}</div></div><div class="surfer-actions">${btn}${adminBtn}</div></div>`;}).join('');}catch{}}
 
 // ===== CONDITIONS =====
 $('#session_date').value=new Date().toISOString().split('T')[0];
@@ -975,7 +1014,7 @@ $('#session-form').addEventListener('submit',async e=>{
 // ===== SHARE =====
 let pendingShareData=null;
 function showShareModal(sd){pendingShareData=sd;const c=sd.conditions;const sw=(c.swells||[]).map(s=>`${s.height_ft}ft ${s.period_s}s ${s.direction_compass}`).join(', ');const sh=c.surf_height_min_ft&&c.surf_height_max_ft?`${c.surf_height_min_ft}-${c.surf_height_max_ft}ft`:'';const emoji=sd.rating>=8?'🔥':sd.rating>=6?'🤙':sd.rating>=4?'👌':'😐';
-let html=`<strong>${sd.spot_name} ${sd.session_type==='observed'?'check':'session'}</strong>`;if(sh)html+=` · ${sh}`;html+=` · ${sd.rating}/10 ${emoji}`;if(sw)html+=`<div class="share-stats">Swell: ${sw}</div>`;if(sd.video_url)html+=`<video src="${sd.video_url}" controls muted preload="metadata"></video>`;
+let html=`<strong>${sd.spot_name} ${sd.session_type==='observed'?'check':'session'}</strong>`;if(sh)html+=` · ${sh}`;html+=` · ${sd.rating}/10 ${emoji}`;if(sw)html+=`<div class="share-stats">Swell: ${sw}</div>`;if(sd.video_url)html+=`<video src="${safeUrl(sd.video_url)}" controls muted preload="metadata"></video>`;
 $('#share-preview').innerHTML=html;$('#share-text').value=sd.notes||`${sd.spot_name} was ${sd.rating>=8?'firing':sd.rating>=6?'fun':sd.rating>=4?'decent':'flat'} today! ${sh} ${emoji}`;$('#share-modal').classList.remove('hidden');}
 function closeShareAndGoToFeed(){$('#share-modal').classList.add('hidden');$$('.nav-btn').forEach(x=>x.classList.remove('active'));$$('.nav-btn[data-view="history"]').forEach(x=>x.classList.add('active'));$$('.view').forEach(v=>v.classList.remove('active'));$('#view-history').classList.add('active');loadFeed();}
 function getShareText(){
@@ -1032,10 +1071,11 @@ function renderReportFeed(){
     for(const s of g.sessions)items.push({...s,__spot:g.spot.name});
   }
   items.sort((a,b)=>(b.session_date||'').localeCompare(a.session_date||'')||((b.created_at||0)-(a.created_at||0)));
+  const welcome=justJoinedSpot?`<div class="welcome-banner" id="welcome-banner"><span class="wb-em">🤙</span><div class="wb-body"><b>Welcome to ${escapeHtml(justJoinedSpot.name)}</b><span>${justJoinedSpot.members?justJoinedSpot.members+' surfer'+(justJoinedSpot.members!==1?'s':'')+' · ':''}Tap + to post your first report</span></div><button class="wb-close" onclick="window.dismissWelcome()" aria-label="Dismiss">&times;</button></div>`:'';
   if(!items.length){feedEl.innerHTML=(!mySpots||!mySpots.length)
     ?'<div class="empty-state"><p>No spots yet.</p><p class="muted">Select a spot to start logging and see reports.</p><button class="btn-select-spot" onclick="window.goToSpotPicker()">Select a spot</button></div>'
-    :'<div class="empty-state"><p>No reports yet.</p><p class="muted">Tap the + button to log one.</p></div>';return;}
-  feedEl.innerHTML=items.map(s=>renderSessionCard(s,multi&&sel==='__all')).join('');
+    :welcome+'<div class="empty-state"><p>No reports yet.</p><p class="muted">Tap the + button to log one.</p></div>';return;}
+  feedEl.innerHTML=welcome+items.map(s=>renderSessionCard(s,multi&&sel==='__all')).join('');
   feedEl.querySelectorAll('.pcard').forEach(c=>c.addEventListener('click',()=>openSession(c.dataset.id)));
 }
 $('#feed-filter')?.addEventListener('change',renderReportFeed);
@@ -1094,6 +1134,7 @@ function renderForecastDay(){
   const tabs=[0,1,2].map(d=>{const w=fcDayWindow(off,d);const lbl=d===0?'Today':FC_DOW[new Date((w.start+off*3600)*1000).getUTCDay()];return `<button class="fc-day ${d===fcDay?'on':''}" onclick="fcSelectDay(${d})">${lbl}</button>`;}).join('');
   const wave=f.wave.filter(w=>w.t>=start&&w.t<end&&w.max!=null);
   const en=f.wave.filter(w=>w.t>=start&&w.t<end&&w.power!=null);
+  if(!wave.length){el.innerHTML=`<div class="fc-days">${tabs}</div><div class="empty-state"><p>No forecast data for this day yet.</p><p class="muted">Check back soon, forecasts refresh every couple of hours.</p></div>`;fcCur=null;return;}
   const maxSurf=Math.max(1,...wave.map(w=>w.max));
   const bars=wave.map(w=>{const pct=Math.max(6,Math.round((w.max/maxSurf)*100));const sw=(w.swells||[])[0];const swHTML=sw?`<span class="fc-sw"><span class="fc-sw-arrow" style="transform:rotate(${Math.round(sw.dir+180)}deg)">↑</span>${sw.p}s</span>`:'<span class="fc-sw">-</span>';return`<div class="fc-col"><div class="fc-track"><div class="fc-bar" style="height:${pct}%"></div></div><div class="fc-num">${w.min!=null?w.min+'-':''}${w.max}</div>${swHTML}<div class="fc-time">${fcHourLabel(fcLocalHour(w.t,off))}</div></div>`;}).join('');
   const axis=`<div class="fc-axis">${[start,start+21600,start+43200,start+64800,end-1].map(t=>`<span>${fcHourLabel(fcLocalHour(t,off))}</span>`).join('')}</div>`;
@@ -1124,7 +1165,7 @@ function renderForecastDay(){
   fcScrubUpdate(isToday?nowU:start+12*3600);
 }
 
-function smallAvatar(u,cls){return u.avatar_path?`<img src="${u.avatar_path}" class="${cls}" alt="">`:`<div class="${cls}-ph">${(u.display_name||'?')[0].toUpperCase()}</div>`;}
+function smallAvatar(u,cls){return u.avatar_path?`<img src="${safeUrl(u.avatar_path)}" class="${cls}" alt="" onerror="__avErr(this,'${avInitial(u.display_name)}')">`:`<div class="${cls}-ph">${avInitial(u.display_name)}</div>`;}
 function renderInlineComment(c){return`<div class="cmt">${smallAvatar(c,'cmt-av')}<div class="cmt-body"><b>${escapeHtml(c.display_name||'Anon')}</b>${escapeHtml(c.body)}</div></div>`;}
 function renderSessionCard(s,showSpot){
   const d=new Date(s.session_date+'T12:00:00');
@@ -1133,19 +1174,19 @@ function renderSessionCard(s,showSpot){
   if(s.surf_height_min_ft!=null)tags.push(`<span class="tag tag-height">${s.surf_height_min_ft}-${s.surf_height_max_ft}ft</span>`);
   if(s.session_type==='surfed')tags.push('<span class="tag tag-shape">surfed</span>');
   else if(s.session_type==='observed')tags.push('<span class="tag tag-observed">observed</span>');
-  if(s.wave_shape)tags.push(`<span class="tag tag-shape">${s.wave_shape}</span>`);
+  if(s.wave_shape)s.wave_shape.split(',').filter(Boolean).forEach(sh=>tags.push(`<span class="tag tag-shape">${escapeHtml(sh.trim())}</span>`));
   if(s.barrels>0)tags.push(`<span class="tag tag-barrel">🤿 ${s.barrels} tube${s.barrels>1?'s':''}</span>`);
   if(s.voice_memo_path)tags.push('<span class="tag tag-voice">🎙</span>');
   const capText=(s.notes||s.voice_transcript||'').trim();
   const cap=capText?`<div class="pcard-caption">${escapeHtml(capText)}</div>`:'';
-  const av=s.avatar_path?`<img src="${s.avatar_path}" class="pcard-av${ringCls(s)}" alt="">`:`<div class="pcard-av-ph${ringCls(s)}">${(s.display_name||'?')[0].toUpperCase()}</div>`;
+  const av=s.avatar_path?`<img src="${safeUrl(s.avatar_path)}" class="pcard-av${ringCls(s)}" alt="" onerror="__avErr(this,'${avInitial(s.display_name)}')">`:`<div class="pcard-av-ph${ringCls(s)}">${avInitial(s.display_name)}</div>`;
   const spotChip=showSpot&&s.__spot?`<span class="pcard-spot">${escapeHtml(s.__spot)}</span>`:'';
   const imgs=(s.photos&&s.photos.length)?s.photos:(s.photo_path?[s.photo_path]:[]);
   let media='';
   if(s.video_path)media=`<div class="pcard-media" onclick="event.stopPropagation()"><video src="${s.video_path}#t=0.1" preload="metadata" muted playsinline onloadedmetadata="snVideoMeta(this)"></video><button class="pcard-play" onclick="snPlayVideo(this)" aria-label="Play"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></button></div>`;
-  else if(imgs.length===1)media=`<div class="pcard-media"><img src="${imgs[0]}" alt="" onload="snImgMeta(this)"></div>`;
-  else if(imgs.length>1)media=`<div class="pcard-gallery g${imgs.length}">${imgs.map(p=>`<img src="${p}" alt="">`).join('')}</div>`;
-  const voice=s.voice_memo_path?`<audio class="pcard-audio" controls preload="none" src="${s.voice_memo_path}" onclick="event.stopPropagation()"></audio>`:'';
+  else if(imgs.length===1)media=`<div class="pcard-media"><img src="${safeUrl(imgs[0])}" alt="" onload="snImgMeta(this)"></div>`;
+  else if(imgs.length>1)media=`<div class="pcard-gallery g${imgs.length}">${imgs.map(p=>`<img src="${safeUrl(p)}" alt="">`).join('')}</div>`;
+  const voice=s.voice_memo_path?`<audio class="pcard-audio" controls preload="none" src="${safeUrl(s.voice_memo_path)}" onclick="event.stopPropagation()"></audio>`:'';
   const score=s.rating?`<div class="rbadge ${getRatingClass(s.rating)}">${fmtRating(s.rating)}</div>`:'<div class="rbadge">-</div>';
   const cmts=(s.comments||[]).map(renderInlineComment).join('');
   const more=(s.comment_count||0)>(s.comments||[]).length?`<button class="cmt-more" onclick="event.stopPropagation();openSession(${s.id})">View all ${s.comment_count} comments</button>`:'';
@@ -1206,7 +1247,7 @@ async function loadBrowseSpots(q=''){
       else if(isFollowing)btn=`<button class="btn-follow following" onclick="toggleSpotFollow('${s.id}')">Following</button>`;
       else btn=`<button class="btn-follow" onclick="toggleSpotFollow('${s.id}')">Follow</button>`;
       return`<div class="browse-spot-card">
-        ${s.cover_image_url?`<img src="${s.cover_image_url}" class="browse-spot-img" alt="">`:`<img src="${defaultCover(s.id)}" class="browse-spot-img" alt="">`}
+        ${s.cover_image_url?`<img src="${safeUrl(s.cover_image_url)}" class="browse-spot-img" alt="">`:`<img src="${defaultCover(s.id)}" class="browse-spot-img" alt="">`}
         <div class="browse-spot-info"><div class="browse-spot-name">${displayName}</div><div class="browse-spot-meta">${s.member_count} member${s.member_count!==1?'s':''}${s.is_private?' · Private':' · Public'}${s.recent_sessions>0?' · Active':''}</div></div>
         ${btn}
       </div>`;
@@ -1230,7 +1271,7 @@ async function loadSessions(){return loadFeed();}
 async function openSession(id){try{const{session:s,comments}=await(await fetch(`${API_BASE}/api/sessions/${id}`)).json();const d=new Date(s.session_date+'T12:00:00');const ds=d.toLocaleDateString('en',{weekday:'long',year:'numeric',month:'long',day:'numeric'});const sw=JSON.parse(s.swells_json||'[]');const swH=sw.map((x,i)=>`<div class="detail-block"><h4>${i?'Secondary':'Primary'} Swell</h4><p>${x.height_ft}ft ${x.period_s}s ${x.direction_compass} ${x.direction_deg}° <small style="opacity:.5">(${x.impact}%)</small></p></div>`).join('');
 // Check if user can delete (own session or spot admin)
 const canDelete=currentUser&&(s.pubkey===currentUser.pubkey||(currentSpot?.members?.some(m=>m.pubkey===currentUser.pubkey&&m.role==='admin')));
-$('#session-detail').innerHTML=`<h2>${ds}</h2><p class="muted"><a href="${primalLink(s.pubkey)}" target="_blank" rel="noopener" class="user-link-inline">${escapeHtml(s.display_name||'Anon')}</a> · ${formatTOD(s.time_of_day)}</p><div style="margin:.75rem 0"><div class="rbadge ${getRatingClass(s.rating)}" style="width:52px;height:52px;font-size:1.2rem;display:inline-flex">${fmtRating(s.rating)}/10</div></div><div class="detail-grid"><div class="detail-block"><h4>Surf</h4><p>${s.surf_height_min_ft||'?'}-${s.surf_height_max_ft||'?'} ft</p></div>${swH}<div class="detail-block"><h4>Wind</h4><p>${s.wind_speed_mph||'?'} mph ${s.wind_type?'('+s.wind_type+')':''}</p></div><div class="detail-block"><h4>Tide</h4><p>${s.tide_height_ft||'?'} ft</p></div>${s.wave_shape?`<div class="detail-block"><h4>Shape</h4><p style="text-transform:capitalize">${s.wave_shape}</p></div>`:''}${s.barrels>0?`<div class="detail-block"><h4>Tubes</h4><p>🤿 ${s.barrels}</p></div>`:''}</div>${((s.photos&&s.photos.length)?s.photos:(s.photo_path?[s.photo_path]:[])).map(p=>`<div class="detail-photo"><img src="${p}" alt=""></div>`).join('')}${s.video_path?`<div class="detail-video"><video controls src="${s.video_path}" preload="metadata"></video></div>`:''}${s.voice_memo_path?`<div class="detail-voice"><audio controls src="${s.voice_memo_path}" style="width:100%;height:36px"></audio>${s.voice_transcript?`<div class="detail-transcript">"${escapeHtml(s.voice_transcript)}"</div>`:''}</div>`:''}${s.notes?`<div class="detail-notes">${escapeHtml(s.notes)}</div>`:''}${canDelete?`<button class="btn-delete-session" onclick="deleteSession(${s.id})">Delete Log</button>`:''}${currentUser&&s.pubkey!==currentUser.pubkey?`<div class="detail-actions"><button class="btn-report" onclick="reportContent('session','${s.id}')">Report</button><button class="btn-report" onclick="blockUser('${s.pubkey}')">Block User</button></div>`:''}`;
+$('#session-detail').innerHTML=`<h2>${ds}</h2><p class="muted"><a href="${primalLink(s.pubkey)}" target="_blank" rel="noopener" class="user-link-inline">${escapeHtml(s.display_name||'Anon')}</a> · ${formatTOD(s.time_of_day)}</p><div style="margin:.75rem 0"><div class="rbadge ${getRatingClass(s.rating)}" style="width:52px;height:52px;font-size:1.2rem;display:inline-flex">${fmtRating(s.rating)}/10</div></div><div class="detail-grid"><div class="detail-block"><h4>Surf</h4><p>${s.surf_height_min_ft||'?'}-${s.surf_height_max_ft||'?'} ft</p></div>${swH}<div class="detail-block"><h4>Wind</h4><p>${s.wind_speed_mph||'?'} mph ${s.wind_type?'('+s.wind_type+')':''}</p></div><div class="detail-block"><h4>Tide</h4><p>${s.tide_height_ft||'?'} ft</p></div>${s.wave_shape?`<div class="detail-block"><h4>Shape</h4><p style="text-transform:capitalize">${escapeHtml(s.wave_shape.split(',').map(x=>x.trim()).join(', '))}</p></div>`:''}${s.barrels>0?`<div class="detail-block"><h4>Tubes</h4><p>🤿 ${s.barrels}</p></div>`:''}</div>${((s.photos&&s.photos.length)?s.photos:(s.photo_path?[s.photo_path]:[])).map(p=>`<div class="detail-photo"><img src="${safeUrl(p)}" alt=""></div>`).join('')}${s.video_path?`<div class="detail-video"><video controls src="${safeUrl(s.video_path)}" preload="metadata"></video></div>`:''}${s.voice_memo_path?`<div class="detail-voice"><audio controls src="${safeUrl(s.voice_memo_path)}" style="width:100%;height:36px"></audio>${s.voice_transcript?`<div class="detail-transcript">"${escapeHtml(s.voice_transcript)}"</div>`:''}</div>`:''}${s.notes?`<div class="detail-notes">${escapeHtml(s.notes)}</div>`:''}${canDelete?`<button class="btn-delete-session" onclick="deleteSession(${s.id})">Delete Log</button>`:''}${currentUser&&s.pubkey!==currentUser.pubkey?`<div class="detail-actions"><button class="btn-report" onclick="reportContent('session','${s.id}')">Report</button><button class="btn-report" onclick="blockUser('${s.pubkey}')">Block User</button></div>`:''}`;
 $('#comments-list').innerHTML=comments.length?comments.map(c=>`<div class="comment"><div class="comment-meta"><a href="${primalLink(c.pubkey)}" target="_blank" rel="noopener" class="user-link-inline">${escapeHtml(c.display_name||'Anon')}</a> · ${new Date(c.created_at*1000).toLocaleDateString()}${currentUser&&c.pubkey!==currentUser.pubkey?` · <button class="btn-report-inline" onclick="event.stopPropagation();reportContent('comment','${c.id}')">Report</button>`:''}</div><div class="comment-body">${escapeHtml(c.body)}</div></div>`).join(''):'<p class="muted" style="font-size:.82rem">No comments yet</p>';
 $('#comment-form').onsubmit=async e=>{e.preventDefault();if(!currentUser)return;const b=$('#comment-body').value.trim();if(!b)return;await fetch(`${API_BASE}/api/sessions/${id}/comments`,{method:'POST',headers:{'Content-Type':'application/json','X-Nostr-Pubkey':currentUser.pubkey},body:JSON.stringify({body:b})});$('#comment-body').value='';openSession(id);};
 $('#session-modal').classList.remove('hidden');}catch{toast('Error','error');}}
@@ -1332,7 +1373,7 @@ async function showMembers(spotId,spotName){
       if(isMe)btn='<span class="muted" style="font-size:0.75rem">You</span>';
       else if(currentUser&&fol)btn=`<button class="btn-follow following" onclick="toggleFollow('${u.pubkey}');showMembers('${spotId}','${escapeHtml(spotName||'')}')">Following</button>`;
       else if(currentUser)btn=`<button class="btn-follow" onclick="toggleFollow('${u.pubkey}');showMembers('${spotId}','${escapeHtml(spotName||'')}')">Follow</button>`;
-      return`<div class="surfer-card"><a href="${primalLink(u.pubkey)}" target="_blank" rel="noopener" class="surfer-profile-link" onclick="event.stopPropagation()">${u.avatar_path?`<img src="${u.avatar_path}" class="surfer-av${ringCls(u)}">`:`<div class="surfer-av-placeholder${ringCls(u)}">${(u.display_name||'?')[0].toUpperCase()}</div>`}</a><div class="surfer-info"><a href="${primalLink(u.pubkey)}" target="_blank" rel="noopener" class="surfer-name-link">${escapeHtml(u.display_name||'Anon')}</a><div class="surfer-meta">${u.session_count||0} session${u.session_count!==1?'s':''}${u.total_barrels>0?` · 🤿 ${u.total_barrels}`:''}</div></div><div>${btn}</div></div>`;
+      return`<div class="surfer-card"><a href="${primalLink(u.pubkey)}" target="_blank" rel="noopener" class="surfer-profile-link" onclick="event.stopPropagation()">${u.avatar_path?`<img src="${safeUrl(u.avatar_path)}" class="surfer-av${ringCls(u)}" onerror="__avErr(this,'${avInitial(u.display_name)}')">`:`<div class="surfer-av-placeholder${ringCls(u)}">${avInitial(u.display_name)}</div>`}</a><div class="surfer-info"><a href="${primalLink(u.pubkey)}" target="_blank" rel="noopener" class="surfer-name-link">${escapeHtml(u.display_name||'Anon')}</a><div class="surfer-meta">${u.session_count||0} session${u.session_count!==1?'s':''}${u.total_barrels>0?` · 🤿 ${u.total_barrels}`:''}</div></div><div class="surfer-actions">${btn}</div></div>`;
     }).join('');
   }catch{$('#members-modal-list').innerHTML='<p class="muted">Error loading members.</p>';}
 }
@@ -1505,12 +1546,12 @@ async function loadPipeline(q=''){
       overlay.innerHTML=`<div class="card" style="position:relative">
         <button class="onboard-close" onclick="window.dismissOnboard()" aria-label="Close">&times;</button>
         <h2>Select a spot</h2>
-        <p class="muted">Search for any surf break worldwide to create a new crew.</p>
+        <p class="muted">Search any surf break worldwide to pick your spot.</p>
         <div class="field" style="margin:0.75rem 0">
           <input type="text" id="onboard-spot-search" placeholder="Search surf breaks... (e.g. Pipeline, Uluwatu)" autocomplete="off">
         </div>
         <div id="onboard-spot-results" class="spot-results"></div>
-        <button class="link-btn" style="margin-top:0.75rem;font-size:0.85rem;color:var(--text-muted)" onclick="window.revealCrews()">Explore existing crews</button>
+        <button class="link-btn" style="margin-top:0.75rem;font-size:0.85rem;color:var(--text-muted)" onclick="window.revealCrews()">Explore existing spots</button>
       </div>`;
       document.body.appendChild(overlay);
       const input=overlay.querySelector('#onboard-spot-search');
@@ -1528,7 +1569,7 @@ async function loadPipeline(q=''){
   }catch{list.innerHTML='<div class="empty-state"><p>Error loading crews.</p></div>';}
 }
 
-function packAvatar(u,cls){return u.avatar_path?`<img src="${u.avatar_path}" class="${cls}" title="${escapeHtml(u.display_name||'')}" alt="">`:`<div class="${cls}-ph" title="${escapeHtml(u.display_name||'')}">${(u.display_name||'?')[0].toUpperCase()}</div>`;}
+function packAvatar(u,cls){return u.avatar_path?`<img src="${safeUrl(u.avatar_path)}" class="${cls}" title="${escapeHtml(u.display_name||'')}" alt="">`:`<div class="${cls}-ph" title="${escapeHtml(u.display_name||'')}">${(u.display_name||'?')[0].toUpperCase()}</div>`;}
 function renderPipelineCard(s){
   const name=escapeHtml(s.name||s.region||'Unknown');
   const cover=s.cover_image_url||defaultCover(s.id);
@@ -1543,7 +1584,7 @@ function renderPipelineCard(s){
   else if(s.has_pending_request)actionBtn='<button class="pack-btn" disabled>Requested</button>';
   else if(currentUser)actionBtn=`<button class="pack-btn pack-btn-join" onclick="event.stopPropagation();openJoinRequest('${s.id}','${name}')">Request</button>`;
   return`<div class="pack-card" onclick="${s.is_member?`joinExistingSpot('${s.id}')`:''}">
-    <div class="pack-cover-wrap"><img src="${cover}" class="pack-cover" alt="">${active}</div>
+    <div class="pack-cover-wrap"><img src="${safeUrl(cover)}" class="pack-cover" alt="">${active}</div>
     <div class="pack-body">
       <div class="pack-head"><h3 class="pack-title">${name}</h3>${actionBtn}</div>
       ${creator}
@@ -1585,7 +1626,7 @@ window.joinPublicCrew=async id=>{
   if(!currentUser)return toast('Log in first','error');
   try{
     const res=await fetch(`${API_BASE}/api/spots/${id}/join`,{method:'POST',headers:{'X-Nostr-Pubkey':currentUser.pubkey}});
-    if(res.ok){localStorage.setItem('swellnotes_onboarded','1');toast('Joined!');await loadMySpots();loadBrowseSpots();const spot=await(await fetch(`${API_BASE}/api/spots/${id}`)).json();selectSpot(spot);}
+    if(res.ok){localStorage.setItem('swellnotes_onboarded','1');await loadMySpots();loadBrowseSpots();const spot=await(await fetch(`${API_BASE}/api/spots/${id}`)).json();landInSpot(spot,{welcome:true});toast(`Joined ${spot?.name||'spot'} 🤙`);}
     else{const err=await res.json();toast(err.error||'Failed','error');}
   }catch{toast('Failed to join','error');}
 };
@@ -1762,7 +1803,7 @@ function openProfileSetup(account){
         const avatarUrl=absAvatarUrl(data.avatar_path)||abUrl||null;
         currentUser={pubkey:account.pubkey,secretKey:account.secretKey,display_name:name,avatar_path:avatarUrl};
         saveUser(currentUser);markFreshAccount();autoFollowDefault();
-        await publishProfile(name,avatarUrl,data.nip05_full);
+        publishProfile(name,avatarUrl,data.nip05_full).catch(()=>{}); // fire-and-forget: relay publish must not block signup
         updateAuthUI();closeProfileModal();$('.landing-page')?.classList.add('hidden');$('#login-modal')?.classList.add('hidden');
         toast(`Welcome, ${name}!`);maybeStartTour(700);
       }catch(e){profileError(e.message||'Failed');}
@@ -1786,7 +1827,7 @@ function openProfileEdit(){
         if(!res.ok)return profileError(data?.error==='name_taken'?(data.message||'That name is taken. Try another.'):(data?.error||'Failed'));
         const avatarUrl=absAvatarUrl(data.avatar_path)||abUrl||currentUser.avatar_path||null;
         currentUser.display_name=name;currentUser.avatar_path=avatarUrl;saveUser(currentUser);
-        await publishProfile(name,avatarUrl,null);
+        publishProfile(name,avatarUrl,null).catch(()=>{}); // fire-and-forget: relay publish must not block saving
         $('#settings-name').textContent=name;
         if(avatarUrl){$('#settings-avatar').src=avatarUrl;$('#settings-avatar').style.display='';}
         if($('#user-avatar')&&avatarUrl)$('#user-avatar').src=avatarUrl;
@@ -1871,8 +1912,8 @@ $('#nostr-submit')?.addEventListener('click',async()=>{
 // ===== GUIDED WALKTHROUGH (spotlight tour over the real UI) =====
 const WALK_KEY='swellnotes_tour_v1';
 const TOUR_STEPS=[
-  {view:'pipeline', target:'#pipeline-spot-search', demo:'Pipeline', title:'Start a crew',
-   text:'Search any surf break on earth and start a crew, a private feed for everyone who surfs that spot.'},
+  {view:'pipeline', target:'#pipeline-spot-search', demo:'Pipeline', title:'Pick your spot',
+   text:'Search any surf break on earth. Every spot gets a private feed for its crew, the surfers who ride it.'},
   {view:'history', target:'#report-fab', fallback:'.nav-btn[data-view="history"]', title:'File a report',
    text:'After a surf, tap ＋ to log it. Swell, wind and tide for that moment are saved automatically.'},
   {view:'analysis', target:'.nav-btn[data-view="analysis"]', title:'Read the swell',
@@ -1973,9 +2014,16 @@ window.startWalkthrough=startTour; // replay hook
 
 // ===== INIT =====
 const saved=localStorage.getItem('swellnotes_user');if(saved){try{currentUser=JSON.parse(saved);}catch{localStorage.removeItem('swellnotes_user');}}
+// nsec device-only key: migrate a legacy localStorage secret into the Keychain, or
+// re-attach the secret from the Keychain to the secret-free stub (async; only needed to sign).
+if(currentUser?.source==='nsec'&&window.Capacitor?.Plugins?.Keychain){
+  if(currentUser.secretKey){saveUser(currentUser);} // one-time migration off localStorage
+  else{window.Capacitor.Plugins.Keychain.load({key:KEYCHAIN_USER_KEY}).then(r=>{if(r?.value){try{const full=JSON.parse(r.value);if(full.secretKey&&currentUser)currentUser.secretKey=full.secretKey;}catch{}}}).catch(()=>{});}
+}
 initTabHints();
-// Restore from iCloud Keychain if localStorage is empty (e.g. fresh install on a new Apple device)
-if(!currentUser&&window.Capacitor?.Plugins?.Keychain){window.Capacitor.Plugins.Keychain.load({key:KEYCHAIN_USER_KEY}).then(r=>{if(r?.value){localStorage.setItem(KEYCHAIN_USER_KEY,r.value);location.reload();}}).catch(e=>console.warn('[Keychain] restore failed',e));}
+// Restore from Keychain if localStorage was cleared/evicted. For nsec, write back only the
+// secret-free stub so the secret never lands in localStorage (the secret is re-attached above).
+if(!currentUser&&window.Capacitor?.Plugins?.Keychain){window.Capacitor.Plugins.Keychain.load({key:KEYCHAIN_USER_KEY}).then(r=>{if(r?.value){let store=r.value;try{const u=JSON.parse(r.value);if(u.source==='nsec')store=JSON.stringify({pubkey:u.pubkey,display_name:u.display_name,avatar_path:u.avatar_path,source:'nsec'});}catch{}localStorage.setItem(KEYCHAIN_USER_KEY,store);location.reload();}}).catch(e=>console.warn('[Keychain] restore failed',e));}
 const savedSpot=localStorage.getItem('swellnotes_spot');if(savedSpot){try{currentSpot=JSON.parse(savedSpot);selectSpot(currentSpot);}catch{localStorage.removeItem('swellnotes_spot');}}
 // Heal stale spot cache: re-fetch from server with auth so missing fields (name, location, members, cover) populate
 if(currentSpot&&currentUser){fetch(`${API_BASE}/api/spots/${currentSpot.id}`,{headers:{'X-Nostr-Pubkey':currentUser.pubkey}}).then(r=>r.json()).then(fresh=>{if(fresh&&!fresh.error&&fresh.name)selectSpot(fresh);}).catch(()=>{});}

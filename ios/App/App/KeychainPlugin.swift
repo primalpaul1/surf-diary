@@ -22,6 +22,9 @@ class KeychainPlugin: CAPPlugin, CAPBridgedPlugin {
             call.reject("Missing key or value")
             return
         }
+        // Wisp-style device-only storage: hardware-encrypted, never synced to iCloud,
+        // excluded from device backups, and immune to WebView storage eviction.
+        let deviceOnly = call.getBool("deviceOnly") ?? false
         let baseQuery: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -35,8 +38,8 @@ class KeychainPlugin: CAPPlugin, CAPBridgedPlugin {
             kSecAttrService as String: service,
             kSecAttrAccount as String: key,
             kSecValueData as String: data,
-            kSecAttrSynchronizable as String: kCFBooleanTrue!,
-            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock,
+            kSecAttrSynchronizable as String: (deviceOnly ? kCFBooleanFalse! : kCFBooleanTrue!),
+            kSecAttrAccessible as String: (deviceOnly ? kSecAttrAccessibleWhenUnlockedThisDeviceOnly : kSecAttrAccessibleAfterFirstUnlock),
         ]
         let status = SecItemAdd(attrs as CFDictionary, nil)
         if status == errSecSuccess {
