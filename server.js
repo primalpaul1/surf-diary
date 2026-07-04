@@ -355,9 +355,16 @@ app.put('/api/spots/:id/join-requests/:requestId',requireAuth,async(req,res)=>{
 });
 
 // ===== INVITES =====
+// Lightweight QR generator (SVG) for the in-app invite sheet. Reuses the qrcode dep.
+app.get('/api/qr',async(req,res)=>{
+  const data=(req.query.data||'').toString().slice(0,600);
+  if(!data)return res.status(400).end();
+  try{const svg=await QRCode.toString(data,{type:'svg',margin:1,color:{dark:'#0a2240',light:'#ffffff'}});res.type('image/svg+xml').set('Cache-Control','public, max-age=86400').send(svg);}
+  catch(e){res.status(500).end();}
+});
 app.post('/api/spots/:id/invites',requireAuth,async(req,res)=>{
   const member=await db.get('SELECT role FROM spot_members WHERE spot_id=$1 AND pubkey=$2',[req.params.id,req.pubkey]);
-  if(!member||member.role!=='admin')return res.status(403).json({error:'Admin only'});
+  if(!member)return res.status(403).json({error:'Join this crew to invite others'});
   const id=genId(8);
   const maxUses=req.body.max_uses||null;
   const expiresAt=req.body.expires_hours?Math.floor(Date.now()/1000)+req.body.expires_hours*3600:null;
@@ -368,11 +375,11 @@ app.post('/api/spots/:id/invites',requireAuth,async(req,res)=>{
 });
 
 app.get('/api/invite/:code',async(req,res)=>{
-  const inv=await db.get('SELECT i.*,s.name as spot_name,s.cover_image_url,s.location_text,(SELECT COUNT(*)FROM spot_members WHERE spot_id=i.spot_id) as member_count FROM spot_invites i LEFT JOIN spots s ON i.spot_id=s.id WHERE i.id=$1',[req.params.code]);
+  const inv=await db.get('SELECT i.*,s.name as spot_name,s.cover_image_url,s.location_text,(SELECT COUNT(*)FROM spot_members WHERE spot_id=i.spot_id) as member_count,(SELECT display_name FROM users WHERE pubkey=i.created_by) as inviter_name,(SELECT avatar_path FROM users WHERE pubkey=i.created_by) as inviter_avatar FROM spot_invites i LEFT JOIN spots s ON i.spot_id=s.id WHERE i.id=$1',[req.params.code]);
   if(!inv)return res.status(404).json({error:'Invalid invite'});
   if(inv.expires_at&&inv.expires_at<Math.floor(Date.now()/1000))return res.status(410).json({error:'Invite expired'});
   if(inv.max_uses&&inv.use_count>=inv.max_uses)return res.status(410).json({error:'Invite used up'});
-  res.json({spot_id:inv.spot_id,spot_name:inv.spot_name,cover_image_url:inv.cover_image_url,location_text:inv.location_text,member_count:inv.member_count});
+  res.json({spot_id:inv.spot_id,spot_name:inv.spot_name,cover_image_url:inv.cover_image_url,location_text:inv.location_text,member_count:inv.member_count,inviter_name:inv.inviter_name,inviter_avatar:inv.inviter_avatar});
 });
 
 app.post('/api/invite/:code/claim',requireAuth,async(req,res)=>{
@@ -807,6 +814,10 @@ app.get('/api/blocks',requireAuth,async(req,res)=>{
 
 app.get('/api/debug',async(req,res)=>{try{if(USE_PG){const tables=await db.query("SELECT tablename FROM pg_tables WHERE schemaname='public'");const counts={};for(const t of tables){try{const c=await db.get(`SELECT COUNT(*) as n FROM ${t.tablename}`);counts[t.tablename]=+(c?.n||0);}catch{counts[t.tablename]='error';}}res.json({use_pg:true,db_url:process.env.DATABASE_URL?.slice(0,40)+'...',tables:counts});}else{res.json({use_pg:false});}}catch(err){res.json({error:err.message});}});
 app.get('/login-callback',(req,res)=>res.sendFile(path.join(__dirname,'public','login-callback.html')));
-app.get('/join/:code',(req,res)=>res.sendFile(path.join(__dirname,'public','index.html')));
+// Invite landing page ("X invited you to [crew]"). ?app=web serves the SPA so the
+// existing in-browser claim flow still works. Universal Links open the app directly
+// when installed, so this page is what non-app visitors see.
+app.get('/join',(req,res)=>res.sendFile(path.join(__dirname,'public','join.html')));
+app.get('/join/:code',(req,res)=>res.sendFile(path.join(__dirname,'public',req.query.app==='web'?'index.html':'join.html')));
 app.get('*',(req,res)=>res.sendFile(path.join(__dirname,'public','index.html')));
 initDB().then(()=>app.listen(PORT,()=>console.log(`🏄 Swellnotes running at http://localhost:${PORT}`))).catch(err=>{console.error('DB init failed:',err);process.exit(1);});

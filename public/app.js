@@ -252,8 +252,10 @@ function selectSpot(spot){
   if(currentUser){
     const mem=spot.members?.find(m=>m.pubkey===currentUser.pubkey);
     $('#log-members-btn')?.classList.remove('hidden');
-    if(mem?.role==='admin'){$('#spot-settings-btn').classList.remove('hidden');$('#invite-btn').classList.remove('hidden');$('#hero-cover-btn').classList.remove('hidden');}
-    else{$('#spot-settings-btn').classList.add('hidden');$('#invite-btn').classList.add('hidden');$('#hero-cover-btn').classList.add('hidden');}
+    $('#invite-btn')?.classList.toggle('hidden',!mem); // any crew member can invite
+    const isAdmin=mem?.role==='admin';
+    $('#spot-settings-btn')?.classList.toggle('hidden',!isAdmin);
+    $('#hero-cover-btn')?.classList.toggle('hidden',!isAdmin);
   }
   fetchConditions();
   updateSpotSwitcher();
@@ -444,16 +446,43 @@ $('#create-spot-modal .modal-close').addEventListener('click',()=>$('#create-spo
 
 // ===== LOG MEMBERS + INVITES =====
 $('#log-members-btn')?.addEventListener('click',()=>{if(currentSpot)showMembers(currentSpot.id,currentSpot.name);});
-$('#invite-btn').addEventListener('click',async()=>{
-  if(!currentSpot||!currentUser)return;
-  try{
-    const res=await fetch(`${API_BASE}/api/spots/${currentSpot.id}/invites`,{method:'POST',headers:{'Content-Type':'application/json','X-Nostr-Pubkey':currentUser.pubkey},body:JSON.stringify({})});
-    const data=await res.json();
-    $('#invite-link-input').value=data.link||`${location.origin}/join/${data.invite_code}`;
-    $('#invite-modal').classList.remove('hidden');
-  }catch{toast('Failed to create invite','error');}
-});
-$('#copy-invite').addEventListener('click',()=>{$('#invite-link-input').select();navigator.clipboard?.writeText($('#invite-link-input').value);toast('Copied!');});
+// ===== INVITE SHEET (universal: crew invite OR app invite) =====
+let inviteLink='https://swellnotes.com',inviteMsg='';
+// opts.spotId + opts.spotName => crew invite (any member); no opts => personal app invite.
+async function openInviteSheet(opts={}){
+  if(!currentUser)return;
+  const modal=$('#invite-modal');
+  $('#invite-qr-panel').classList.add('hidden'); // reset QR
+  if(opts.spotId){
+    $('#invite-title').textContent=`Invite to ${opts.spotName||'this crew'}`;
+    $('#invite-sub').textContent='Anyone with this link joins your crew.';
+    $('#invite-link-input').value='Creating link…';inviteLink='';modal.classList.remove('hidden');
+    try{
+      const res=await fetch(`${API_BASE}/api/spots/${opts.spotId}/invites`,{method:'POST',headers:{'Content-Type':'application/json','X-Nostr-Pubkey':currentUser.pubkey},body:JSON.stringify({})});
+      const data=await res.json();
+      if(!res.ok)throw new Error(data.error||'Failed');
+      inviteLink=data.link||`https://swellnotes.com/join/${data.invite_code}`;
+      inviteMsg=`Join my crew at ${opts.spotName||'our spot'} on Swellnotes 🏄`;
+    }catch(e){toast(e.message||'Failed to create invite','error');modal.classList.add('hidden');return;}
+  }else{
+    $('#invite-title').textContent='Invite friends';
+    $('#invite-sub').textContent='Bring your surf crew to Swellnotes.';
+    inviteLink=`https://swellnotes.com/join?ref=${currentUser.pubkey}`; // personal, attributed
+    inviteMsg='Come log surf with me on Swellnotes 🏄';
+    modal.classList.remove('hidden');
+  }
+  $('#invite-link-input').value=inviteLink;
+  $('#invite-qr-img').src=`${API_BASE}/api/qr?data=${encodeURIComponent(inviteLink)}`;
+}
+window.inviteToCrew=()=>{if(currentSpot)openInviteSheet({spotId:currentSpot.id,spotName:currentSpot.name});};
+function inviteShareText(){return `${inviteMsg}\n${inviteLink}`;}
+$('#invite-btn').addEventListener('click',()=>{if(currentSpot)openInviteSheet({spotId:currentSpot.id,spotName:currentSpot.name});});
+$('#settings-invite-btn')?.addEventListener('click',()=>{$('#settings-modal').classList.add('hidden');openInviteSheet();});
+$('#invite-share-btn').addEventListener('click',async()=>{if(!inviteLink)return;try{await navigator.share({title:'Swellnotes',text:inviteMsg,url:inviteLink});}catch{navigator.clipboard?.writeText(inviteLink);toast('Link copied');}});
+$('#invite-wa').addEventListener('click',()=>{if(inviteLink)window.open('https://wa.me/?text='+encodeURIComponent(inviteShareText()),'_blank');});
+$('#invite-msg').addEventListener('click',()=>{if(inviteLink)window.open('sms:&body='+encodeURIComponent(inviteShareText()));});
+$('#invite-qr-btn').addEventListener('click',()=>{$('#invite-qr-panel').classList.toggle('hidden');});
+$('#copy-invite').addEventListener('click',()=>{$('#invite-link-input').select();navigator.clipboard?.writeText(inviteLink);toast('Copied!');});
 $('#invite-modal .modal-backdrop').addEventListener('click',()=>$('#invite-modal').classList.add('hidden'));
 $('#invite-modal .modal-close').addEventListener('click',()=>$('#invite-modal').classList.add('hidden'));
 
@@ -924,7 +953,12 @@ async function loadSurfers(){
     params=`?spot_id=${currentSpot.id}`;
     desc.textContent='Members of this crew. Follow to see their reports & analysis.';
   }
-  try{const users=await(await fetch(API_BASE+'/api/users'+params)).json();const list=$('#surfers-list');if(!users.length){list.innerHTML='<div class="empty-state"><p>No surfers found.</p></div>';return;}
+  try{const users=await(await fetch(API_BASE+'/api/users'+params)).json();const list=$('#surfers-list');
+  // "This Crew" with only you in it -> invite CTA (highest-intent moment).
+  const isThisCrew=params.includes('spot_id=');
+  const onlyMe=!users.length||users.every(u=>u.pubkey===currentUser?.pubkey);
+  if(isThisCrew&&onlyMe&&currentSpot){list.innerHTML=`<div class="empty-state empty-invite"><div class="empty-invite-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="16" y1="11" x2="22" y2="11"/></svg></div><p class="empty-invite-title">Just you in this crew so far</p><p>Invite the people you actually surf ${escapeHtml(currentSpot.name)} with.</p><button class="btn-select-spot" onclick="window.inviteToCrew()">Invite your crew</button></div>`;return;}
+  if(!users.length){list.innerHTML='<div class="empty-state"><p>No surfers found.</p></div>';return;}
   list.innerHTML=users.map(u=>{const me=currentUser?.pubkey===u.pubkey;const fol=followingSet.has(u.pubkey);let btn;if(me)btn='<button class="btn-follow is-you" disabled>You</button>';else if(!currentUser)btn='';else if(fol)btn=`<button class="btn-follow following" onclick="toggleFollow('${u.pubkey}')">Following</button>`;else btn=`<button class="btn-follow" onclick="toggleFollow('${u.pubkey}')">Follow</button>`;
   const isAdmin=currentSpot?.members?.some(m=>m.pubkey===currentUser?.pubkey&&m.role==='admin');
   const adminBtn=(!me&&isAdmin&&u.role!=='admin'&&currentSpot)?`<button class="btn-outline btn-xs" style="margin-left:0.3rem" onclick="event.stopPropagation();makeAdmin('${currentSpot.id}','${u.pubkey}')">Make Admin</button>`:'';
