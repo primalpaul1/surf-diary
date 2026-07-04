@@ -1721,3 +1721,26 @@ header.nav-hidden #feed-chips { max-height: 0; opacity: 0; margin-top: 0; paddin
 .empty-invite-ic svg { width: 25px; height: 25px; }
 .empty-invite-title { color: var(--text) !important; font-weight: 700; font-size: 1.05rem; margin-bottom: 0.3rem; }
 .invite-sheet #copy-invite { background: var(--ocean-dark); color: #fff; }
+
+/* ============================================================
+   NOTIFICATIONS bell + panel
+   ============================================================ */
+.notif-bell { position: relative; padding: 0.35rem 0.5rem; display: inline-flex; align-items: center; justify-content: center; }
+.notif-bell svg { width: 18px; height: 18px; display: block; }
+.notif-badge { position: absolute; top: -5px; right: -5px; min-width: 17px; height: 17px; padding: 0 4px;
+  border-radius: 9px; background: #e5484d; color: #fff; font-size: 0.66rem; font-weight: 800;
+  display: flex; align-items: center; justify-content: center; line-height: 1; border: 1.5px solid var(--ocean-deep); }
+.notif-list { margin-top: 0.4rem; max-height: 66vh; overflow-y: auto; }
+.notif-section { font: 700 0.72rem var(--font-body); letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--text-muted); margin: 0.9rem 0 0.4rem; }
+.notif-item { display: flex; gap: 0.7rem; padding: 0.7rem 0.2rem; border-bottom: 1px solid #eef1f5; align-items: flex-start; }
+.notif-tap { cursor: pointer; border-radius: 8px; }
+.notif-tap:active { background: #f6f8fb; }
+.notif-av { flex: 0 0 auto; }
+.notif-avatar, .notif-avatar-placeholder { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; }
+.notif-avatar-placeholder { background: var(--ocean-dark); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 800; }
+.notif-body { flex: 1; min-width: 0; }
+.notif-txt { color: var(--text); font-size: 0.92rem; line-height: 1.4; }
+.notif-sub { color: var(--text-soft); font-size: 0.85rem; margin-top: 0.15rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.notif-actions { display: flex; gap: 0.4rem; margin-top: 0.5rem; }
+.notif-time { color: var(--text-muted); font-size: 0.75rem; flex: 0 0 auto; padding-top: 0.15rem; }

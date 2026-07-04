@@ -355,6 +355,27 @@ app.put('/api/spots/:id/join-requests/:requestId',requireAuth,async(req,res)=>{
 });
 
 // ===== INVITES =====
+// Aggregated notifications for the logged-in user: pending join requests across every
+// crew they admin, comments on their sessions, and new followers.
+app.get('/api/notifications',requireAuth,async(req,res)=>{
+  const me=req.pubkey;
+  try{
+    const join_requests=(await db.query(
+      "SELECT jr.id,jr.spot_id,jr.pubkey,jr.message,jr.created_at,s.name as spot_name,u.display_name,u.avatar_path,u.is_pro,u.show_pro_ring "+
+      "FROM spot_join_requests jr JOIN spots s ON jr.spot_id=s.id LEFT JOIN users u ON jr.pubkey=u.pubkey "+
+      "WHERE jr.status='pending' AND jr.spot_id IN (SELECT spot_id FROM spot_members WHERE pubkey=$1 AND role='admin') "+
+      "ORDER BY jr.created_at DESC LIMIT 50",[me])).map(r=>absUser(r,req));
+    const comments=(await db.query(
+      "SELECT c.id,c.session_id,c.body,c.created_at,c.pubkey,se.spot_id,s.name as spot_name,u.display_name,u.avatar_path,u.is_pro,u.show_pro_ring "+
+      "FROM comments c JOIN sessions se ON c.session_id=se.id LEFT JOIN spots s ON se.spot_id=s.id LEFT JOIN users u ON c.pubkey=u.pubkey "+
+      "WHERE se.pubkey=$1 AND c.pubkey<>$1 ORDER BY c.created_at DESC LIMIT 30",[me])).map(r=>absUser(r,req));
+    const follows=(await db.query(
+      "SELECT f.follower_pubkey as pubkey,f.created_at,u.display_name,u.avatar_path,u.is_pro,u.show_pro_ring "+
+      "FROM follows f LEFT JOIN users u ON f.follower_pubkey=u.pubkey "+
+      "WHERE f.followed_pubkey=$1 ORDER BY f.created_at DESC LIMIT 30",[me])).map(r=>absUser(r,req));
+    res.json({join_requests,comments,follows});
+  }catch(e){console.error('notifications error',e);res.status(500).json({error:'Failed'});}
+});
 // Lightweight QR generator (SVG) for the in-app invite sheet. Reuses the qrcode dep.
 app.get('/api/qr',async(req,res)=>{
   const data=(req.query.data||'').toString().slice(0,600);

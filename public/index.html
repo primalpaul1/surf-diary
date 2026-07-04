@@ -67,6 +67,7 @@
         </div>
         <div id="user-info" class="hidden">
           <div class="user-pill"><img id="user-avatar" src="" alt="" class="user-avatar-sm" onerror="this.style.display='none'"><span id="user-name"></span></div>
+          <button id="notif-btn" class="btn-outline btn-sm notif-bell" title="Notifications" aria-label="Notifications"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg><span id="notif-badge" class="notif-badge hidden"></span></button>
           <button id="settings-btn" class="btn-outline btn-sm" title="Settings">⚙</button>
           <button id="logout-btn" class="btn-outline btn-sm">Logout</button>
         </div>
@@ -372,6 +373,15 @@
   </div>
 
   <!-- SETTINGS MODAL -->
+  <div id="notif-modal" class="modal hidden">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content modal-sm">
+      <button class="modal-close">&times;</button>
+      <h2>Notifications</h2>
+      <div id="notif-list" class="notif-list"></div>
+    </div>
+  </div>
+
   <div id="settings-modal" class="modal hidden">
     <div class="modal-backdrop"></div>
     <div class="modal-content modal-sm">

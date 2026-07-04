@@ -486,6 +486,65 @@ $('#copy-invite').addEventListener('click',()=>{$('#invite-link-input').select()
 $('#invite-modal .modal-backdrop').addEventListener('click',()=>$('#invite-modal').classList.add('hidden'));
 $('#invite-modal .modal-close').addEventListener('click',()=>$('#invite-modal').classList.add('hidden'));
 
+// ===== NOTIFICATIONS (join requests across your crews, comments, new followers) =====
+let notifData=null;
+function timeAgo(ts){const s=Math.floor(Date.now()/1000)-ts;if(s<60)return'now';if(s<3600)return Math.floor(s/60)+'m';if(s<86400)return Math.floor(s/3600)+'h';if(s<604800)return Math.floor(s/86400)+'d';return Math.floor(s/604800)+'w';}
+async function loadNotifications(){
+  if(!currentUser)return;
+  try{const d=await(await fetch(`${API_BASE}/api/notifications`,{headers:{'X-Nostr-Pubkey':currentUser.pubkey}})).json();if(!d||d.error)throw 0;notifData=d;}
+  catch{if(!notifData)notifData={join_requests:[],comments:[],follows:[]};} // degrade to empty, never hang on "Loading…"
+  updateNotifBadge();
+}
+function updateNotifBadge(){
+  const b=$('#notif-badge');if(!b||!notifData)return;
+  const seen=+(localStorage.getItem('notif_seen_at')||0);
+  const jr=(notifData.join_requests||[]).length;
+  const fresh=[...(notifData.comments||[]),...(notifData.follows||[])].filter(x=>(x.created_at||0)>seen).length;
+  const n=jr+fresh;
+  if(n>0){b.textContent=n>9?'9+':String(n);b.classList.remove('hidden');}else b.classList.add('hidden');
+}
+function renderNotifications(){
+  const list=$('#notif-list');if(!list)return;
+  if(!notifData){list.innerHTML='<p class="muted" style="padding:1rem 0">Loading…</p>';return;}
+  const jr=notifData.join_requests||[],cm=notifData.comments||[],fl=notifData.follows||[];
+  let html='';
+  if(jr.length){
+    html+='<div class="notif-section">Requests</div>';
+    html+=jr.map(r=>`<div class="notif-item"><div class="notif-av">${avatarHTML(r.avatar_path,r.display_name,'notif-avatar',!!ringCls(r))}</div><div class="notif-body"><div class="notif-txt"><b>${escapeHtml(r.display_name||'Someone')}</b> wants to join <b>${escapeHtml(r.spot_name||'your crew')}</b></div>${r.message?`<div class="notif-sub">"${escapeHtml(r.message)}"</div>`:''}<div class="notif-actions"><button class="btn-solid btn-xs" onclick="window.resolveJoinRequest('${r.spot_id}','${r.id}','approved',this)">Approve</button><button class="btn-outline btn-xs" onclick="window.resolveJoinRequest('${r.spot_id}','${r.id}','denied',this)">Deny</button></div></div></div>`).join('');
+  }
+  const recent=[...cm.map(c=>({t:c.created_at,type:'c',d:c})),...fl.map(f=>({t:f.created_at,type:'f',d:f}))].sort((a,b)=>(b.t||0)-(a.t||0)).slice(0,40);
+  if(recent.length){
+    html+='<div class="notif-section">Recent</div>';
+    html+=recent.map(x=>{
+      const d=x.d,av=avatarHTML(d.avatar_path,d.display_name,'notif-avatar',!!ringCls(d)),name=escapeHtml(d.display_name||'Someone'),ago=timeAgo(d.t||d.created_at||0);
+      if(x.type==='c')return `<div class="notif-item notif-tap" onclick="window.openNotifSession(${d.session_id})"><div class="notif-av">${av}</div><div class="notif-body"><div class="notif-txt"><b>${name}</b> commented on your ${escapeHtml(d.spot_name||'')} session</div><div class="notif-sub">"${escapeHtml(d.body||'')}"</div></div><span class="notif-time">${ago}</span></div>`;
+      return `<div class="notif-item notif-tap" onclick="window.openProfileLink('${d.pubkey}')"><div class="notif-av">${av}</div><div class="notif-body"><div class="notif-txt"><b>${name}</b> started following you</div></div><span class="notif-time">${ago}</span></div>`;
+    }).join('');
+  }
+  list.innerHTML=html||'<div class="empty-state" style="padding:2.5rem 0"><p>You\'re all caught up 🤙</p></div>';
+}
+function openNotifications(){
+  localStorage.setItem('notif_seen_at',String(Math.floor(Date.now()/1000)));
+  renderNotifications();
+  $('#notif-modal').classList.remove('hidden');
+  updateNotifBadge();
+}
+window.resolveJoinRequest=async(spotId,reqId,status,btn)=>{
+  try{if(btn){btn.disabled=true;btn.textContent='…';}
+    const res=await fetch(`${API_BASE}/api/spots/${spotId}/join-requests/${reqId}`,{method:'PUT',headers:{'Content-Type':'application/json','X-Nostr-Pubkey':currentUser.pubkey},body:JSON.stringify({status})});
+    if(!res.ok)throw new Error();
+    toast(status==='approved'?'Approved':'Denied');
+    if(notifData)notifData.join_requests=(notifData.join_requests||[]).filter(r=>r.id!==reqId);
+    renderNotifications();updateNotifBadge();
+    if($('.nav-btn.active')?.dataset?.view==='surfers')loadSurfers();
+  }catch{toast('Failed','error');if(btn){btn.disabled=false;btn.textContent=status==='approved'?'Approve':'Deny';}}
+};
+window.openNotifSession=(id)=>{$('#notif-modal').classList.add('hidden');openSession(id);};
+window.openProfileLink=(pk)=>{const url=primalLink(pk);if(IS_CAPACITOR&&window.Capacitor?.Plugins?.Browser){window.Capacitor.Plugins.Browser.open({url});}else window.open(url,'_blank');};
+$('#notif-btn')?.addEventListener('click',openNotifications);
+$('#notif-modal .modal-backdrop').addEventListener('click',()=>$('#notif-modal').classList.add('hidden'));
+$('#notif-modal .modal-close').addEventListener('click',()=>$('#notif-modal').classList.add('hidden'));
+
 // Crew Settings
 let crewCoverFile=null;
 $('#spot-settings-btn').addEventListener('click',()=>{
@@ -885,7 +944,7 @@ function updateAuthUI(){
       $$('.view').forEach(v=>v.classList.remove('active'));$('#view-pipeline').classList.add('active');
       loadPipeline();
     } else{$('#hero').classList.remove('hidden');$('#app-header').classList.remove('hidden');}
-    loadFollowing();loadMySpots().then(showMySpots);updateReportFab();
+    loadFollowing();loadMySpots().then(showMySpots);updateReportFab();loadNotifications();
   } else {
     $('#landing-page').classList.remove('hidden');
     document.body.style.overflow='hidden';
@@ -1222,8 +1281,10 @@ function renderSessionCard(s,showSpot){
   else if(imgs.length>1)media=`<div class="pcard-gallery g${imgs.length}">${imgs.map(p=>`<img src="${safeUrl(p)}" alt="">`).join('')}</div>`;
   const voice=s.voice_memo_path?`<audio class="pcard-audio" controls preload="none" src="${safeUrl(s.voice_memo_path)}" onclick="event.stopPropagation()"></audio>`:'';
   const score=s.rating?`<div class="rbadge ${getRatingClass(s.rating)}">${fmtRating(s.rating)}</div>`:'<div class="rbadge">-</div>';
-  const cmts=(s.comments||[]).map(renderInlineComment).join('');
-  const more=(s.comment_count||0)>(s.comments||[]).length?`<button class="cmt-more" onclick="event.stopPropagation();openSession(${s.id})">View all ${s.comment_count} comments</button>`:'';
+  // Show only the first comment in the feed; the rest expand when you open the post.
+  const shownCmts=(s.comments||[]).slice(0,1);
+  const cmts=shownCmts.map(renderInlineComment).join('');
+  const more=(s.comment_count||0)>shownCmts.length?`<button class="cmt-more" onclick="event.stopPropagation();openSession(${s.id})">View all ${s.comment_count} comments</button>`:'';
   const composer=currentUser?`<div class="cmt-compose" onclick="event.stopPropagation()">${smallAvatar(currentUser,'cmt-av')}<input class="cmt-input" type="text" placeholder="Add a comment…" onkeydown="if(event.key==='Enter')postInlineComment(${s.id},this)"><button class="cmt-send" onclick="postInlineComment(${s.id},this)">Post</button></div>`:'';
   return`<div class="pcard" data-id="${s.id}">
     <div class="pcard-top"><a class="pcard-who" href="${primalLink(s.pubkey)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${av}<span class="pcard-id"><span class="pcard-name">${escapeHtml(s.display_name||'Anon')}</span><span class="pcard-time">· ${formatTOD(s.time_of_day)}</span></span></a>${spotChip}</div>
@@ -2083,3 +2144,5 @@ if('serviceWorker' in navigator){
 }
 // Capacitor: listen for deep link returns (NIP-46 callback)
 if(IS_CAPACITOR){try{const CapApp=window.Capacitor.Plugins.App;if(CapApp)CapApp.addListener('appUrlOpen',data=>{if(!data.url)return;if(authBackup.handleOAuthRedirect(data.url))return;if(data.url.includes('login-callback')){checkCallback();return;}try{const u=new URL(data.url);const m=u.pathname.match(/^\/join\/(\w+)$/);if(m){history.replaceState(null,'',u.pathname);checkInviteURL();}}catch{}});}catch{}}
+// Refresh the notifications badge periodically while the app is open.
+setInterval(()=>{if(currentUser&&document.visibilityState==='visible')loadNotifications();},90000);
