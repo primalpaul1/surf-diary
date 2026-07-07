@@ -68,7 +68,7 @@ function defaultCover(id){return DEFAULT_COVERS[Math.abs([...((id||'')+'x')].red
 $$('.nav-btn[data-view]').forEach(b=>{b.addEventListener('click',()=>{$$('.nav-btn').forEach(x=>x.classList.remove('active'));b.classList.add('active');$$('.view').forEach(v=>v.classList.remove('active'));$(`#view-${b.dataset.view}`).classList.add('active');document.body.classList.toggle('pro-immersive',b.dataset.view==='pro');window.scrollTo(0,0);if(b.dataset.view==='history')loadFeed();if(b.dataset.view==='surfers')loadSurfers();if(b.dataset.view==='analysis')loadAnalysis();if(b.dataset.view==='pipeline')loadPipeline();if(b.dataset.view==='pro')renderProTab();if(b.dataset.view==='forecast')loadForecast();updateReportFab();syncHero();});});
 
 // Floating "new report" button, visible on the Reports tab, jumps to the Log form
-function updateReportFab(){const onHistory=$('.nav-btn.active')?.dataset?.view==='history';const hasSpots=(typeof mySpots!=='undefined')&&mySpots.length>0;$('#report-fab')?.classList.toggle('hidden',!(onHistory&&currentUser&&hasSpots));}
+function updateReportFab(){const v=$('.nav-btn.active')?.dataset?.view;const hasSpots=(typeof mySpots!=='undefined')&&mySpots.length>0;$('#report-fab')?.classList.toggle('hidden',!(currentUser&&hasSpots&&v!=='pro'));}
 // The spot cover hero shows only on Log/Surfers/Analysis, never on the Reports feed
 function syncHero(){const v=$('.nav-btn.active')?.dataset?.view;const show=!!currentSpot&&(v==='forecast'||v==='surfers'||v==='analysis');$('#hero')?.classList.toggle('hidden',!show);updateSpotNav();}
 $('#report-fab')?.addEventListener('click',openQuickPost);
@@ -478,6 +478,16 @@ window.inviteToCrew=()=>{if(currentSpot)openInviteSheet({spotId:currentSpot.id,s
 function inviteShareText(){return `${inviteMsg}\n${inviteLink}`;}
 $('#invite-btn').addEventListener('click',()=>{if(currentSpot)openInviteSheet({spotId:currentSpot.id,spotName:currentSpot.name});});
 $('#settings-invite-btn')?.addEventListener('click',()=>{$('#settings-modal').classList.add('hidden');openInviteSheet();});
+// Pro moved off the tab bar: open the full Pro page from Settings.
+window.openProTab=()=>{
+  $('#settings-modal').classList.add('hidden');
+  $$('.nav-btn').forEach(x=>x.classList.remove('active'));
+  $$('.view').forEach(v=>v.classList.remove('active'));
+  $('#view-pro')?.classList.add('active');
+  document.body.classList.add('pro-immersive');
+  renderProTab();updateReportFab();syncHero();window.scrollTo(0,0);
+};
+$('#settings-pro-btn')?.addEventListener('click',()=>window.openProTab());
 $('#invite-share-btn').addEventListener('click',async()=>{if(!inviteLink)return;try{await navigator.share({title:'Swellnotes',text:inviteMsg,url:inviteLink});}catch{navigator.clipboard?.writeText(inviteLink);toast('Link copied');}});
 $('#invite-wa').addEventListener('click',()=>{if(inviteLink)window.open('https://wa.me/?text='+encodeURIComponent(inviteShareText()),'_blank');});
 $('#invite-msg').addEventListener('click',()=>{if(inviteLink)window.open('sms:&body='+encodeURIComponent(inviteShareText()));});
@@ -911,7 +921,8 @@ $('#delete-account-btn').addEventListener('click',async()=>{
   }catch(e){toast('Failed to delete account','error');}
 });
 
-$('#logout-btn').addEventListener('click',async()=>{
+$('#settings-logout-btn')?.addEventListener('click',async()=>{
+  $('#settings-modal').classList.add('hidden');
   // Step 1: Show key and first warning
   let keyDisplay='';
   if(currentUser?.secretKey){
@@ -931,6 +942,7 @@ $('#logout-btn').addEventListener('click',async()=>{
 
 function updateAuthUI(){
   document.body.classList.remove('pro-immersive');
+  $('#bottom-nav')?.classList.toggle('hidden',!currentUser); // bottom tab bar shows only when signed in
   if(currentUser){
     $('#landing-page').classList.add('hidden');
     document.body.style.overflow='';
@@ -1633,34 +1645,6 @@ async function loadPipeline(q=''){
     const spots=await(await fetch(`${API_BASE}/api/spots/browse?${params}`,{headers})).json();
     if(!spots.length){list.innerHTML='<div class="empty-state"><p>No crews found.</p></div>';return;}
     list.innerHTML=spots.map(s=>renderPipelineCard(s)).join('');
-    const isNewUser=currentUser&&!q&&!localStorage.getItem('swellnotes_onboarded');
-    if(isNewUser&&!document.getElementById('onboard-overlay')){
-      const overlay=document.createElement('div');
-      overlay.id='onboard-overlay';
-      overlay.className='onboard-overlay';
-      overlay.innerHTML=`<div class="card" style="position:relative">
-        <button class="onboard-close" onclick="window.dismissOnboard()" aria-label="Close">&times;</button>
-        <h2>Select a spot</h2>
-        <p class="muted">Search any surf break worldwide to pick your spot.</p>
-        <div class="field" style="margin:0.75rem 0">
-          <input type="text" id="onboard-spot-search" placeholder="Search surf breaks... (e.g. Pipeline, Uluwatu)" autocomplete="off">
-        </div>
-        <div id="onboard-spot-results" class="spot-results"></div>
-        <button class="link-btn" style="margin-top:0.75rem;font-size:0.85rem;color:var(--text-muted)" onclick="window.revealCrews()">Explore existing spots</button>
-      </div>`;
-      document.body.appendChild(overlay);
-      const input=overlay.querySelector('#onboard-spot-search');
-      input.addEventListener('input',()=>{
-        const origInput=$('#pipeline-spot-search');
-        if(origInput){origInput.value=input.value;origInput.dispatchEvent(new Event('input'));}
-        // mirror results into overlay
-        setTimeout(()=>{
-          const origResults=$('#pipeline-spot-results');
-          const overlayResults=overlay.querySelector('#onboard-spot-results');
-          if(origResults&&overlayResults)overlayResults.innerHTML=origResults.innerHTML;
-        },350);
-      });
-    }
   }catch{list.innerHTML='<div class="empty-state"><p>Error loading crews.</p></div>';}
 }
 
@@ -2005,107 +1989,36 @@ $('#nostr-submit')?.addEventListener('click',async()=>{
 });
 
 // ===== GUIDED WALKTHROUGH (spotlight tour over the real UI) =====
-const WALK_KEY='swellnotes_tour_v1';
-const TOUR_STEPS=[
-  {view:'pipeline', target:'#pipeline-spot-search', demo:'Pipeline', title:'Pick your spot',
-   text:'Search any surf break on earth. Every spot gets a private feed for its crew, the surfers who ride it.'},
-  {view:'history', target:'#report-fab', fallback:'.nav-btn[data-view="history"]', title:'File a report',
-   text:'After a surf, tap ＋ to log it. Swell, wind and tide for that moment are saved automatically.'},
-  {view:'analysis', target:'.nav-btn[data-view="analysis"]', title:'Read the swell',
-   text:'Analysis shows which conditions have scored best, so you know exactly when to paddle out.'},
-  {view:'surfers', target:'.nav-btn[data-view="surfers"]', title:'Find your crew',
-   text:'See who else surfs your break and follow them to build a shared logbook together.'},
-  {view:'forecast', target:'.nav-btn[data-view="forecast"]', title:'Check the forecast',
-   text:'Live swell, wind and tide for your break. Scrub the tide chart to plan the perfect window.'}
-];
-let tourIdx=0, tourPrev=null, tourEls=null;
-function switchTourView(v){
-  $$('.nav-btn').forEach(x=>x.classList.remove('active'));
-  $(`.nav-btn[data-view="${v}"]`)?.classList.add('active');
-  $$('.view').forEach(x=>x.classList.remove('active'));
-  $(`#view-${v}`)?.classList.add('active');
-  window.scrollTo(0,0);
+const WALK_KEY='swellnotes_tour_v1'; // reused as the "seen intro" flag
+// ===== FIRST-RUN INTRO (clean 3-panel welcome, replaces the old coach-mark tour) =====
+let introIdx=0, introOpen=false;
+const INTRO_N=3;
+function renderIntro(){
+  const track=$('#intro-track');if(track)track.style.transform=`translateX(-${introIdx*100}%)`;
+  $$('#intro-dots span').forEach((d,i)=>d.classList.toggle('on',i===introIdx));
+  const btn=$('#intro-btn');if(btn)btn.textContent=introIdx===INTRO_N-1?'Find your spot':'Continue';
 }
-function tourTarget(step){
-  let el=step.target&&$(step.target);
-  if(!el||el.getBoundingClientRect().width<2)el=step.fallback?$(step.fallback):null;
-  if(!el||el.getBoundingClientRect().width<2)el=$(`.nav-btn[data-view="${step.view}"]`);
-  return el;
-}
-function positionTour(){
-  if(!tourEls)return;
-  const step=TOUR_STEPS[tourIdx],el=tourTarget(step),{spot,tip}=tourEls;
-  if(!el){spot.style.opacity='0';return;}
-  // Fill the spotlighted input with demo text (forced dark, it renders light on its white bg)
-  if(step.demo&&el.tagName==='INPUT'){el.value=step.demo;el.style.setProperty('color','#0f1729','important');}
-  const r=el.getBoundingClientRect(),pad=8;
-  const x=r.left-pad,y=r.top-pad,w=r.width+pad*2,h=r.height+pad*2;
-  spot.style.cssText=`left:${x}px;top:${y}px;width:${w}px;height:${h}px;opacity:1`;
-  const vh=window.innerHeight,roomBelow=vh-(y+h);
-  if(roomBelow>230){tip.style.top=(y+h+14)+'px';tip.style.bottom='';}
-  else{tip.style.bottom=(vh-y+14)+'px';tip.style.top='';}
-}
-function renderTip(){
-  const step=TOUR_STEPS[tourIdx],last=tourIdx===TOUR_STEPS.length-1,{tip}=tourEls;
-  tip.innerHTML=`
-    <div class="wt-top"><div class="wt-dots">${TOUR_STEPS.map((_,i)=>`<span class="wt-dot${i===tourIdx?' active':''}"></span>`).join('')}</div><button class="wt-skip">Skip</button></div>
-    <div class="wt-step-no">Step ${tourIdx+1} of ${TOUR_STEPS.length}</div>
-    <div class="wt-title">${step.title}</div>
-    <div class="wt-text">${step.text}</div>
-    <div class="wt-nav"><button class="wt-back" ${tourIdx===0?'disabled':''} aria-label="Back">‹</button><button class="wt-next">${last?'Start surfing 🤙':'Next'}</button></div>`;
-  tip.querySelector('.wt-skip').onclick=closeTour;
-  tip.querySelector('.wt-back').onclick=()=>{if(tourIdx>0)tourStep(tourIdx-1);};
-  tip.querySelector('.wt-next').onclick=()=>last?closeTour():tourStep(tourIdx+1);
-}
-function tourStep(i){
-  tourIdx=i;switchTourView(TOUR_STEPS[i].view);renderTip();
-  // Clear any prior demo text when entering a non-demo step
-  if(!TOUR_STEPS[i].demo)['#pipeline-spot-search','#onboard-spot-search'].forEach(sel=>{const el=$(sel);if(el){el.value='';el.style.removeProperty('color');}});
-  // Scroll the target to just below the nav header (not under it), then position the spotlight
-  const place=()=>{
-    document.getElementById('onboard-overlay')?.remove(); // drop the competing duplicate search field
-    const el=tourTarget(TOUR_STEPS[tourIdx]);
-    if(el){
-      const hdr=document.getElementById('app-header');
-      const headerBottom=(hdr&&!hdr.classList.contains('hidden'))?Math.max(0,hdr.getBoundingClientRect().bottom):0;
-      const want=headerBottom+18;
-      const r=el.getBoundingClientRect();
-      if(r.top>want+24)window.scrollBy(0,r.top-want);
-    }
-    positionTour();
-  };
-  requestAnimationFrame(()=>requestAnimationFrame(place));
-  setTimeout(place,250);setTimeout(place,650);
-}
+function introGo(i){introIdx=Math.max(0,Math.min(INTRO_N-1,i));renderIntro();}
 function startTour(){
-  if(tourEls)return;
-  // Reveal the real app chrome so the tour can drive actual nav + views
-  tourPrev={header:$('#app-header')?.classList.contains('hidden'),main:$('#main-content')?.classList.contains('hidden'),view:$('.nav-btn.active')?.dataset.view};
-  $('#app-header')?.classList.remove('hidden','nav-hidden');
-  $('#main-content')?.classList.remove('hidden');
-  const back=document.createElement('div');back.className='tour-backdrop';
-  const spot=document.createElement('div');spot.className='tour-spot';
-  const tip=document.createElement('div');tip.className='tour-tip';
-  document.body.append(back,spot,tip);
-  tourEls={back,spot,tip};
-  window.addEventListener('resize',positionTour);
-  tourStep(0);
+  const intro=$('#intro');if(!intro||introOpen)return;
+  introOpen=true;introIdx=0;intro.classList.remove('hidden');renderIntro();
+  const btn=$('#intro-btn');if(btn)btn.onclick=()=>{introIdx<INTRO_N-1?introGo(introIdx+1):closeTour();};
+  const vp=$('.intro-viewport');let x0=null;
+  if(vp){
+    vp.ontouchstart=e=>{x0=e.touches[0].clientX;};
+    vp.ontouchend=e=>{if(x0==null)return;const dx=e.changedTouches[0].clientX-x0;x0=null;if(dx<-40&&introIdx<INTRO_N-1)introGo(introIdx+1);else if(dx>40&&introIdx>0)introGo(introIdx-1);};
+  }
 }
 function closeTour(){
-  if(!tourEls)return;
-  ['#pipeline-spot-search','#onboard-spot-search'].forEach(sel=>{const el=$(sel);if(el){el.value='';el.style.removeProperty('color');}}); // clear demo
   localStorage.setItem(WALK_KEY,'1');
-  window.removeEventListener('resize',positionTour);
-  Object.values(tourEls).forEach(e=>e.remove());tourEls=null;
-  if(tourPrev){
-    if(tourPrev.header)$('#app-header')?.classList.add('hidden');
-    if(tourPrev.main)$('#main-content')?.classList.add('hidden');
-    if(tourPrev.view)switchTourView(tourPrev.view);
-  }
-  tourPrev=null;
+  $('#intro')?.classList.add('hidden');
+  introOpen=false;
+  // hand off to the spot picker if they don't have a spot yet
+  if(currentUser&&!currentSpot)window.goToSpotPicker?.();
 }
+window.skipIntro=closeTour;
 function maybeStartTour(delay=500){if(!localStorage.getItem(WALK_KEY))setTimeout(startTour,delay);}
-window.startWalkthrough=startTour; // replay hook
+window.startWalkthrough=()=>{localStorage.removeItem(WALK_KEY);startTour();}; // replay hook
 
 // ===== INIT =====
 const saved=localStorage.getItem('swellnotes_user');if(saved){try{currentUser=JSON.parse(saved);}catch{localStorage.removeItem('swellnotes_user');}}

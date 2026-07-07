@@ -234,7 +234,7 @@ app.get('/api/spots',requireAuth,async(req,res)=>{
 app.get('/api/spots/browse',async(req,res)=>{
   const q=req.query.q;const pk=req.headers['x-nostr-pubkey']||null;
   let spots;
-  if(q){spots=await db.query('SELECT s.*,(SELECT COUNT(*)FROM spot_members WHERE spot_id=s.id) as member_count,(SELECT MAX(created_at)FROM sessions WHERE spot_id=s.id) as last_active FROM spots s WHERE (LOWER(s.name) LIKE LOWER($1) OR LOWER(s.region) LIKE LOWER($1)) ORDER BY last_active DESC NULLS LAST',[`%${q}%`]);}
+  if(q){spots=await db.query('SELECT s.*,(SELECT COUNT(*)FROM spot_members WHERE spot_id=s.id) as member_count,(SELECT MAX(created_at)FROM sessions WHERE spot_id=s.id) as last_active FROM spots s WHERE (LOWER(s.name) LIKE LOWER($1) OR LOWER(s.region) LIKE LOWER($2)) ORDER BY last_active DESC NULLS LAST',[`%${q}%`,`%${q}%`]);}
   else{spots=await db.query('SELECT s.*,(SELECT COUNT(*)FROM spot_members WHERE spot_id=s.id) as member_count,(SELECT MAX(created_at)FROM sessions WHERE spot_id=s.id) as last_active FROM spots s ORDER BY last_active DESC NULLS LAST');}
   // Enrich each spot with admin profiles, activity, membership status
   const now=Math.floor(Date.now()/1000);const weekAgo=now-7*86400;
@@ -368,7 +368,7 @@ app.get('/api/notifications',requireAuth,async(req,res)=>{
     const comments=(await db.query(
       "SELECT c.id,c.session_id,c.body,c.created_at,c.pubkey,se.spot_id,s.name as spot_name,u.display_name,u.avatar_path,u.is_pro,u.show_pro_ring "+
       "FROM comments c JOIN sessions se ON c.session_id=se.id LEFT JOIN spots s ON se.spot_id=s.id LEFT JOIN users u ON c.pubkey=u.pubkey "+
-      "WHERE se.pubkey=$1 AND c.pubkey<>$1 ORDER BY c.created_at DESC LIMIT 30",[me])).map(r=>absUser(r,req));
+      "WHERE se.pubkey=$1 AND c.pubkey<>$2 ORDER BY c.created_at DESC LIMIT 30",[me,me])).map(r=>absUser(r,req));
     const follows=(await db.query(
       "SELECT f.follower_pubkey as pubkey,f.created_at,u.display_name,u.avatar_path,u.is_pro,u.show_pro_ring "+
       "FROM follows f LEFT JOIN users u ON f.follower_pubkey=u.pubkey "+
