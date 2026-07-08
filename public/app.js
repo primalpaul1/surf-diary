@@ -176,7 +176,7 @@ async function doQuickPost(){
     closeQuickPost();toast('Posted!');
     document.body.classList.remove('pro-immersive');updateReportFab();
     // Offer to share to Nostr/Primal + WhatsApp (closing the share step lands on the feed)
-    showShareModal({rating:data.rating,session_type:data.session_type,wave_shape:data.wave_shape,notes:data.notes,video_url:data.video_url||null,conditions:result.conditions||{},spot_name:spot?.name||currentSpot?.name||'Spot',sessionUrl:`https://swellnotes.com/session/${result.id||''}`});
+    showShareModal({rating:data.rating,session_type:data.session_type,wave_shape:data.wave_shape,notes:data.notes,video_url:data.video_url||null,photos:data.photos||[],conditions:result.conditions||{},spot_name:spot?.name||currentSpot?.name||'Spot',sessionUrl:`https://swellnotes.com/session/${result.id||''}`});
   }catch{toast('Post failed','error');}
   finally{btn.disabled=false;btn.textContent='Post';}
 }
@@ -1118,8 +1118,8 @@ $('#session-form').addEventListener('submit',async e=>{
 
 // ===== SHARE =====
 let pendingShareData=null;
-function showShareModal(sd){pendingShareData=sd;const c=sd.conditions;const sw=(c.swells||[]).map(s=>`${s.height_ft}ft ${s.period_s}s ${s.direction_compass}`).join(', ');const sh=c.surf_height_min_ft&&c.surf_height_max_ft?`${c.surf_height_min_ft}-${c.surf_height_max_ft}ft`:'';const emoji=sd.rating>=8?'🔥':sd.rating>=6?'🤙':sd.rating>=4?'👌':'😐';
-let html=`<strong>${sd.spot_name} ${sd.session_type==='observed'?'check':'session'}</strong>`;if(sh)html+=` · ${sh}`;html+=` · ${sd.rating}/10 ${emoji}`;if(sw)html+=`<div class="share-stats">Swell: ${sw}</div>`;if(sd.video_url)html+=`<video src="${safeUrl(sd.video_url)}" controls muted preload="metadata"></video>`;
+function showShareModal(sd){pendingShareData=sd;const c=sd.conditions;const sh=c.surf_height_min_ft&&c.surf_height_max_ft?`${c.surf_height_min_ft}-${c.surf_height_max_ft}ft`:'';const emoji=sd.rating>=8?'🔥':sd.rating>=6?'🤙':sd.rating>=4?'👌':'😐';
+let html=`<strong>${sd.spot_name} ${sd.session_type==='observed'?'check':'session'}</strong>`;if(sh)html+=` · ${sh}`;html+=` · ${sd.rating}/10 ${emoji}`;if(sd.photos&&sd.photos.length)html+=`<div class="share-photos">${sd.photos.map(p=>`<img src="${safeUrl(p)}" alt="">`).join('')}</div>`;if(sd.video_url)html+=`<video src="${safeUrl(sd.video_url)}" controls muted preload="metadata"></video>`;
 $('#share-preview').innerHTML=html;$('#share-text').value=sd.notes||`${sd.spot_name} was ${sd.rating>=8?'firing':sd.rating>=6?'fun':sd.rating>=4?'decent':'flat'} today! ${sh} ${emoji}`;$('#share-modal').classList.remove('hidden');}
 function closeShareAndGoToFeed(){$('#share-modal').classList.add('hidden');$$('.nav-btn').forEach(x=>x.classList.remove('active'));$$('.nav-btn[data-view="history"]').forEach(x=>x.classList.add('active'));$$('.view').forEach(v=>v.classList.remove('active'));$('#view-history').classList.add('active');loadFeed();}
 function getShareText(){
@@ -1134,8 +1134,9 @@ $('#share-modal .modal-close').addEventListener('click',closeShareAndGoToFeed);
 $('#share-whatsapp-btn').addEventListener('click',()=>{const t=getShareText()+'\n'+getShareUrl();window.open('https://wa.me/?text='+encodeURIComponent(t),'_blank');closeShareAndGoToFeed();});
 $('#share-messages-btn').addEventListener('click',()=>{const t=getShareText()+'\n'+getShareUrl();window.open('sms:&body='+encodeURIComponent(t));closeShareAndGoToFeed();});
 $('#share-native-btn').addEventListener('click',async()=>{const t=getShareText();try{await navigator.share({title:pendingShareData?.spot_name+' session',text:t,url:getShareUrl()});}catch{}closeShareAndGoToFeed();});
-$('#share-post-btn').addEventListener('click',async()=>{if(!pendingShareData)return;try{$('#share-post-btn').disabled=true;$('#share-post-btn').textContent='Posting...';const sd=pendingShareData;const c=sd.conditions;const sw=(c.swells||[]).map(s=>`${s.height_ft}ft ${s.period_s}s ${s.direction_compass} ${s.direction_deg}°`).join(', ');const sh=c.surf_height_min_ft&&c.surf_height_max_ft?`${c.surf_height_min_ft}-${c.surf_height_max_ft}ft`:'';let content=$('#share-text').value.trim();if(!content.includes(sd.spot_name))content=`🌊 ${sd.spot_name} · ${sh} · ${sd.rating}/10\n\n${content}`;if(sw&&!content.includes(sw))content+=`\n\nSwell: ${sw}`;if(c.wind_type)content+=`\nWind: ${c.wind_speed_mph}mph ${c.wind_type}`;const tags=[['t','surf'],['t',sd.spot_name.toLowerCase().replace(/\s+/g,'')],['t','surfing']];
+$('#share-post-btn').addEventListener('click',async()=>{if(!pendingShareData)return;try{$('#share-post-btn').disabled=true;$('#share-post-btn').textContent='Posting...';const sd=pendingShareData;const c=sd.conditions;const sh=c.surf_height_min_ft&&c.surf_height_max_ft?`${c.surf_height_min_ft}-${c.surf_height_max_ft}ft`:'';let content=$('#share-text').value.trim();if(!content.includes(sd.spot_name))content=`🌊 ${sd.spot_name} · ${sh} · ${sd.rating}/10\n\n${content}`;const tags=[['t','surf'],['t',sd.spot_name.toLowerCase().replace(/\s+/g,'')],['t','surfing']];
   if(sd.video_url){content+=`\n\n${sd.video_url}`;tags.push(['imeta',`url ${sd.video_url}`,`m video/mp4`]);tags.push(['r',sd.video_url]);}
+  if(sd.photos&&sd.photos.length){for(const p of sd.photos){content+=`\n\n${p}`;tags.push(['imeta',`url ${p}`,`m image/jpeg`]);tags.push(['r',p]);}}
   let ev;
   if(currentUser?.secretKey){ev=finalizeEvent({kind:1,created_at:Math.floor(Date.now()/1000),tags,content},hexToBytes(currentUser.secretKey));}
   else if(currentUser?.nip46){ev=await nip46Sign({kind:1,created_at:Math.floor(Date.now()/1000),tags,content,pubkey:currentUser.pubkey});}
@@ -1844,7 +1845,7 @@ function openProfileModal({title,sub,name,submitLabel,onSubmit}){
   $('#profile-error').classList.add('hidden');$('#profile-loading').classList.add('hidden');$('#profile-submit').classList.remove('hidden');
   profileAvatarFile=null;
   const img=$('#profile-avatar-img'),ph=$('#profile-avatar-ph');
-  if(currentUser?.avatar_path&&name){img.src=currentUser.avatar_path;img.style.display='';ph.style.display='none';}
+  if(currentUser?.avatar_path&&name){img.src=currentUser.avatar_path;img.style.display='block';ph.style.display='none';}
   else{img.style.display='none';ph.style.display='';}
   profileSubmitHandler=onSubmit;
   $('#profile-modal').classList.remove('hidden'); // no autofocus: keeps title clear of the notch until they tap
@@ -1855,7 +1856,7 @@ function profileBusy(b,text){$('#profile-loading-text').textContent=text||'Savin
 $('#profile-modal-close')?.addEventListener('click',closeProfileModal);
 $('#profile-avatar-upload')?.addEventListener('click',()=>$('#profile-avatar-file').click());
 $('#profile-avatar-file')?.addEventListener('change',e=>{const f=e.target.files[0];if(!f)return;profileAvatarFile=f;
-  const img=$('#profile-avatar-img'),ph=$('#profile-avatar-ph');const r=new FileReader();r.onload=()=>{img.src=r.result;img.style.display='';ph.style.display='none';};r.readAsDataURL(f);});
+  const img=$('#profile-avatar-img'),ph=$('#profile-avatar-ph');const r=new FileReader();r.onload=()=>{img.src=r.result;img.style.display='block';ph.style.display='none';};r.readAsDataURL(f);});
 $('#profile-submit')?.addEventListener('click',()=>{profileSubmitHandler&&profileSubmitHandler();});
 
 // Build the avatar portion of an /api/auth/login body (Blossom URL, else base64).
@@ -2002,11 +2003,16 @@ function introGo(i){introIdx=Math.max(0,Math.min(INTRO_N-1,i));renderIntro();}
 function startTour(){
   const intro=$('#intro');if(!intro||introOpen)return;
   introOpen=true;introIdx=0;intro.classList.remove('hidden');renderIntro();
-  const btn=$('#intro-btn');if(btn)btn.onclick=()=>{introIdx<INTRO_N-1?introGo(introIdx+1):closeTour();};
-  const vp=$('.intro-viewport');let x0=null;
+  const advance=()=>{introIdx<INTRO_N-1?introGo(introIdx+1):closeTour();};
+  const btn=$('#intro-btn');if(btn)btn.onclick=advance;
+  const vp=$('.intro-viewport');let x0=null,y0=null,tHandled=0;
   if(vp){
-    vp.ontouchstart=e=>{x0=e.touches[0].clientX;};
-    vp.ontouchend=e=>{if(x0==null)return;const dx=e.changedTouches[0].clientX-x0;x0=null;if(dx<-40&&introIdx<INTRO_N-1)introGo(introIdx+1);else if(dx>40&&introIdx>0)introGo(introIdx-1);};
+    vp.ontouchstart=e=>{x0=e.touches[0].clientX;y0=e.touches[0].clientY;};
+    vp.ontouchend=e=>{if(x0==null)return;const dx=e.changedTouches[0].clientX-x0,dy=e.changedTouches[0].clientY-y0;x0=null;tHandled=Date.now();
+      if(dx<-40&&introIdx<INTRO_N-1)introGo(introIdx+1);
+      else if(dx>40&&introIdx>0)introGo(introIdx-1);
+      else if(Math.abs(dx)<12&&Math.abs(dy)<12)advance();};       // tap anywhere on the slide → next
+    vp.onclick=()=>{if(Date.now()-tHandled<600)return;advance();}; // web/mouse tap (touch already handled)
   }
 }
 function closeTour(){

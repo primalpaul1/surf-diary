@@ -853,6 +853,8 @@ textarea { resize: vertical; }
 }
 .share-preview video { width: 100%; border-radius: 8px; margin-top: 0.5rem; max-height: 200px; }
 .share-preview .share-stats { opacity: 0.6; font-size: 0.8rem; margin-top: 0.4rem; }
+.share-preview .share-photos { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 0.5rem; }
+.share-preview .share-photos img { width: 84px; height: 84px; border-radius: 8px; object-fit: cover; }
 .share-text {
   width: 100%; padding: 0.6rem 0.75rem; border: 1.5px solid #dde3eb; border-radius: 10px;
   font: 400 0.92rem var(--font-body); resize: vertical; margin-bottom: 0.5rem;
