@@ -744,6 +744,18 @@
 
   <footer><p><img src="/sn-logo.png" alt="Swellnotes" style="height:20px;vertical-align:middle;margin-right:6px;opacity:0.6">Powered by <a href="https://primal.net" target="_blank">Primal</a> & <a href="https://nostr.com" target="_blank">Nostr</a></p></footer>
 
+  <!-- PUSH PERMISSION PRIMER -->
+  <div id="push-primer" class="modal hidden">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content modal-sm push-primer">
+      <div class="push-primer-bell">🔔</div>
+      <h2>Never miss a session</h2>
+      <p class="muted">Get a heads-up when someone in your crew logs a surf. It's off for public spots, and you can change it per crew anytime.</p>
+      <button id="push-primer-enable" class="btn-solid btn-block">Turn on notifications</button>
+      <button id="push-primer-skip" class="push-skip">Not now</button>
+    </div>
+  </div>
+
   <!-- FIRST-RUN INTRO -->
   <div id="intro" class="intro hidden">
     <button class="intro-skip" onclick="window.skipIntro()">Skip</button>

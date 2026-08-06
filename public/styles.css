@@ -572,9 +572,25 @@ textarea { resize: vertical; }
   font-weight: 800; font-size: 1rem; flex-shrink: 0;
 }
 .surfer-info { flex: 1; min-width: 0; }
-.surfer-name { font-weight: 600; font-size: 0.95rem; }
+.surfer-name, .surfer-name-link { font-weight: 600; font-size: 0.95rem; display: block; max-width: 100%;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .surfer-meta { font-size: 0.78rem; color: var(--text-muted); }
-.surfer-actions { display: flex; align-items: center; flex-shrink: 0; }
+.surfer-actions { display: flex; align-items: center; gap: 0.35rem; flex-shrink: 0; }
+/* admin actions are secondary: a subtle kebab that opens a small menu */
+.surfer-admin { position: relative; }
+.surfer-kebab { display: flex; align-items: center; justify-content: center; width: 32px; height: 32px;
+  border: none; background: none; color: var(--text-muted); border-radius: 8px; cursor: pointer; padding: 0; }
+.surfer-kebab:hover { background: rgba(10,34,64,0.06); color: var(--text); }
+.surfer-kebab svg { width: 20px; height: 20px; }
+.surfer-menu { position: absolute; top: 100%; right: 0; margin-top: 4px; z-index: 30; min-width: 172px;
+  background: #fff; border: 1px solid #e6ebf1; border-radius: 12px; overflow: hidden;
+  box-shadow: 0 12px 30px rgba(10,34,64,0.18); }
+.surfer-menu button { display: block; width: 100%; text-align: left; padding: 0.72rem 0.95rem;
+  background: none; border: none; font: 600 0.9rem var(--font-body); color: var(--text); cursor: pointer; white-space: nowrap; }
+.surfer-menu button + button { border-top: 1px solid #f0f3f7; }
+.surfer-menu button:hover { background: var(--bg); }
+.surfer-menu button.danger { color: var(--coral); }
+.surfer-menu button.danger:hover { background: #fee2e2; }
 .btn-follow {
   padding: 0.35rem 0.95rem; border-radius: 99px; font: 700 0.78rem var(--font-body);
   cursor: pointer; transition: all 0.15s; border: 1.5px solid var(--ocean-dark); background: transparent; color: var(--ocean-dark);
@@ -1827,3 +1843,22 @@ header.nav-hidden #feed-chips { max-height: 0; opacity: 0; margin-top: 0; paddin
   box-shadow: 0 12px 34px rgba(0,0,0,0.28); transition: transform 0.12s ease;
 }
 .intro-btn:active { transform: scale(0.98); }
+
+/* ===== PUSH: permission primer + per-crew toggle row ===== */
+.push-primer { text-align: center; }
+.push-primer-bell { font-size: 3rem; margin: 0.4rem 0 0.6rem; }
+.push-primer h2 { margin-bottom: 0.5rem; }
+.push-primer .btn-block { margin-top: 1rem; }
+.push-skip { display: block; width: 100%; margin-top: 0.7rem; background: none; border: none;
+  color: var(--text-muted); font: 600 0.92rem var(--font-body); cursor: pointer; padding: 0.5rem; }
+.notify-row { display: flex; align-items: center; gap: 1rem; background: #fff; border: 1px solid #e6ebf1;
+  border-radius: 14px; padding: 0.85rem 1rem; margin-bottom: 1rem; }
+.notify-row-text { flex: 1; min-width: 0; }
+.notify-row-title { font: 700 0.95rem var(--font-body); color: var(--text); }
+.notify-row-sub { font: 400 0.8rem var(--font-body); color: var(--text-muted); margin-top: 0.1rem; }
+.notify-toggle { flex: 0 0 auto; width: 48px; height: 28px; border-radius: 99px; border: none;
+  background: #cfd8e3; position: relative; cursor: pointer; transition: background 0.18s ease; padding: 0; }
+.notify-toggle.on { background: var(--teal); }
+.notify-knob { position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%;
+  background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.25); transition: left 0.18s ease; }
+.notify-toggle.on .notify-knob { left: 23px; }

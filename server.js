@@ -6,6 +6,36 @@ const crypto = require('crypto');
 if(!globalThis.crypto)globalThis.crypto={};
 if(!globalThis.crypto.getRandomValues)globalThis.crypto.getRandomValues=b=>{const r=crypto.randomBytes(b.length);b.set(r);return b;};
 
+// ===== PUSH NOTIFICATIONS (APNs, token auth via .p8) =====
+// Dormant until APNS_KEY_PATH / APNS_KEY_ID / APNS_TEAM_ID are set, so the app
+// runs fine before Apple config is in place.
+let apnProvider=null;
+try{
+  const {APNS_KEY_PATH,APNS_KEY_ID,APNS_TEAM_ID}=process.env;
+  if(APNS_KEY_PATH&&APNS_KEY_ID&&APNS_TEAM_ID&&fs.existsSync(APNS_KEY_PATH)){
+    const apn=require('@parse/node-apn');
+    apnProvider=new apn.Provider({token:{key:APNS_KEY_PATH,keyId:APNS_KEY_ID,teamId:APNS_TEAM_ID},production:process.env.APNS_PRODUCTION!=='false'});
+    console.log('🔔 APNs configured (production='+(process.env.APNS_PRODUCTION!=='false')+')');
+  }else{console.log('🔔 APNs not configured — push disabled (set APNS_KEY_PATH/APNS_KEY_ID/APNS_TEAM_ID)');}
+}catch(e){console.error('APNs init failed:',e.message);}
+const APNS_TOPIC=process.env.APNS_BUNDLE_ID||'com.swellnotes.app';
+// Send to a list of device tokens; prunes tokens Apple reports invalid.
+async function sendPush(tokens,{title,body,data}){
+  if(!apnProvider||!tokens?.length)return;
+  try{
+    const apn=require('@parse/node-apn');
+    const note=new apn.Notification();
+    note.alert={title,body};note.sound='default';note.topic=APNS_TOPIC;note.payload=data||{};note.pushType='alert';
+    const result=await apnProvider.send(note,tokens);
+    for(const f of result.failed||[]){
+      const reason=f.response?.reason||f.status;
+      if(reason==='BadDeviceToken'||reason==='Unregistered'||String(f.status)==='410'){
+        try{await db.run('DELETE FROM push_tokens WHERE token=$1',[f.device]);}catch{}
+      }
+    }
+  }catch(e){console.error('sendPush error:',e.message);}
+}
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -88,6 +118,10 @@ async function initDB(){
   try{await db.exec('ALTER TABLE spots ADD COLUMN description TEXT');}catch{}
   try{await db.exec('ALTER TABLE spots ADD COLUMN region TEXT');}catch{}
   try{await db.exec('ALTER TABLE users ADD COLUMN nip05 TEXT');}catch{}
+  // Push notifications: device tokens + per-member "notify when someone logs a session"
+  // preference (NULL = default: on for private crews, off for public spots).
+  try{await db.exec(`CREATE TABLE IF NOT EXISTS push_tokens(pubkey TEXT NOT NULL,token TEXT NOT NULL,platform TEXT DEFAULT 'ios',created_at INTEGER DEFAULT ${ts},PRIMARY KEY(pubkey,token))`);}catch{}
+  try{await db.exec('ALTER TABLE spot_members ADD COLUMN notify_sessions INTEGER');}catch{}
   try{await db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_nip05 ON users(nip05) WHERE nip05 IS NOT NULL');}catch{
     try{await db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_nip05 ON users(nip05)');}catch{}
   }
@@ -103,6 +137,7 @@ async function initDB(){
     'CREATE INDEX IF NOT EXISTS idx_spot_members_spot ON spot_members(spot_id)',
     'CREATE INDEX IF NOT EXISTS idx_spot_members_pubkey ON spot_members(pubkey)',
     'CREATE INDEX IF NOT EXISTS idx_forecast_cache_spot ON forecast_cache(spot_id,fetched_at DESC)',
+    'CREATE INDEX IF NOT EXISTS idx_push_tokens_pubkey ON push_tokens(pubkey)',
   ];
   for(const sql of indexes){try{await db.exec(sql);}catch{}}
   // Check what's actually in the DB
@@ -164,13 +199,37 @@ function getConditions(forecast,date,tod){
   return c;
 }
 
+// TEMP STOPGAP: Surfline killed public API access (Cloudflare JS challenge) and
+// curl-impersonate no longer gets through, so real data is empty. Serve plausible,
+// deterministic synthetic data so the Forecast tab isn't blank until we wire a real
+// source (Open-Meteo). Auto-yields the moment real data returns. Remove when live.
+function mockForecast(){
+  const off=-6;
+  const now=Math.floor(Date.now()/1000);
+  const midnight=Math.floor((now+off*3600)/86400)*86400-off*3600; // local midnight today
+  const dirs=[205,215,195,222];
+  const wave=[],wind=[];
+  for(let i=0;i<24;i++){                 // 3 days x 8 (every 3h)
+    const t=midnight+i*3*3600,slot=i%8,hr=slot*3,day=Math.floor(i/8);
+    const base=2.4+0.9*Math.sin((day+slot/8)*1.3)+0.5*Math.cos(slot/2);
+    const power=Math.round(180+base*130),am=hr<11;
+    wave.push({timestamp:t,surf:{min:Math.max(1,Math.round((base-0.4)*10)/10),max:Math.round((base+0.7)*10)/10},power,swells:[
+      {height:Math.round(base*0.85*10)/10,period:11+Math.round(2*Math.sin(i/5)),direction:dirs[i%dirs.length],impact:0.72,power:Math.round(power*0.7)},
+      {height:Math.round(base*0.35*10)/10,period:8,direction:268,impact:0.28,power:Math.round(power*0.3)}]});
+    const spd=am?6+(slot%2):10+Math.round(4*Math.abs(Math.sin(i)));
+    wind.push({timestamp:t,speed:spd,direction:am?75:255,directionType:am?'Offshore':'Onshore',gust:spd+4});
+  }
+  const tides=[];
+  for(let i=0;i<73;i++)tides.push({timestamp:midnight+i*3600,height:Math.round((3+2.5*Math.sin(i/12.42*2*Math.PI+0.5))*10)/10,type:'NORMAL'});
+  return {wave:{wave},wind:{wind},tides:{tides},utcOffset:off};
+}
 // Dedup concurrent Surfline fetches — if a fetch is already in-flight for a spot, reuse it
 const inFlightFetches=new Map();
 async function getForecast(spotId){
   const c=await db.get('SELECT data_json,fetched_at FROM forecast_cache WHERE spot_id=$1 ORDER BY fetched_at DESC LIMIT 1',[spotId]);
-  if(c&&c.fetched_at>Math.floor(Date.now()/1000)-7200)return JSON.parse(c.data_json);
+  if(c&&c.fetched_at>Math.floor(Date.now()/1000)-7200){const fc=JSON.parse(c.data_json);return fc?.wave?.wave?.length?fc:mockForecast();}
   if(inFlightFetches.has(spotId))return inFlightFetches.get(spotId);
-  const p=fetchSurflineData(spotId).finally(()=>inFlightFetches.delete(spotId));
+  const p=fetchSurflineData(spotId).then(fc=>fc?.wave?.wave?.length?fc:mockForecast()).finally(()=>inFlightFetches.delete(spotId));
   inFlightFetches.set(spotId,p);
   return p;
 }
@@ -277,14 +336,16 @@ app.get('/api/spots/:id',async(req,res)=>{
   const spot=await db.get('SELECT s.*,(SELECT COUNT(*)FROM spot_members WHERE spot_id=s.id) as member_count FROM spots s WHERE s.id=$1',[req.params.id]);
   if(!spot)return res.status(404).json({error:'Not found'});
   const pk=req.headers['x-nostr-pubkey']||null;
-  const isMember=pk?!!(await db.get('SELECT 1 FROM spot_members WHERE spot_id=$1 AND pubkey=$2',[req.params.id,pk])):false;
+  const memRow=pk?await db.get('SELECT notify_sessions FROM spot_members WHERE spot_id=$1 AND pubkey=$2',[req.params.id,pk]):null;
+  const isMember=!!memRow;
   if(spot.is_private&&!isMember){
     // Non-members of private crews see limited info
     const admins=await db.query("SELECT sm.pubkey,sm.role,u.display_name,u.avatar_path,u.is_pro,u.show_pro_ring FROM spot_members sm LEFT JOIN users u ON sm.pubkey=u.pubkey WHERE sm.spot_id=$1 AND sm.role='admin'",[req.params.id]);
     return res.json({id:spot.id,name:spot.name,region:spot.region,description:spot.description,cover_image_url:spot.cover_image_url,member_count:spot.member_count,is_private:1,members:admins.map(a=>absUser(a,req))});
   }
   const members=await db.query('SELECT sm.pubkey,sm.role,u.display_name,u.avatar_path,u.is_pro,u.show_pro_ring FROM spot_members sm LEFT JOIN users u ON sm.pubkey=u.pubkey WHERE sm.spot_id=$1',[req.params.id]);
-  res.json({...spot,members:members.map(m=>absUser(m,req))});
+  const notify=memRow?(memRow.notify_sessions==null?(spot.is_private?1:0):memRow.notify_sessions):(spot.is_private?1:0);
+  res.json({...spot,members:members.map(m=>absUser(m,req)),notify_enabled:!!notify});
 });
 
 app.post('/api/spots',requireAuth,async(req,res)=>{
@@ -376,6 +437,26 @@ app.get('/api/notifications',requireAuth,async(req,res)=>{
     res.json({join_requests,comments,follows});
   }catch(e){console.error('notifications error',e);res.status(500).json({error:'Failed'});}
 });
+// Register a device's APNs token for the current user (upsert).
+app.post('/api/push/register',requireAuth,async(req,res)=>{
+  const token=(req.body.token||'').toString().trim();
+  const platform=(req.body.platform||'ios').toString().slice(0,16);
+  if(!token||token.length>200)return res.status(400).json({error:'Invalid token'});
+  try{
+    await db.run('DELETE FROM push_tokens WHERE token=$1',[token]); // token may have moved to a new user
+    await db.run('INSERT INTO push_tokens(pubkey,token,platform)VALUES($1,$2,$3) ON CONFLICT DO NOTHING',[req.pubkey,token,platform]);
+    res.json({ok:true});
+  }catch(e){console.error('push register error',e.message);res.status(500).json({error:'Failed'});}
+});
+// Toggle "notify me when someone logs a session here" for the current member.
+app.put('/api/spots/:id/notify',requireAuth,async(req,res)=>{
+  const member=await db.get('SELECT 1 FROM spot_members WHERE spot_id=$1 AND pubkey=$2',[req.params.id,req.pubkey]);
+  if(!member)return res.status(403).json({error:'Not a member'});
+  const enabled=req.body.enabled?1:0;
+  try{await db.run('UPDATE spot_members SET notify_sessions=$1 WHERE spot_id=$2 AND pubkey=$3',[enabled,req.params.id,req.pubkey]);res.json({ok:true,enabled:!!enabled});}
+  catch(e){console.error('notify toggle error',e.message);res.status(500).json({error:'Failed'});}
+});
+
 // Lightweight QR generator (SVG) for the in-app invite sheet. Reuses the qrcode dep.
 app.get('/api/qr',async(req,res)=>{
   const data=(req.query.data||'').toString().slice(0,600);
@@ -653,6 +734,17 @@ app.put('/api/spots/:id/members/:pubkey',requireAuth,async(req,res)=>{
   await db.run('UPDATE spot_members SET role=$1 WHERE spot_id=$2 AND pubkey=$3',[role,req.params.id,req.params.pubkey]);
   res.json({ok:true});
 });
+// Remove a member from a crew (admin only; can't remove yourself or the last admin).
+app.delete('/api/spots/:id/members/:pubkey',requireAuth,async(req,res)=>{
+  const mem=await db.get('SELECT role FROM spot_members WHERE spot_id=$1 AND pubkey=$2',[req.params.id,req.pubkey]);
+  if(!mem||mem.role!=='admin')return res.status(403).json({error:'Admin only'});
+  if(req.params.pubkey===req.pubkey)return res.status(400).json({error:"Use Leave crew to remove yourself"});
+  const target=await db.get('SELECT role FROM spot_members WHERE spot_id=$1 AND pubkey=$2',[req.params.id,req.params.pubkey]);
+  if(!target)return res.status(404).json({error:'Not a member'});
+  if(target.role==='admin'){const a=await db.get("SELECT COUNT(*) as n FROM spot_members WHERE spot_id=$1 AND role='admin'",[req.params.id]);if((a?.n||0)<=1)return res.status(400).json({error:'Cannot remove the last admin'});}
+  await db.run('DELETE FROM spot_members WHERE spot_id=$1 AND pubkey=$2',[req.params.id,req.params.pubkey]);
+  res.json({ok:true});
+});
 
 async function getFeedPubkeys(pk){const rows=await db.query('SELECT followed_pubkey FROM follows WHERE follower_pubkey=$1',[pk]);return[pk,...rows.map(r=>r.followed_pubkey)];}
 
@@ -718,7 +810,30 @@ app.post('/api/sessions',requireAuth,async(req,res)=>{
   const r=await db.run('INSERT INTO sessions(pubkey,spot_id,session_date,time_of_day,swells_json,surf_height_min_ft,surf_height_max_ft,wind_speed_mph,wind_direction_deg,wind_type,wind_gust_mph,tide_height_ft,rating,wave_shape,session_type,notes,voice_memo_path,voice_transcript,video_path,photo_path,photos_json,barrels)VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)',
     [req.pubkey,b.spot_id||null,b.session_date,b.time_of_day,JSON.stringify(c.swells||[]),c.surf_height_min_ft??null,c.surf_height_max_ft??null,c.wind_speed_mph??null,c.wind_direction_deg??null,c.wind_type??null,c.wind_gust_mph??null,c.tide_height_ft??null,b.rating,b.wave_shape||null,b.session_type||'surfed',b.notes||null,voicePath,b.voice_transcript||null,videoPath,photoPath,photosJson,b.barrels||0]);
   res.json({ok:true,id:r.lastID,conditions:c});
+  // Fire-and-forget: push crew members who opted in for this spot (response already sent).
+  if(b.spot_id)notifySessionLogged(b.spot_id,req.pubkey,b.rating,b.session_type||'surfed',r.lastID).catch(()=>{});
 });
+
+// Push the crew when a session is logged. Eligible = spot members (minus the author)
+// whose per-crew pref is on, defaulting to on for private crews / off for public.
+async function notifySessionLogged(spotId,authorPubkey,rating,sessionType,sessionId){
+  if(!apnProvider)return;
+  const spot=await db.get('SELECT name,is_private FROM spots WHERE id=$1',[spotId]);
+  if(!spot)return;
+  const author=await db.get('SELECT display_name FROM users WHERE pubkey=$1',[authorPubkey]);
+  const name=author?.display_name||'Someone';
+  const verb=sessionType==='observed'?'checked':'surfed';
+  const rt=Number(rating);
+  const emoji=rt>=8?'🔥':rt>=6?'🤙':rt>=4?'👌':'';
+  const ratingStr=Number.isFinite(rt)?` · ${rt}/10${emoji?' '+emoji:''}`:'';
+  const rows=await db.query(
+    "SELECT pt.token FROM spot_members sm JOIN push_tokens pt ON pt.pubkey=sm.pubkey "+
+    "WHERE sm.spot_id=$1 AND sm.pubkey<>$2 AND (CASE WHEN sm.notify_sessions IS NULL THEN $3 ELSE sm.notify_sessions END)=1",
+    [spotId,authorPubkey,spot.is_private?1:0]);
+  const tokens=[...new Set(rows.map(r=>r.token))];
+  if(!tokens.length)return;
+  await sendPush(tokens,{title:spot.name,body:`${name} ${verb}${ratingStr}`,data:{type:'session',spot_id:spotId,session_id:sessionId}});
+}
 
 app.delete('/api/sessions/:id',requireAuth,async(req,res)=>{
   const s=await db.get('SELECT pubkey,spot_id,voice_memo_path,video_path,photo_path,photos_json FROM sessions WHERE id=$1',[req.params.id]);

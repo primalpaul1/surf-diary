@@ -393,12 +393,51 @@ function landInSpot(spot,{welcome=false}={}){
   if(welcome)justJoinedSpot={name:spot.name,members:spot.member_count};
   document.querySelector('.nav-btn[data-view="history"]')?.click();
   window.scrollTo(0,0);
+  if(welcome)setTimeout(maybeRegisterPush,1400); // contextual push primer after a fresh join
 }
 window.dismissWelcome=()=>{justJoinedSpot=null;document.getElementById('welcome-banner')?.remove();};
 // Let users dismiss the "Select a spot" overlay, they can pick one later from Search.
 window.dismissOnboard=()=>{localStorage.setItem('swellnotes_onboarded','1');document.getElementById('onboard-overlay')?.remove();};
 // Jump to the Search tab where you find / create / select a spot (used by empty-state links).
 window.goToSpotPicker=()=>{document.querySelector('.nav-btn[data-view="pipeline"]')?.click();};
+
+// ===== PUSH NOTIFICATIONS (a crew member logged a session) =====
+const PUSH_ASKED_KEY='swellnotes_push_asked';
+function pushPlugin(){return (IS_CAPACITOR&&window.Capacitor?.Plugins?.PushNotifications)||null;}
+let __pushWired=false;
+function wirePushListeners(P){
+  if(__pushWired)return;__pushWired=true;
+  P.addListener('registration',t=>sendPushToken(t?.value));
+  P.addListener('registrationError',e=>console.warn('[push] reg error',e));
+  P.addListener('pushNotificationActionPerformed',a=>{const d=a?.notification?.data||{};if(d&&d.spot_id)openSpotFromPush(d.spot_id);});
+}
+async function registerPush(){
+  const P=pushPlugin();if(!P||!currentUser)return;
+  try{const perm=await P.requestPermissions();if(perm?.receive!=='granted')return;wirePushListeners(P);await P.register();}
+  catch(e){console.warn('[push] register failed',e);}
+}
+async function sendPushToken(token){
+  if(!token||!currentUser)return;
+  try{await fetch(`${API_BASE}/api/push/register`,{method:'POST',headers:{'Content-Type':'application/json','X-Nostr-Pubkey':currentUser.pubkey},body:JSON.stringify({token,platform:'ios'})});}catch{}
+}
+function openSpotFromPush(spotId){
+  fetch(`${API_BASE}/api/spots/${spotId}`,{headers:currentUser?{'X-Nostr-Pubkey':currentUser.pubkey}:{}}).then(r=>r.json()).then(s=>{if(s&&!s.error)landInSpot(s);}).catch(()=>{});
+}
+// Show the permission primer once, after the user joins/creates their first crew.
+function maybeRegisterPush(){
+  if(!pushPlugin()||!currentUser)return;
+  if(localStorage.getItem(PUSH_ASKED_KEY))return;
+  $('#push-primer')?.classList.remove('hidden');
+}
+$('#push-primer-enable')?.addEventListener('click',()=>{$('#push-primer')?.classList.add('hidden');localStorage.setItem(PUSH_ASKED_KEY,'1');registerPush();});
+$('#push-primer-skip')?.addEventListener('click',()=>{$('#push-primer')?.classList.add('hidden');localStorage.setItem(PUSH_ASKED_KEY,'1');});
+// Per-crew toggle (from the forecast notify row). Enabling also prompts for permission if not yet asked.
+window.toggleSpotNotify=async(spotId,enabled)=>{
+  if(!currentUser)return;
+  if(currentSpot&&currentSpot.id===spotId)currentSpot.notify_enabled=enabled;
+  try{await fetch(`${API_BASE}/api/spots/${spotId}/notify`,{method:'PUT',headers:{'Content-Type':'application/json','X-Nostr-Pubkey':currentUser.pubkey},body:JSON.stringify({enabled})});}catch{}
+  if(enabled&&pushPlugin()){if(!localStorage.getItem(PUSH_ASKED_KEY))localStorage.setItem(PUSH_ASKED_KEY,'1');registerPush();}
+};
 // Tapping your name/avatar in the header opens your Primal profile.
 $('.user-pill')?.addEventListener('click',()=>{
   if(!currentUser?.pubkey)return;
@@ -437,6 +476,7 @@ $('#create-spot-form').addEventListener('submit',async e=>{
       $('#create-spot-modal').classList.add('hidden');
       coverFile=null;pendingSpotData=null;
       toast(`${spot.name} crew created!`);
+      setTimeout(maybeRegisterPush,1400); // contextual push primer after creating a crew
     }
   }catch{toast('Failed to create crew','error');}
 });
@@ -1032,8 +1072,8 @@ async function loadSurfers(){
   if(!users.length){list.innerHTML='<div class="empty-state"><p>No surfers found.</p></div>';return;}
   list.innerHTML=users.map(u=>{const me=currentUser?.pubkey===u.pubkey;const fol=followingSet.has(u.pubkey);let btn;if(me)btn='<button class="btn-follow is-you" disabled>You</button>';else if(!currentUser)btn='';else if(fol)btn=`<button class="btn-follow following" onclick="toggleFollow('${u.pubkey}')">Following</button>`;else btn=`<button class="btn-follow" onclick="toggleFollow('${u.pubkey}')">Follow</button>`;
   const isAdmin=currentSpot?.members?.some(m=>m.pubkey===currentUser?.pubkey&&m.role==='admin');
-  const adminBtn=(!me&&isAdmin&&u.role!=='admin'&&currentSpot)?`<button class="btn-outline btn-xs" style="margin-left:0.3rem" onclick="event.stopPropagation();makeAdmin('${currentSpot.id}','${u.pubkey}')">Make Admin</button>`:'';
-  return`<div class="surfer-card"><a href="${primalLink(u.pubkey)}" target="_blank" rel="noopener" class="surfer-profile-link" onclick="event.stopPropagation()">${u.avatar_path?`<img src="${safeUrl(u.avatar_path)}" class="surfer-av${ringCls(u)}" onerror="__avErr(this,'${avInitial(u.display_name)}')">`:`<div class="surfer-av-placeholder${ringCls(u)}">${avInitial(u.display_name)}</div>`}</a><div class="surfer-info"><a href="${primalLink(u.pubkey)}" target="_blank" rel="noopener" class="surfer-name-link">${escapeHtml(u.display_name||'Anon')}</a><div class="surfer-meta">${u.session_count} session${u.session_count!==1?'s':''}${u.total_barrels>0?` · 🤿 ${u.total_barrels} tube${u.total_barrels>1?'s':''}`:''}${u.role==='admin'?' · admin':''}</div></div><div class="surfer-actions">${btn}${adminBtn}</div></div>`;}).join('');}catch{}}
+  const adminMenu=(!me&&isAdmin&&currentSpot)?`<div class="surfer-admin"><button class="surfer-kebab" onclick="event.stopPropagation();toggleSurferMenu(this)" aria-label="Manage member"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg></button><div class="surfer-menu hidden">${u.role!=='admin'?`<button onclick="event.stopPropagation();makeAdmin('${currentSpot.id}','${u.pubkey}')">Make admin</button>`:''}<button class="danger" data-name="${escapeHtml(u.display_name||'this surfer')}" onclick="event.stopPropagation();removeMember(this,'${currentSpot.id}','${u.pubkey}')">Remove from crew</button></div></div>`:'';
+  return`<div class="surfer-card"><a href="${primalLink(u.pubkey)}" target="_blank" rel="noopener" class="surfer-profile-link" onclick="event.stopPropagation()">${u.avatar_path?`<img src="${safeUrl(u.avatar_path)}" class="surfer-av${ringCls(u)}" onerror="__avErr(this,'${avInitial(u.display_name)}')">`:`<div class="surfer-av-placeholder${ringCls(u)}">${avInitial(u.display_name)}</div>`}</a><div class="surfer-info"><a href="${primalLink(u.pubkey)}" target="_blank" rel="noopener" class="surfer-name-link">${escapeHtml(u.display_name||'Anon')}</a><div class="surfer-meta">${u.session_count} session${u.session_count!==1?'s':''}${u.total_barrels>0?` · 🤿 ${u.total_barrels} tube${u.total_barrels>1?'s':''}`:''}${u.role==='admin'?' · admin':''}</div></div><div class="surfer-actions">${btn}${adminMenu}</div></div>`;}).join('');}catch{}}
 
 // ===== CONDITIONS =====
 $('#session_date').value=new Date().toISOString().split('T')[0];
@@ -1196,6 +1236,13 @@ function fcScale(pts,start,w,h){const vs=pts.map(p=>p.v);let lo=Math.min(...vs),
 function fcCurve(pts,start,w,h){const s=fcScale(pts,start,w,h);const line=pts.map((p,i)=>`${i?'L':'M'}${s.X(p.t).toFixed(1)},${s.Y(p.v).toFixed(1)}`).join(' ');const area=`${line} L${s.X(pts[pts.length-1].t).toFixed(1)},${h} L${s.X(pts[0].t).toFixed(1)},${h} Z`;return{...s,line,area};}
 function fcNearest(arr,t){let best=null,bd=1/0;for(const a of arr){const d=Math.abs(a.t-t);if(d<bd){bd=d;best=a;}}return best;}
 let fcData=null,fcDay=0;
+// Per-crew push toggle row shown atop the forecast (native app only).
+function notifyRow(){
+  if(!currentSpot||!IS_CAPACITOR)return '';
+  const on=currentSpot.notify_enabled!=null?currentSpot.notify_enabled:!!currentSpot.is_private;
+  return `<div class="notify-row"><div class="notify-row-text"><div class="notify-row-title">Crew alerts</div><div class="notify-row-sub">Get a push when someone logs a surf here</div></div><button class="notify-toggle${on?' on':''}" onclick="window._toggleNotify(this)" aria-label="Toggle crew alerts"><span class="notify-knob"></span></button></div>`;
+}
+window._toggleNotify=(btn)=>{const on=!btn.classList.contains('on');btn.classList.toggle('on',on);if(currentSpot)window.toggleSpotNotify(currentSpot.id,on);};
 async function loadForecast(){
   const el=$('#forecast-body');if(!el)return;
   if(!currentSpot){el.innerHTML='<div class="empty-state"><p>Select a spot to see its forecast.</p><button class="btn-select-spot" onclick="window.goToSpotPicker()">Select a spot</button></div>';return;}
@@ -1240,7 +1287,7 @@ function renderForecastDay(){
   const tabs=[0,1,2].map(d=>{const w=fcDayWindow(off,d);const lbl=d===0?'Today':FC_DOW[new Date((w.start+off*3600)*1000).getUTCDay()];return `<button class="fc-day ${d===fcDay?'on':''}" onclick="fcSelectDay(${d})">${lbl}</button>`;}).join('');
   const wave=f.wave.filter(w=>w.t>=start&&w.t<end&&w.max!=null);
   const en=f.wave.filter(w=>w.t>=start&&w.t<end&&w.power!=null);
-  if(!wave.length){el.innerHTML=`<div class="fc-days">${tabs}</div><div class="empty-state"><p>No forecast data for this day yet.</p><p class="muted">Check back soon, forecasts refresh every couple of hours.</p></div>`;fcCur=null;return;}
+  if(!wave.length){el.innerHTML=`${notifyRow()}<div class="fc-days">${tabs}</div><div class="empty-state"><p>No forecast data for this day yet.</p><p class="muted">Check back soon, forecasts refresh every couple of hours.</p></div>`;fcCur=null;return;}
   const maxSurf=Math.max(1,...wave.map(w=>w.max));
   const bars=wave.map(w=>{const pct=Math.max(6,Math.round((w.max/maxSurf)*100));const sw=(w.swells||[])[0];const swHTML=sw?`<span class="fc-sw"><span class="fc-sw-arrow" style="transform:rotate(${Math.round(sw.dir+180)}deg)">↑</span>${sw.p}s</span>`:'<span class="fc-sw">-</span>';return`<div class="fc-col"><div class="fc-track"><div class="fc-bar" style="height:${pct}%"></div></div><div class="fc-num">${w.min!=null?w.min+'-':''}${w.max}</div>${swHTML}<div class="fc-time">${fcHourLabel(fcLocalHour(w.t,off))}</div></div>`;}).join('');
   const axis=`<div class="fc-axis">${[start,start+21600,start+43200,start+64800,end-1].map(t=>`<span>${fcHourLabel(fcLocalHour(t,off))}</span>`).join('')}</div>`;
@@ -1261,7 +1308,7 @@ function renderForecastDay(){
     enHTML=`<div class="fc-card"><div class="fc-card-head"><span class="fc-card-label">Swell energy</span><span class="fc-card-now" id="fc-energy-val"></span></div>
       <svg viewBox="0 0 ${W} ${H}" class="fc-svg" preserveAspectRatio="none"><path d="${c.area}" fill="rgba(56,189,248,0.14)"/><path d="${c.line}" fill="none" stroke="var(--cyan)" stroke-width="2"/><line id="fc-energy-cursor" x1="0" y1="0" x2="0" y2="${H}" class="fc-cursor"/></svg>${axis}</div>`;
   }
-  el.innerHTML=`<div class="fc-days">${tabs}</div>
+  el.innerHTML=`${notifyRow()}<div class="fc-days">${tabs}</div>
     <div class="fc-head"><div class="fc-head-big" id="fc-head-big">-</div><div class="fc-head-sub" id="fc-head-sub"></div></div>
     <div class="fc-card"><div class="fc-card-label">Surf height</div><div class="fc-bars">${bars||'<span class="muted">No data</span>'}</div></div>
     <div class="fc-card"><div class="fc-card-head"><span class="fc-card-label">Swell</span><span class="fc-card-now" id="fc-scrub-time"></span></div><div id="fc-swell-body"></div></div>
@@ -1404,6 +1451,27 @@ async function makeAdmin(spotId,pubkey){
   }catch{toast('Failed','error');}
 }
 window.makeAdmin=makeAdmin;
+// Admin kebab menu on crew members (Make admin / Remove) — secondary to Follow.
+window.toggleSurferMenu=(btn)=>{
+  const menu=btn.parentElement.querySelector('.surfer-menu');if(!menu)return;
+  const open=!menu.classList.contains('hidden');
+  document.querySelectorAll('.surfer-menu').forEach(m=>m.classList.add('hidden'));
+  if(!open)menu.classList.remove('hidden');
+};
+document.addEventListener('click',e=>{if(!e.target.closest('.surfer-admin'))document.querySelectorAll('.surfer-menu:not(.hidden)').forEach(m=>m.classList.add('hidden'));});
+async function removeMember(btn,spotId,pubkey){
+  const name=btn?.dataset?.name||'this surfer';
+  if(!confirm(`Remove ${name} from the crew? They'll lose access to this spot's reports.`))return;
+  try{
+    const r=await fetch(`${API_BASE}/api/spots/${spotId}/members/${pubkey}`,{method:'DELETE',headers:{'X-Nostr-Pubkey':currentUser.pubkey}});
+    const d=await r.json().catch(()=>({}));
+    if(r.ok){toast('Removed from crew');
+      try{const s=await(await fetch(`${API_BASE}/api/spots/${spotId}`,{headers:{'X-Nostr-Pubkey':currentUser.pubkey}})).json();if(s&&!s.error&&currentSpot?.id===spotId)currentSpot=s;}catch{}
+      loadSurfers();
+    }else toast(d.error||'Failed to remove','error');
+  }catch{toast('Failed to remove','error');}
+}
+window.removeMember=removeMember;
 
 async function reportContent(type,id){
   if(!currentUser)return toast('Log in first','error');
@@ -2043,6 +2111,8 @@ const savedSpot=localStorage.getItem('swellnotes_spot');if(savedSpot){try{curren
 if(currentSpot&&currentUser){fetch(`${API_BASE}/api/spots/${currentSpot.id}`,{headers:{'X-Nostr-Pubkey':currentUser.pubkey}}).then(r=>r.json()).then(fresh=>{if(fresh&&!fresh.error&&fresh.name)selectSpot(fresh);}).catch(()=>{});}
 console.log('[Init] user:',currentUser?.display_name||'none','spot:',currentSpot?.name||'none');
 updateAuthUI();checkProStatus();checkCallback();checkInviteURL();
+// Refresh the APNs token on launch for users who already turned push on
+if(pushPlugin()&&currentUser&&localStorage.getItem(PUSH_ASKED_KEY))registerPush();
 // First-run guided walkthrough (once per device, for a logged-in user with a spot)
 if(currentUser&&currentSpot&&!localStorage.getItem(WALK_KEY)){maybeStartTour(700);}
 if(currentUser&&currentSpot){
