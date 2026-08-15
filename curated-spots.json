@@ -1,0 +1,289 @@
+[
+  {
+    "surfline_id": "5842041f4e65fad6a7708890",
+    "name": "Pipeline",
+    "location": "United States, Hawaii, Honolulu County, O‘ahu",
+    "lat": 21.66522,
+    "lng": -158.0526
+  },
+  {
+    "surfline_id": "584204204e65fad6a7709148",
+    "name": "Waikiki Beach",
+    "location": "United States, Hawaii, Honolulu County, O‘ahu",
+    "lat": 21.274598513189574,
+    "lng": -157.82678
+  },
+  {
+    "surfline_id": "5842041f4e65fad6a7708de4",
+    "name": "Honolua Bay",
+    "location": "United States, Hawaii, Maui County, Maui",
+    "lat": 21.018,
+    "lng": -156.641
+  },
+  {
+    "surfline_id": "5842041f4e65fad6a7708de9",
+    "name": "Peahi (Jaws)",
+    "location": "United States, Hawaii, Maui County, Maui",
+    "lat": 20.945,
+    "lng": -156.298
+  },
+  {
+    "surfline_id": "5842041f4e65fad6a7708b4b",
+    "name": "Uluwatu",
+    "location": "Indonesia, Bali, Bali",
+    "lat": -8.814,
+    "lng": 115.089
+  },
+  {
+    "surfline_id": "5842041f4e65fad6a7708d44",
+    "name": "Padang Padang",
+    "location": "Indonesia, Bali, Bali",
+    "lat": -8.810197222,
+    "lng": 115.10105
+  },
+  {
+    "surfline_id": "5842041f4e65fad6a7708d40",
+    "name": "Canggu",
+    "location": "Indonesia, Bali, Bali",
+    "lat": -8.656545939486934,
+    "lng": 115.12504
+  },
+  {
+    "surfline_id": "5842041f4e65fad6a7708d4e",
+    "name": "Keramas",
+    "location": "Indonesia, Bali, Bali",
+    "lat": -8.598583333,
+    "lng": 115.33908
+  },
+  {
+    "surfline_id": "5842041f4e65fad6a7708d55",
+    "name": "Desert Point",
+    "location": "Indonesia, West Nusa Tenggara, Lombok Island",
+    "lat": -8.749722222,
+    "lng": 115.82417
+  },
+  {
+    "surfline_id": "5842041f4e65fad6a7708887",
+    "name": "Upper Trestles",
+    "location": "United States, California, San Diego",
+    "lat": 33.38445596302903,
+    "lng": -117.59445
+  },
+  {
+    "surfline_id": "5842041f4e65fad6a770888a",
+    "name": "Lower Trestles",
+    "location": "United States, California, San Diego",
+    "lat": 33.38143999849023,
+    "lng": -117.58843
+  },
+  {
+    "surfline_id": "5842041f4e65fad6a7708805",
+    "name": "Steamer Lane",
+    "location": "United States, California, Santa Cruz County",
+    "lat": 36.95188851423011,
+    "lng": -122.02522
+  },
+  {
+    "surfline_id": "5842041f4e65fad6a770883b",
+    "name": "Blacks",
+    "location": "United States, California, San Diego",
+    "lat": 32.88338,
+    "lng": -117.25571
+  },
+  {
+    "surfline_id": "58bdebbc82d034001252e3d2",
+    "name": "Huntington St.",
+    "location": "United States, California, Orange County",
+    "lat": 33.65160561515691,
+    "lng": -117.99697
+  },
+  {
+    "surfline_id": "5842041f4e65fad6a7708c88",
+    "name": "Mundaka",
+    "location": "Spain, Basque Country, Biscay",
+    "lat": 43.40861111,
+    "lng": -2.69472
+  },
+  {
+    "surfline_id": "5842041f4e65fad6a7708bc3",
+    "name": "Supertubos",
+    "location": "Portugal, Leiria, Peniche Municipality",
+    "lat": 39.34222,
+    "lng": -9.36445
+  },
+  {
+    "surfline_id": "5842041f4e65fad6a7708c8e",
+    "name": "La Graviere",
+    "location": "France, Nouvelle-Aquitaine, Landes",
+    "lat": 43.66388889,
+    "lng": -1.44389
+  },
+  {
+    "surfline_id": "584204214e65fad6a7709ced",
+    "name": "South Fistral Beach",
+    "location": "United Kingdom, England, Cornwall",
+    "lat": 50.41464,
+    "lng": -5.10353
+  },
+  {
+    "surfline_id": "5842041f4e65fad6a7708caf",
+    "name": "Thurso East",
+    "location": "United Kingdom, Scotland",
+    "lat": 58.60166667,
+    "lng": -3.51056
+  },
+  {
+    "surfline_id": "584204204e65fad6a7709126",
+    "name": "Lahinch Beach",
+    "location": "Ireland, Munster, Co Clare",
+    "lat": 52.929,
+    "lng": -9.353
+  },
+  {
+    "surfline_id": "5842041f4e65fad6a7708c3b",
+    "name": "Bundoran",
+    "location": "Ireland, Ulster, Donegal",
+    "lat": 54.47958088962024,
+    "lng": -8.29256
+  },
+  {
+    "surfline_id": "5842041f4e65fad6a7708d0f",
+    "name": "Jeffreys Bay (J-Bay)",
+    "location": "South Africa, Eastern Cape, Cacadu District Municipality, Kouga",
+    "lat": -34.03148611,
+    "lng": 24.93413
+  },
+  {
+    "surfline_id": "59b03873a36896001c177bc1",
+    "name": "Skeleton Bay",
+    "location": "Namibia, Erongo",
+    "lat": -22.942744097222683,
+    "lng": 14.41278
+  },
+  {
+    "surfline_id": "5842041f4e65fad6a7708cfd",
+    "name": "Anchor Point",
+    "location": "Morocco, Souss-Massa, Agadir-Ida-ou-Tnan, Taghazout",
+    "lat": 30.544006477861213,
+    "lng": -9.72562
+  },
+  {
+    "surfline_id": "5842041f4e65fad6a7708be5",
+    "name": "Snapper Rocks",
+    "location": "Australia, Queensland, Gold Coast",
+    "lat": -28.16143481052803,
+    "lng": 153.55066
+  },
+  {
+    "surfline_id": "584204204e65fad6a77099c7",
+    "name": "Bells Beach",
+    "location": "Australia, Victoria, Surf Coast",
+    "lat": -38.372284,
+    "lng": 144.2836
+  },
+  {
+    "surfline_id": "5fe0f932f167970e1d4c9516",
+    "name": "Main Beach, Byron Bay",
+    "location": "Australia, New South Wales, Byron Shire",
+    "lat": -28.641084351545537,
+    "lng": 153.61461
+  },
+  {
+    "surfline_id": "5842041f4e65fad6a7708bee",
+    "name": "Noosa Heads",
+    "location": "Australia, Queensland, Sunshine Coast",
+    "lat": -26.38257,
+    "lng": 153.09668
+  },
+  {
+    "surfline_id": "5842041f4e65fad6a7708c28",
+    "name": "Margaret River",
+    "location": "Australia, Western Australia",
+    "lat": -33.97649722,
+    "lng": 114.98311
+  },
+  {
+    "surfline_id": "5842041f4e65fad6a7708bf8",
+    "name": "Bondi Beach",
+    "location": "Australia, New South Wales, Waverley Municipal Council",
+    "lat": -33.892155707636114,
+    "lng": 151.27793
+  },
+  {
+    "surfline_id": "5842041f4e65fad6a7708d7e",
+    "name": "Raglan",
+    "location": "New Zealand, Waikato",
+    "lat": -37.82125556,
+    "lng": 174.82311
+  },
+  {
+    "surfline_id": "5842041f4e65fad6a7708dc5",
+    "name": "Cloudbreak",
+    "location": "Fiji, Western",
+    "lat": -17.884684684407535,
+    "lng": 177.18771
+  },
+  {
+    "surfline_id": "5842041f4e65fad6a7708b43",
+    "name": "Puerto Escondido",
+    "location": "Mexico, Oaxaca, Santa María Colotepec",
+    "lat": 15.84808,
+    "lng": -97.05624
+  },
+  {
+    "surfline_id": "5842041f4e65fad6a7708ccd",
+    "name": "Chicama",
+    "location": "Peru, La Libertad, Ascope, Paijan",
+    "lat": -7.705555556,
+    "lng": -79.45472
+  },
+  {
+    "surfline_id": "5842041f4e65fad6a7708cba",
+    "name": "Punta De Lobos",
+    "location": "Chile, Región del Libertador General Bernardo O’Higgins, Provincia de Colchagua, Santa Cruz",
+    "lat": -34.423495820297,
+    "lng": -72.04571
+  },
+  {
+    "surfline_id": "5842041f4e65fad6a7708b53",
+    "name": "Pico Alto",
+    "location": "Peru, Lima region, Lima, Punta Hermosa",
+    "lat": -12.337,
+    "lng": -76.839
+  },
+  {
+    "surfline_id": "5842041f4e65fad6a7708b9b",
+    "name": "Tamarindo",
+    "location": "Costa Rica, Provincia de Guanacaste, Santa Cruz",
+    "lat": 10.29970304257365,
+    "lng": -85.84398
+  },
+  {
+    "surfline_id": "6340b24fb390fd7a54896e42",
+    "name": "Playa Hermosa - Osa Peninsula",
+    "location": "Costa Rica, Provincia de Puntarenas",
+    "lat": 9.192654,
+    "lng": -83.78063
+  },
+  {
+    "surfline_id": "5842041f4e65fad6a7708e31",
+    "name": "Santa Teresa",
+    "location": "Costa Rica, Provincia de Guanacaste, Nandayure",
+    "lat": 9.65372,
+    "lng": -85.18252
+  },
+  {
+    "surfline_id": "5842041f4e65fad6a7708ba9",
+    "name": "Pavones",
+    "location": "Costa Rica, Provincia de Puntarenas, Golfito",
+    "lat": 8.394937,
+    "lng": -83.13952
+  },
+  {
+    "surfline_id": "5842041f4e65fad6a7708b9c",
+    "name": "Dominical",
+    "location": "Costa Rica, Provincia de San José, Pérez Zeledón",
+    "lat": 9.250593929300813,
+    "lng": -83.86522
+  }
+]

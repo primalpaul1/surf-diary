@@ -272,18 +272,18 @@ app.get('/.well-known/nostr.json',async(req,res)=>{
 function requireAuth(req,res,next){const p=req.headers['x-nostr-pubkey'];if(!p||!/^[0-9a-f]{64}$/.test(p))return res.status(401).json({error:'Missing pubkey'});req.pubkey=p;next();}
 
 // ===== SPOTS =====
-app.get('/api/spots/search',async(req,res)=>{
-  try{
-    const r=await surflineFetch(`https://services.surfline.com/search/site?q=${encodeURIComponent(req.query.q||'')}&querySize=10`);
-    const data=await r.json();
-    const spots=(data[0]?.hits?.hits||[]).map(h=>({
-      surfline_id:h._id,name:h._source.name,
-      location:h._source.breadCrumbs?.join(', ')||'',
-      lat:h._source.location?.lat,lng:h._source.location?.lng,
-      href:h._source.href
-    }));
-    res.json(spots);
-  }catch(err){console.error('Spot search error:',err.message||err);res.status(500).json({error:'Search failed'});}
+// Curated surf-break search. Surfline's live search API is Cloudflare-blocked from the
+// server, so we filter a baked list of real Surfline spot IDs (scripts/build-spots.js)
+// -> their forecasts still work via the ingest cron. Good enough for the demo.
+let CURATED_SPOTS=[];try{CURATED_SPOTS=require('./curated-spots.json');}catch(e){console.error('curated-spots load:',e.message);}
+app.get('/api/spots/search',(req,res)=>{
+  const q=(req.query.q||'').toLowerCase().trim();
+  if(q.length<2)return res.json([]);
+  const out=CURATED_SPOTS
+    .filter(s=>s.name.toLowerCase().includes(q)||(s.location||'').toLowerCase().includes(q))
+    .slice(0,12)
+    .map(s=>({surfline_id:s.surfline_id,name:s.name,location:s.location,lat:s.lat,lng:s.lng}));
+  res.json(out);
 });
 
 app.get('/api/spots',requireAuth,async(req,res)=>{
@@ -596,7 +596,7 @@ app.get('/api/forecast',async(req,res)=>{
 function requireIngest(req,res,next){const s=req.headers['x-ingest-secret'];if(!process.env.INGEST_SECRET||s!==process.env.INGEST_SECRET)return res.status(403).json({error:'Forbidden'});next();}
 app.get('/api/forecast/spots',requireIngest,async(req,res)=>{
   try{const rows=await db.query("SELECT DISTINCT surfline_spot_id FROM spots WHERE surfline_spot_id IS NOT NULL AND surfline_spot_id<>''");
-    res.json({spots:[...new Set(['5842041f4e65fad6a7708b9c',...rows.map(r=>r.surfline_spot_id)])]});
+    res.json({spots:[...new Set(['5842041f4e65fad6a7708b9c',...CURATED_SPOTS.map(s=>s.surfline_id),...rows.map(r=>r.surfline_spot_id)])]});
   }catch(e){res.status(500).json({error:'Failed'});}
 });
 app.post('/api/forecast/ingest',requireIngest,async(req,res)=>{
