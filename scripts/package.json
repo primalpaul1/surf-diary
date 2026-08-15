@@ -1,0 +1,8 @@
+{
+  "name": "swellnotes-forecast-fetcher",
+  "private": true,
+  "description": "Off-box Surfline fetcher (GitHub Actions only, not part of the server)",
+  "dependencies": {
+    "playwright": "^1.62.0"
+  }
+}

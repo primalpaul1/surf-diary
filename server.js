@@ -1,3 +1,4 @@
+try{require('dotenv').config();}catch{}
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
@@ -227,7 +228,7 @@ function mockForecast(){
 const inFlightFetches=new Map();
 async function getForecast(spotId){
   const c=await db.get('SELECT data_json,fetched_at FROM forecast_cache WHERE spot_id=$1 ORDER BY fetched_at DESC LIMIT 1',[spotId]);
-  if(c&&c.fetched_at>Math.floor(Date.now()/1000)-7200){const fc=JSON.parse(c.data_json);return fc?.wave?.wave?.length?fc:mockForecast();}
+  if(c&&c.fetched_at>Math.floor(Date.now()/1000)-21600){const fc=JSON.parse(c.data_json);return fc?.wave?.wave?.length?fc:mockForecast();}
   if(inFlightFetches.has(spotId))return inFlightFetches.get(spotId);
   const p=fetchSurflineData(spotId).then(fc=>fc?.wave?.wave?.length?fc:mockForecast()).finally(()=>inFlightFetches.delete(spotId));
   inFlightFetches.set(spotId,p);
@@ -587,6 +588,22 @@ app.get('/api/forecast',async(req,res)=>{
       tides:tides.map(t=>({t:t.timestamp,h:t.height,type:t.type}))
     });
   }catch(err){console.error('Forecast error:',err.message||err);res.status(500).json({error:'Failed to fetch forecast'});}
+});
+
+// ===== FORECAST INGEST — real Surfline data, fetched off-box by a scheduled headless
+// browser (GitHub Actions) that solves Cloudflare, then POSTed here. Keeps the heavy
+// browser off the 2GB prod box; getForecast just reads the cache these writes populate. =====
+function requireIngest(req,res,next){const s=req.headers['x-ingest-secret'];if(!process.env.INGEST_SECRET||s!==process.env.INGEST_SECRET)return res.status(403).json({error:'Forbidden'});next();}
+app.get('/api/forecast/spots',requireIngest,async(req,res)=>{
+  try{const rows=await db.query("SELECT DISTINCT surfline_spot_id FROM spots WHERE surfline_spot_id IS NOT NULL AND surfline_spot_id<>''");
+    res.json({spots:[...new Set(['5842041f4e65fad6a7708b9c',...rows.map(r=>r.surfline_spot_id)])]});
+  }catch(e){res.status(500).json({error:'Failed'});}
+});
+app.post('/api/forecast/ingest',requireIngest,async(req,res)=>{
+  const{surfline_spot_id,data}=req.body||{};
+  if(!surfline_spot_id||!data||!data.wave)return res.status(400).json({error:'Bad payload'});
+  try{await db.run('INSERT INTO forecast_cache(spot_id,data_json)VALUES($1,$2)',[surfline_spot_id,JSON.stringify(data)]);res.json({ok:true});}
+  catch(e){console.error('ingest error',e.message);res.status(500).json({error:'Failed'});}
 });
 
 // ===== NIP-46 =====

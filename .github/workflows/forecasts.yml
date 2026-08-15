@@ -1,0 +1,31 @@
+name: Surfline forecasts
+
+# Off-box forecast fetcher: a headless browser solves Cloudflare on surfline.com,
+# pulls real wave/wind/tide data per spot, and POSTs it to the prod ingest endpoint.
+# Keeps the memory-heavy browser off the 2GB prod box.
+
+on:
+  schedule:
+    - cron: '17 */3 * * *'   # every 3 hours (:17 to dodge the top-of-hour rush)
+  workflow_dispatch: {}       # allow manual runs
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install fetcher deps + chromium
+        working-directory: scripts
+        run: |
+          npm install --no-audit --no-fund
+          npx playwright install --with-deps chromium
+      - name: Fetch + ingest forecasts
+        working-directory: scripts
+        env:
+          INGEST_URL: https://swellnotes.com
+          INGEST_SECRET: ${{ secrets.INGEST_SECRET }}
+        run: node fetch-forecasts.js

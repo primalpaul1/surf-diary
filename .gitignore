@@ -19,3 +19,4 @@ screenshots/
 
 # OAuth login secrets (do not commit)
 public/oauth-config.js
+scripts/node_modules/
