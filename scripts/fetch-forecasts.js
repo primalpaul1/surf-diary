@@ -33,9 +33,13 @@ async function main() {
   await ctx.addInitScript(() => { Object.defineProperty(navigator, 'webdriver', { get: () => undefined }); });
   const page = await ctx.newPage();
 
-  // Land on a real forecast page so Cloudflare grants clearance for the kbyg API.
-  await page.goto('https://www.surfline.com/surf-report/dominical/5842041f4e65fad6a7708b9c', { waitUntil: 'domcontentloaded', timeout: 60000 });
-  await page.waitForTimeout(6000); // let the JS challenge settle
+  // Land directly on the API origin so Cloudflare clears services.surfline.com and
+  // subsequent fetches are SAME-ORIGIN (a cross-origin fetch from the www page gets a
+  // 403 without CORS headers = "Failed to fetch" from datacenter IPs like CI runners).
+  await page.goto('https://services.surfline.com/kbyg/spots/forecasts/wave?spotId=5842041f4e65fad6a7708b9c&days=3&intervalHours=3', { waitUntil: 'domcontentloaded', timeout: 60000 });
+  await page.waitForTimeout(7000); // let the JS challenge settle
+  const probe = await page.evaluate(() => document.body.innerText.slice(0, 60)).catch(() => '');
+  console.log(`origin probe: ${probe.replace(/\s+/g, ' ')}`);
 
   let ok = 0, fail = 0;
   for (const spotId of spots) {
