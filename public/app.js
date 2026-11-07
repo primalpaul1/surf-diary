@@ -112,6 +112,9 @@ function openQuickPost(){
   sel.value=has(feedFilter)?feedFilter:(has(currentSpot?.id)?currentSpot.id:mySpots[0].id);
   const av=$('#qp-av');if(currentUser.avatar_path){av.src=currentUser.avatar_path;av.style.visibility='';}else av.style.visibility='hidden';
   $('#qp-text').value='';
+  const today=new Date().toISOString().split('T')[0];
+  const qd=$('#qp-date');if(qd){qd.value=today;qd.max=today;}
+  const qt=$('#qp-time');if(qt)qt.value=nowTimeOfDay();
   $('#qp-rating').value=7;$('#qp-rating-val').textContent='7.0';qpLastRate=7;
   $$('#qp-tags .qp-tag').forEach(b=>b.classList.remove('on'));
   $('#qp-tags .qp-tag[data-type="surfed"]')?.classList.add('on');
@@ -124,6 +127,7 @@ function closeQuickPost(){if(qpRec?.state==='recording')qpStopVoice();$('#quickp
 $('#qp-left')?.addEventListener('click',()=>{qpStep===1?closeQuickPost():qpGoStep(1);});
 $('#qp-right')?.addEventListener('click',()=>{qpStep===1?qpGoStep(2):doQuickPost();});
 $('#quickpost')?.addEventListener('click',e=>{if(e.target.id==='quickpost')closeQuickPost();});
+$('#qp-date')?.addEventListener('change',e=>{const today=new Date().toISOString().split('T')[0];if(e.target.value>today)e.target.value=today;});
 $('#qp-rating')?.addEventListener('input',e=>{const v=+e.target.value;$('#qp-rating-val').textContent=v.toFixed(1);if(v!==qpLastRate){hapticTick('LIGHT');qpLastRate=v;}});
 $('#qp-tags')?.addEventListener('click',e=>{const b=e.target.closest('.qp-tag');if(!b)return;
   if(b.dataset.type){$$('#qp-tags .qp-tag[data-type]').forEach(x=>x.classList.remove('on'));b.classList.add('on');}
@@ -155,8 +159,8 @@ async function doQuickPost(){
   const typeBtn=$('#qp-tags .qp-tag[data-type].on');
   const shapes=[...$$('#qp-tags .qp-tag[data-shape].on')].map(b=>b.dataset.shape);
   const data={
-    session_date:new Date().toISOString().split('T')[0],
-    time_of_day:nowTimeOfDay(),
+    session_date:$('#qp-date')?.value||new Date().toISOString().split('T')[0],
+    time_of_day:$('#qp-time')?.value||nowTimeOfDay(),
     rating:+$('#qp-rating').value,
     barrels:0,
     wave_shape:shapes.join(',')||null,
@@ -211,6 +215,10 @@ function escapeHtml(s){const d=document.createElement('div');d.textContent=s;ret
 function safeUrl(u){if(u==null)return'';const s=String(u);if(/^\s*(javascript|vbscript|data:text)/i.test(s))return'';return s.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 function getRatingClass(r){if(!r)return'';return r<=3?'r-low':r<=5?'r-mid':r<=7?'r-high':'r-epic';}
 function fmtRating(r){if(r==null)return'-';const n=Math.round(r*10)/10;return Number.isInteger(n)?String(n):n.toFixed(1);}
+// "Today" / "Yesterday" / "Nov 6" (adds the year once it's not the current one)
+function fmtDateLabel(iso,long=false){const d=new Date(iso+'T12:00:00');if(isNaN(d))return iso||'';const now=new Date();const t0=new Date(now.getFullYear(),now.getMonth(),now.getDate());const diff=Math.round((new Date(d.getFullYear(),d.getMonth(),d.getDate())-t0)/86400000);if(long){const base=d.toLocaleDateString('en',{weekday:'long',month:'long',day:'numeric',year:'numeric'});return diff===0?`Today · ${base}`:diff===-1?`Yesterday · ${base}`:base;}if(diff===0)return'Today';if(diff===-1)return'Yesterday';const o={month:'short',day:'numeric'};if(d.getFullYear()!==now.getFullYear())o.year='numeric';return d.toLocaleDateString('en',o);}
+// One-line conditions summary for a session: "2.5-3.6 ft · SSW 12s · Offshore 6 mph"
+function condSummary(s){const parts=[];if(s.surf_height_min_ft!=null&&s.surf_height_max_ft!=null)parts.push(`${s.surf_height_min_ft}-${s.surf_height_max_ft} ft`);let sw=[];try{sw=JSON.parse(s.swells_json||'[]');}catch{}if(sw[0]&&sw[0].direction_compass)parts.push(`${sw[0].direction_compass} ${sw[0].period_s}s`);if(s.wind_type||s.wind_speed_mph!=null)parts.push([s.wind_type,s.wind_speed_mph!=null?Math.round(s.wind_speed_mph)+' mph':''].filter(Boolean).join(' '));return parts.join(' · ');}
 function formatTOD(t){return{'5am':'5 AM','6am':'6 AM','7am':'7 AM','8am':'8 AM','9am':'9 AM','10am':'10 AM','11am':'11 AM','12pm':'12 PM','1pm':'1 PM','2pm':'2 PM','3pm':'3 PM','4pm':'4 PM','5pm':'5 PM','6pm':'6 PM',dawn:'Dawn',morning:'AM',midday:'Midday',afternoon:'PM',evening:'Eve'}[t]||t;}
 function ringCls(u){return (u&&u.is_pro&&((u.show_pro_ring??1)))?' pro-ring':'';}
 // Dead avatar URLs render a broken-image glyph; swap the img for an initials placeholder.
@@ -586,7 +594,7 @@ window.resolveJoinRequest=async(spotId,reqId,status,btn)=>{
     toast(status==='approved'?'Approved':'Denied');
     if(notifData)notifData.join_requests=(notifData.join_requests||[]).filter(r=>r.id!==reqId);
     renderNotifications();updateNotifBadge();
-    if($('.nav-btn.active')?.dataset?.view==='surfers')loadSurfers();
+    if($('.nav-btn.active')?.dataset?.view==='surfers'){loadJoinRequests();loadSurfers();}
   }catch{toast('Failed','error');if(btn){btn.disabled=false;btn.textContent=status==='approved'?'Approve':'Deny';}}
 };
 window.openNotifSession=(id)=>{$('#notif-modal').classList.add('hidden');openSession(id);};
@@ -885,8 +893,9 @@ $('#login-modal .modal-close').addEventListener('click',()=>$('#login-modal').cl
 $('#settings-btn').addEventListener('click',async()=>{
   if(!currentUser)return;
   $('#settings-name').textContent=currentUser.display_name;
-  if(currentUser.avatar_path){$('#settings-avatar').src=currentUser.avatar_path;$('#settings-avatar').style.display='';}
-  else $('#settings-avatar').style.display='none';
+  const sAv=$('#settings-avatar'),sPh=$('#settings-avatar-ph');
+  if(currentUser.avatar_path){sAv.src=currentUser.avatar_path;sAv.style.display='';sPh?.classList.add('hidden');}
+  else{sAv.style.display='none';if(sPh){sPh.textContent=avInitial(currentUser.display_name);sPh.classList.remove('hidden');}}
   const profBtn=$('#settings-primal-profile-btn');if(profBtn)profBtn.href=primalLink(currentUser.pubkey);
   // Pro: gold-ring toggle only for Pro members
   if(isPro){$('#settings-pro-section').classList.remove('hidden');$('#settings-pro-ring').checked=!!(currentUser.show_pro_ring??1);}
@@ -934,7 +943,7 @@ $('#settings-avatar-file').addEventListener('change',async e=>{
       await fetch(API_BASE+'/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pubkey:currentUser.pubkey,display_name:currentUser.display_name,avatar_url:avatarUrl})});
     }
     currentUser.avatar_path=avatarUrl;saveUser(currentUser);
-    $('#settings-avatar').src=avatarUrl;$('#settings-avatar').style.display='';
+    $('#settings-avatar').src=avatarUrl;$('#settings-avatar').style.display='';$('#settings-avatar-ph')?.classList.add('hidden');
     if($('#user-avatar'))$('#user-avatar').src=avatarUrl;
     // Re-publish kind-0 to Nostr so Primal etc. see the new picture
     publishProfile(currentUser.display_name,avatarUrl,null);
@@ -1321,10 +1330,9 @@ function renderForecastDay(){
 function smallAvatar(u,cls){return u.avatar_path?`<img src="${safeUrl(u.avatar_path)}" class="${cls}" alt="" onerror="__avErr(this,'${avInitial(u.display_name)}')">`:`<div class="${cls}-ph">${avInitial(u.display_name)}</div>`;}
 function renderInlineComment(c){return`<div class="cmt">${smallAvatar(c,'cmt-av')}<div class="cmt-body"><b>${escapeHtml(c.display_name||'Anon')}</b>${escapeHtml(c.body)}</div></div>`;}
 function renderSessionCard(s,showSpot){
-  const d=new Date(s.session_date+'T12:00:00');
-  const dateStr=d.toLocaleDateString('en',{month:'short',day:'numeric'});
+  const dateStr=fmtDateLabel(s.session_date);
+  const cond=condSummary(s);
   const tags=[];
-  if(s.surf_height_min_ft!=null)tags.push(`<span class="tag tag-height">${s.surf_height_min_ft}-${s.surf_height_max_ft}ft</span>`);
   if(s.session_type==='surfed')tags.push('<span class="tag tag-shape">surfed</span>');
   else if(s.session_type==='observed')tags.push('<span class="tag tag-observed">observed</span>');
   if(s.wave_shape)s.wave_shape.split(',').filter(Boolean).forEach(sh=>tags.push(`<span class="tag tag-shape">${escapeHtml(sh.trim())}</span>`));
@@ -1336,7 +1344,7 @@ function renderSessionCard(s,showSpot){
   const spotChip=showSpot&&s.__spot?`<span class="pcard-spot">${escapeHtml(s.__spot)}</span>`:'';
   const imgs=(s.photos&&s.photos.length)?s.photos:(s.photo_path?[s.photo_path]:[]);
   let media='';
-  if(s.video_path)media=`<div class="pcard-media" onclick="event.stopPropagation()"><video src="${s.video_path}#t=0.1" preload="metadata" muted playsinline onloadedmetadata="snVideoMeta(this)"></video><button class="pcard-play" onclick="snPlayVideo(this)" aria-label="Play"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></button></div>`;
+  if(s.video_path)media=`<div class="pcard-media" onclick="event.stopPropagation()"><video src="${safeUrl(s.video_path)}#t=0.1" preload="metadata" muted playsinline onloadedmetadata="snVideoMeta(this)"></video><button class="pcard-play" onclick="snPlayVideo(this)" aria-label="Play"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></button></div>`;
   else if(imgs.length===1)media=`<div class="pcard-media"><img src="${safeUrl(imgs[0])}" alt="" onload="snImgMeta(this)"></div>`;
   else if(imgs.length>1)media=`<div class="pcard-gallery g${imgs.length}">${imgs.map(p=>`<img src="${safeUrl(p)}" alt="">`).join('')}</div>`;
   const voice=s.voice_memo_path?`<audio class="pcard-audio" controls preload="none" src="${safeUrl(s.voice_memo_path)}" onclick="event.stopPropagation()"></audio>`:'';
@@ -1347,11 +1355,11 @@ function renderSessionCard(s,showSpot){
   const more=(s.comment_count||0)>shownCmts.length?`<button class="cmt-more" onclick="event.stopPropagation();openSession(${s.id})">View all ${s.comment_count} comments</button>`:'';
   const composer=currentUser?`<div class="cmt-compose" onclick="event.stopPropagation()">${smallAvatar(currentUser,'cmt-av')}<input class="cmt-input" type="text" placeholder="Add a comment…" onkeydown="if(event.key==='Enter')postInlineComment(${s.id},this)"><button class="cmt-send" onclick="postInlineComment(${s.id},this)">Post</button></div>`:'';
   return`<div class="pcard" data-id="${s.id}">
-    <div class="pcard-top"><a class="pcard-who" href="${primalLink(s.pubkey)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${av}<span class="pcard-id"><span class="pcard-name">${escapeHtml(s.display_name||'Anon')}</span><span class="pcard-time">· ${formatTOD(s.time_of_day)}</span></span></a>${spotChip}</div>
+    <div class="pcard-top"><a class="pcard-who" href="${primalLink(s.pubkey)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${av}<span class="pcard-id"><span class="pcard-name">${escapeHtml(s.display_name||'Anon')}</span><span class="pcard-time">· ${dateStr} · ${formatTOD(s.time_of_day)}</span></span></a>${spotChip}</div>
     ${cap}
     ${tags.length?`<div class="pcard-tags">${tags.join('')}</div>`:''}
     ${media}${voice}
-    <div class="pcard-foot"><span class="foot-date">${dateStr}</span>${score}</div>
+    <div class="pcard-foot"><span class="pcard-cond">${cond?escapeHtml(cond):''}</span>${score}</div>
     <div class="pcard-comments">${cmts}${more}${composer}</div>
   </div>`;
 }
@@ -1423,10 +1431,19 @@ window.toggleSpotFollow=async id=>{
 async function loadSessions(){return loadFeed();}
 
 // ===== DETAIL =====
-async function openSession(id){try{const{session:s,comments}=await(await fetch(`${API_BASE}/api/sessions/${id}`)).json();const d=new Date(s.session_date+'T12:00:00');const ds=d.toLocaleDateString('en',{weekday:'long',year:'numeric',month:'long',day:'numeric'});const sw=JSON.parse(s.swells_json||'[]');const swH=sw.map((x,i)=>`<div class="detail-block"><h4>${i?'Secondary':'Primary'} Swell</h4><p>${x.height_ft}ft ${x.period_s}s ${x.direction_compass} ${x.direction_deg}° <small style="opacity:.5">(${x.impact}%)</small></p></div>`).join('');
+async function openSession(id){try{const{session:s,comments}=await(await fetch(`${API_BASE}/api/sessions/${id}`)).json();const ds=fmtDateLabel(s.session_date,true);let sw=[];try{sw=JSON.parse(s.swells_json||'[]');}catch{}const swH=sw.map((x,i)=>`<div class="detail-block"><h4>${i?'Secondary':'Primary'} Swell</h4><p>${x.height_ft}ft ${x.period_s}s ${x.direction_compass} ${x.direction_deg}° <small style="opacity:.5">(${x.impact}%)</small></p></div>`).join('');
+const blocks=[];
+if(s.surf_height_min_ft!=null&&s.surf_height_max_ft!=null)blocks.push(`<div class="detail-block"><h4>Surf</h4><p>${s.surf_height_min_ft}-${s.surf_height_max_ft} ft</p></div>`);
+if(swH)blocks.push(swH);
+if(s.wind_speed_mph!=null||s.wind_type)blocks.push(`<div class="detail-block"><h4>Wind</h4><p>${s.wind_speed_mph!=null?s.wind_speed_mph+' mph ':''}${s.wind_type?'('+escapeHtml(s.wind_type)+')':''}</p></div>`);
+if(s.tide_height_ft!=null)blocks.push(`<div class="detail-block"><h4>Tide</h4><p>${s.tide_height_ft} ft</p></div>`);
+const hasCond=blocks.length>0;
+if(s.wave_shape)blocks.push(`<div class="detail-block"><h4>Shape</h4><p style="text-transform:capitalize">${escapeHtml(s.wave_shape.split(',').map(x=>x.trim()).join(', '))}</p></div>`);
+if(s.barrels>0)blocks.push(`<div class="detail-block"><h4>Tubes</h4><p>🤿 ${s.barrels}</p></div>`);
+const condHTML=(blocks.length?`<div class="detail-grid">${blocks.join('')}</div>`:'')+(hasCond?'':'<p class="detail-nocond">Conditions weren\'t available for this session.</p>');
 // Check if user can delete (own session or spot admin)
 const canDelete=currentUser&&(s.pubkey===currentUser.pubkey||(currentSpot?.members?.some(m=>m.pubkey===currentUser.pubkey&&m.role==='admin')));
-$('#session-detail').innerHTML=`<h2>${ds}</h2><p class="muted"><a href="${primalLink(s.pubkey)}" target="_blank" rel="noopener" class="user-link-inline">${escapeHtml(s.display_name||'Anon')}</a> · ${formatTOD(s.time_of_day)}</p><div style="margin:.75rem 0"><div class="rbadge ${getRatingClass(s.rating)}" style="width:52px;height:52px;font-size:1.2rem;display:inline-flex">${fmtRating(s.rating)}/10</div></div><div class="detail-grid"><div class="detail-block"><h4>Surf</h4><p>${s.surf_height_min_ft||'?'}-${s.surf_height_max_ft||'?'} ft</p></div>${swH}<div class="detail-block"><h4>Wind</h4><p>${s.wind_speed_mph||'?'} mph ${s.wind_type?'('+s.wind_type+')':''}</p></div><div class="detail-block"><h4>Tide</h4><p>${s.tide_height_ft||'?'} ft</p></div>${s.wave_shape?`<div class="detail-block"><h4>Shape</h4><p style="text-transform:capitalize">${escapeHtml(s.wave_shape.split(',').map(x=>x.trim()).join(', '))}</p></div>`:''}${s.barrels>0?`<div class="detail-block"><h4>Tubes</h4><p>🤿 ${s.barrels}</p></div>`:''}</div>${((s.photos&&s.photos.length)?s.photos:(s.photo_path?[s.photo_path]:[])).map(p=>`<div class="detail-photo"><img src="${safeUrl(p)}" alt=""></div>`).join('')}${s.video_path?`<div class="detail-video"><video controls src="${safeUrl(s.video_path)}" preload="metadata"></video></div>`:''}${s.voice_memo_path?`<div class="detail-voice"><audio controls src="${safeUrl(s.voice_memo_path)}" style="width:100%;height:36px"></audio>${s.voice_transcript?`<div class="detail-transcript">"${escapeHtml(s.voice_transcript)}"</div>`:''}</div>`:''}${s.notes?`<div class="detail-notes">${escapeHtml(s.notes)}</div>`:''}${canDelete?`<button class="btn-delete-session" onclick="deleteSession(${s.id})">Delete Log</button>`:''}${currentUser&&s.pubkey!==currentUser.pubkey?`<div class="detail-actions"><button class="btn-report" onclick="reportContent('session','${s.id}')">Report</button><button class="btn-report" onclick="blockUser('${s.pubkey}')">Block User</button></div>`:''}`;
+$('#session-detail').innerHTML=`<h2 class="detail-date">${ds}</h2><p class="muted detail-meta"><a href="${primalLink(s.pubkey)}" target="_blank" rel="noopener" class="user-link-inline">${escapeHtml(s.display_name||'Anon')}</a> · ${formatTOD(s.time_of_day)}${s.spot_name?` · ${escapeHtml(s.spot_name)}`:''}${s.session_type==='observed'?' · observed':''}</p><div style="margin:.75rem 0"><div class="rbadge ${getRatingClass(s.rating)}" style="width:52px;height:52px;font-size:1.2rem;display:inline-flex">${fmtRating(s.rating)}/10</div></div>${condHTML}${((s.photos&&s.photos.length)?s.photos:(s.photo_path?[s.photo_path]:[])).map(p=>`<div class="detail-photo"><img src="${safeUrl(p)}" alt=""></div>`).join('')}${s.video_path?`<div class="detail-video"><video controls src="${safeUrl(s.video_path)}" preload="metadata"></video></div>`:''}${s.voice_memo_path?`<div class="detail-voice"><audio controls src="${safeUrl(s.voice_memo_path)}" style="width:100%;height:36px"></audio>${s.voice_transcript?`<div class="detail-transcript">"${escapeHtml(s.voice_transcript)}"</div>`:''}</div>`:''}${s.notes?`<div class="detail-notes">${escapeHtml(s.notes)}</div>`:''}${canDelete?`<button class="btn-delete-session" onclick="deleteSession(${s.id})">Delete Log</button>`:''}${currentUser&&s.pubkey!==currentUser.pubkey?`<div class="detail-actions"><button class="btn-report" onclick="reportContent('session','${s.id}')">Report</button><button class="btn-report" onclick="blockUser('${s.pubkey}')">Block User</button></div>`:''}`;
 $('#comments-list').innerHTML=comments.length?comments.map(c=>`<div class="comment"><div class="comment-meta"><a href="${primalLink(c.pubkey)}" target="_blank" rel="noopener" class="user-link-inline">${escapeHtml(c.display_name||'Anon')}</a> · ${new Date(c.created_at*1000).toLocaleDateString()}${currentUser&&c.pubkey!==currentUser.pubkey?` · <button class="btn-report-inline" onclick="event.stopPropagation();reportContent('comment','${c.id}')">Report</button>`:''}</div><div class="comment-body">${escapeHtml(c.body)}</div></div>`).join(''):'<p class="muted" style="font-size:.82rem">No comments yet</p>';
 $('#comment-form').onsubmit=async e=>{e.preventDefault();if(!currentUser)return;const b=$('#comment-body').value.trim();if(!b)return;await fetch(`${API_BASE}/api/sessions/${id}/comments`,{method:'POST',headers:{'Content-Type':'application/json','X-Nostr-Pubkey':currentUser.pubkey},body:JSON.stringify({body:b})});$('#comment-body').value='';openSession(id);};
 $('#session-modal').classList.remove('hidden');}catch{toast('Error','error');}}
@@ -1803,16 +1820,8 @@ async function loadJoinRequests(){
   }catch{panel.classList.add('hidden');}
 }
 
-window.resolveJoinRequest=async(spotId,reqId,status)=>{
-  try{
-    await fetch(`${API_BASE}/api/spots/${spotId}/join-requests/${reqId}`,{
-      method:'PUT',headers:{'Content-Type':'application/json','X-Nostr-Pubkey':currentUser.pubkey},
-      body:JSON.stringify({status})
-    });
-    toast(status==='approved'?'Approved!':'Denied');
-    loadJoinRequests();loadSurfers();
-  }catch{toast('Failed','error');}
-};
+// (resolveJoinRequest lives in the notifications section above; it serves both the
+// notifications panel and the Surfers tab's pending-requests list.)
 
 // New crew button on Pipeline tab triggers the spot search flow
 function openNewCrewFlow(){
@@ -1855,6 +1864,16 @@ function openNewCrewFlow(){
 }
 $('#create-crew-btn')?.addEventListener('click',openNewCrewFlow);
 $('#nav-add-crew')?.addEventListener('click',openNewCrewFlow);
+
+// ===== ESC closes whatever sheet is open (desktop / keyboard users) =====
+document.addEventListener('keydown',e=>{
+  if(e.key!=='Escape')return;
+  if(!$('#quickpost')?.classList.contains('hidden')){closeQuickPost();return;}
+  if(!$('#nostr-modal')?.classList.contains('hidden')){closeNostrModal();return;}
+  if(!$('#share-modal')?.classList.contains('hidden')){closeShareAndGoToFeed();return;}
+  const open=[...$$('.modal:not(.hidden)')];
+  if(open.length)open[open.length-1].classList.add('hidden');
+});
 
 // ===== HIDE NAV ON SCROLL DOWN =====
 (()=>{const hdr=document.getElementById('app-header');if(!hdr)return;let lastY=window.scrollY,ticking=false;const onScroll=()=>{const y=window.scrollY;const dy=y-lastY;if(y<30){hdr.classList.remove('nav-hidden');}else if(dy>4){hdr.classList.add('nav-hidden');}else if(dy<-4){hdr.classList.remove('nav-hidden');}lastY=y;ticking=false;};window.addEventListener('scroll',()=>{if(!ticking){requestAnimationFrame(onScroll);ticking=true;}},{passive:true});})();
@@ -1977,7 +1996,8 @@ function openProfileEdit(){
         currentUser.display_name=name;currentUser.avatar_path=avatarUrl;saveUser(currentUser);
         publishProfile(name,avatarUrl,null).catch(()=>{}); // fire-and-forget: relay publish must not block saving
         $('#settings-name').textContent=name;
-        if(avatarUrl){$('#settings-avatar').src=avatarUrl;$('#settings-avatar').style.display='';}
+        if(avatarUrl){$('#settings-avatar').src=avatarUrl;$('#settings-avatar').style.display='';$('#settings-avatar-ph')?.classList.add('hidden');}
+        else{const ph=$('#settings-avatar-ph');if(ph)ph.textContent=avInitial(name);}
         if($('#user-avatar')&&avatarUrl)$('#user-avatar').src=avatarUrl;
         updateAuthUI();closeProfileModal();toast('Profile updated!');
       }catch(e){profileError(e.message||'Failed');}

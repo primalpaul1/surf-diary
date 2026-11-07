@@ -1,4 +1,4 @@
-const CACHE_NAME = 'swellnotes-v8';
+const CACHE_NAME = 'swellnotes-v9';
 const STATIC_ASSETS = ['/', '/styles.css', '/app.js', '/primal-logo.png', '/sn-logo.png', '/dominical-hero.jpg', '/wave-bg.jpg', '/manifest.json'];
 
 self.addEventListener('install', e => {

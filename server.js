@@ -230,7 +230,9 @@ async function getForecast(spotId){
   const c=await db.get('SELECT data_json,fetched_at FROM forecast_cache WHERE spot_id=$1 ORDER BY fetched_at DESC LIMIT 1',[spotId]);
   if(c&&c.fetched_at>Math.floor(Date.now()/1000)-21600){const fc=JSON.parse(c.data_json);return fc?.wave?.wave?.length?fc:mockForecast();}
   if(inFlightFetches.has(spotId))return inFlightFetches.get(spotId);
-  const p=fetchSurflineData(spotId).then(fc=>fc?.wave?.wave?.length?fc:mockForecast()).finally(()=>inFlightFetches.delete(spotId));
+  // A thrown fetch (DNS/network/Cloudflare) must fall back to the mock too, otherwise every
+  // forecast/conditions/analysis route 500s for a spot that has no cached data yet.
+  const p=fetchSurflineData(spotId).then(fc=>fc?.wave?.wave?.length?fc:mockForecast()).catch(e=>{console.error('Surfline fetch failed:',e?.message||e);return mockForecast();}).finally(()=>inFlightFetches.delete(spotId));
   inFlightFetches.set(spotId,p);
   return p;
 }
@@ -800,7 +802,7 @@ app.get('/api/sessions',async(req,res)=>{
 });
 
 app.get('/api/sessions/:id',async(req,res)=>{
-  const s=await db.get('SELECT s.*,u.display_name,u.avatar_path,u.is_pro,u.show_pro_ring FROM sessions s LEFT JOIN users u ON s.pubkey=u.pubkey WHERE s.id=$1',[req.params.id]);
+  const s=await db.get('SELECT s.*,u.display_name,u.avatar_path,u.is_pro,u.show_pro_ring,sp.name AS spot_name FROM sessions s LEFT JOIN users u ON s.pubkey=u.pubkey LEFT JOIN spots sp ON sp.id=s.spot_id WHERE s.id=$1',[req.params.id]);
   if(!s)return res.status(404).json({error:'Not found'});
   const comments=await db.query('SELECT c.*,u.display_name,u.avatar_path,u.is_pro,u.show_pro_ring FROM comments c LEFT JOIN users u ON c.pubkey=u.pubkey WHERE c.session_id=$1 ORDER BY c.created_at ASC',[req.params.id]);
   res.json({session:absSession(s,req),comments:comments.map(c=>absUser(c,req))});

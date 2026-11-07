@@ -382,7 +382,7 @@
       <div class="settings-section">
         <div class="settings-profile">
           <div class="settings-avatar-wrap" id="settings-avatar-upload">
-            <img id="settings-avatar" src="" class="settings-avatar" onerror="this.style.display='none'">
+            <img id="settings-avatar" src="" class="settings-avatar" onerror="this.style.display='none'"><div id="settings-avatar-ph" class="settings-avatar settings-avatar-ph hidden"></div>
             <div class="settings-avatar-edit">Edit</div>
             <input type="file" id="settings-avatar-file" accept="image/*" class="hidden">
           </div>
@@ -681,11 +681,11 @@
 
   <!-- BOTTOM TAB BAR (icons only) -->
   <nav id="bottom-nav" class="bottom-nav hidden">
-    <button class="nav-btn active" data-view="history" aria-label="Home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5l9-7 9 7V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg></button>
-    <button class="nav-btn" data-view="forecast" aria-label="Forecast"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 8c2.5 2.5 4.5 2.5 7 0s4.5-2.5 7 0"/><path d="M2 14c2.5 2.5 4.5 2.5 7 0s4.5-2.5 7 0"/><path d="M20 8v8"/></svg></button>
-    <button class="nav-btn" data-view="surfers" aria-label="Surfers"><i class="ico-surfer"></i></button>
-    <button class="nav-btn" data-view="analysis" aria-label="Analysis"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="20" x2="6" y2="13"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="18" y1="20" x2="18" y2="9"/></svg></button>
-    <button class="nav-btn" data-view="pipeline" aria-label="Search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.6" y2="16.6"/></svg></button>
+    <button class="nav-btn active" data-view="history" aria-label="Reports"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5l9-7 9 7V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg><span>Reports</span></button>
+    <button class="nav-btn" data-view="forecast" aria-label="Forecast"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 8c2.5 2.5 4.5 2.5 7 0s4.5-2.5 7 0"/><path d="M2 14c2.5 2.5 4.5 2.5 7 0s4.5-2.5 7 0"/><path d="M20 8v8"/></svg><span>Forecast</span></button>
+    <button class="nav-btn" data-view="surfers" aria-label="Surfers"><i class="ico-surfer"></i><span>Surfers</span></button>
+    <button class="nav-btn" data-view="analysis" aria-label="Analysis"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="20" x2="6" y2="13"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="18" y1="20" x2="18" y2="9"/></svg><span>Analysis</span></button>
+    <button class="nav-btn" data-view="pipeline" aria-label="Search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.6" y2="16.6"/></svg><span>Search</span></button>
   </nav>
 
   <!-- QUICK POST -->
@@ -709,6 +709,10 @@
           <div class="qp-context">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
             <span>Posting to</span><select id="qp-spot" class="qp-spot-select"></select>
+          </div>
+          <div class="qp-context qp-when">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+            <span>When</span><input type="date" id="qp-date" class="qp-when-date" aria-label="Session date"><select id="qp-time" class="qp-spot-select" aria-label="Session time"><option value="5am">5 AM</option><option value="6am">6 AM</option><option value="7am">7 AM</option><option value="8am">8 AM</option><option value="9am">9 AM</option><option value="10am">10 AM</option><option value="11am">11 AM</option><option value="12pm">12 PM</option><option value="1pm">1 PM</option><option value="2pm">2 PM</option><option value="3pm">3 PM</option><option value="4pm">4 PM</option><option value="5pm">5 PM</option><option value="6pm">6 PM</option></select>
           </div>
           <div class="qp-rate">
             <span class="qp-rate-label">Rate</span>
